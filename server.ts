@@ -16,15 +16,17 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 app.use(express.json());
 
 // Initialize GoogleGenAI client with standard aistudio-build telemetry
-const apiKey = process.env.GEMINI_API_KEY || 'AIzaSyB5cFdL1PqVj0Nap_Ye9OhnIL9cp0-MmRc';
-const ai = new GoogleGenAI({
-  apiKey,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
-});
+const apiKey = process.env.GEMINI_API_KEY || '';
+const ai = apiKey
+  ? new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    })
+  : null;
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
@@ -67,7 +69,22 @@ Provide concise, accurate, and practical answers. Use clean formatting and code 
 
   // Request-specific or server client
   const clientKey = (req.headers['x-gemini-api-key'] as string) || apiKey;
-  const clientAi = clientKey === apiKey ? ai : new GoogleGenAI({
+  if (!clientKey) {
+    if (stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.write(`data: ${JSON.stringify({ error: 'Gemini API key is not configured on the server. Please set GEMINI_API_KEY in server environment.' })}\n\n`);
+      res.end();
+      return;
+    } else {
+      return res.status(503).json({
+        error: 'Gemini API key is not configured on the server. Please set GEMINI_API_KEY in server environment.',
+      });
+    }
+  }
+
+  const clientAi = clientKey === apiKey && ai ? ai : new GoogleGenAI({
     apiKey: clientKey,
     httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
   });
