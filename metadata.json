@@ -1,0 +1,6 @@
+{
+  "name": "Aether AI — Premium SaaS & Gemini AI Chat",
+  "description": "Transform your ideas into digital success with our premium AI platform featuring free Gemini Flash chat, 3D purple glass visual engine, and TRC20 community support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
