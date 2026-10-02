@@ -9,13 +9,17 @@ interface AuthControlProps {
 export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' }) => {
   const {
     user,
+    profile,
     loading,
+    profileLoading,
     signingIn,
     signingOut,
     authError,
+    profileError,
     signInWithGoogle,
     signOut,
     clearAuthError,
+    clearProfileError,
   } = useAuth();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -52,21 +56,25 @@ export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' })
     );
   }
 
+  // Active display name and photo (prefers Firestore profile, falls back to Google Auth user)
+  const activeDisplayName = profile?.displayName || user?.displayName || 'مستخدم Aether';
+  const activeEmail = profile?.email || user?.email;
+  const activePhotoURL = profile?.photoURL || user?.photoURL;
+  const userInitial = (activeDisplayName || activeEmail || 'U').charAt(0).toUpperCase();
+
   // 2. Authenticated state — Header / Compact variant
   if (user && (variant === 'header' || variant === 'compact')) {
-    const userInitial = (user.displayName || user.email || 'U').charAt(0).toUpperCase();
-
     return (
       <div className="relative">
         <button
           onClick={() => setMenuOpen((prev) => !prev)}
           className="flex items-center gap-2 p-1 pl-2 pr-1 rounded-full bg-white hover:bg-slate-50 border border-[#EFECE6] shadow-xs transition-colors cursor-pointer"
-          title={user.displayName || user.email || 'حساب المستخدم'}
+          title={activeDisplayName}
         >
-          {user.photoURL ? (
+          {activePhotoURL ? (
             <img
-              src={user.photoURL}
-              alt={user.displayName || 'صورة المستخدم'}
+              src={activePhotoURL}
+              alt={activeDisplayName}
               className="w-7 h-7 rounded-full object-cover border border-purple-200"
               referrerPolicy="no-referrer"
             />
@@ -76,8 +84,11 @@ export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' })
             </div>
           )}
           <span className="text-xs font-semibold text-slate-800 max-w-[100px] truncate hidden sm:inline">
-            {user.displayName?.split(' ')[0] || user.email?.split('@')[0]}
+            {activeDisplayName.split(' ')[0]}
           </span>
+          {profileLoading && (
+            <Loader2 className="w-3 h-3 animate-spin text-purple-600" />
+          )}
         </button>
 
         {menuOpen && (
@@ -92,12 +103,27 @@ export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' })
             >
               <div className="pb-2.5 mb-2.5 border-b border-[#F0ECE1]">
                 <p className="text-xs font-bold text-slate-900 truncate">
-                  {user.displayName || 'مستخدم Aether'}
+                  {activeDisplayName}
                 </p>
                 <p className="text-[11px] text-slate-500 truncate" dir="ltr">
-                  {user.email}
+                  {activeEmail}
                 </p>
               </div>
+
+              {profileError && (
+                <div className="mb-2 p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[10px] flex items-start gap-1 justify-between">
+                  <div className="flex items-start gap-1">
+                    <AlertCircle className="w-3 h-3 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <span>{profileError}</span>
+                  </div>
+                  <button
+                    onClick={clearProfileError}
+                    className="p-0.5 hover:text-amber-950 cursor-pointer"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              )}
 
               <button
                 onClick={() => {
@@ -122,8 +148,6 @@ export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' })
 
   // 3. Authenticated state — Sidebar variant
   if (user && variant === 'sidebar') {
-    const userInitial = (user.displayName || user.email || 'U').charAt(0).toUpperCase();
-
     return (
       <div className="space-y-2">
         {authError && (
@@ -141,12 +165,27 @@ export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' })
           </div>
         )}
 
+        {profileError && (
+          <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-start gap-1.5 justify-between">
+            <div className="flex items-start gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <span>{profileError}</span>
+            </div>
+            <button
+              onClick={clearProfileError}
+              className="p-0.5 hover:text-amber-950 cursor-pointer"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between px-2 py-2 rounded-xl bg-white border border-[#EFECE6] shadow-xs">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            {user.photoURL ? (
+            {activePhotoURL ? (
               <img
-                src={user.photoURL}
-                alt={user.displayName || 'المستخدم'}
+                src={activePhotoURL}
+                alt={activeDisplayName}
                 className="w-8 h-8 rounded-full object-cover border border-purple-200 flex-shrink-0"
                 referrerPolicy="no-referrer"
               />
@@ -156,11 +195,16 @@ export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' })
               </div>
             )}
             <div className="flex flex-col overflow-hidden">
-              <span className="text-xs font-bold text-slate-800 truncate leading-tight">
-                {user.displayName || 'مستخدم Aether'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-800 truncate leading-tight">
+                  {activeDisplayName}
+                </span>
+                {profileLoading && (
+                  <Loader2 className="w-3 h-3 animate-spin text-purple-600 flex-shrink-0" />
+                )}
+              </div>
               <span className="text-[10px] text-slate-500 truncate" dir="ltr">
-                {user.email}
+                {activeEmail}
               </span>
             </div>
           </div>
