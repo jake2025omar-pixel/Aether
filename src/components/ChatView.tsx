@@ -11,6 +11,7 @@ import {
   Loader2,
   ChevronDown,
 } from 'lucide-react';
+import { AuthControl } from './AuthControl';
 
 export interface ChatMessage {
   id: string;
@@ -98,8 +99,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
           <ChevronDown className="w-3.5 h-3.5 text-purple-400" />
         </div>
 
-        {/* Right placeholder to keep model centered */}
-        <div className="w-9" />
+        {/* Right: AuthControl */}
+        <div className="flex items-center justify-end">
+          <AuthControl variant="compact" />
+        </div>
       </header>
 
       {/* Messages Scroll Area (Centered max-width 768px) */}

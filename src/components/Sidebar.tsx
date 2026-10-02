@@ -10,6 +10,7 @@ import {
   Trash2,
   Sparkles,
 } from 'lucide-react';
+import { AuthControl } from './AuthControl';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -172,21 +173,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {/* Bottom: User avatar + settings icon */}
-        <div className="p-3 border-t border-[#F0ECE1] bg-[#FAFAF8]">
-          <div className="flex items-center justify-between px-2 py-2 rounded-xl hover:bg-white transition-colors">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center text-white text-xs font-bold shadow-xs">
-                U
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-slate-800 leading-tight">
-                  مستخدم المنصة
-                </span>
-                <span className="text-[10px] text-purple-700 font-semibold">باقة مجانية</span>
-              </div>
-            </div>
-
+        {/* Bottom: Authentication control + settings */}
+        <div className="p-3 border-t border-[#F0ECE1] bg-[#FAFAF8] space-y-2">
+          <AuthControl variant="sidebar" />
+          <div className="flex items-center justify-between px-2 pt-1 text-slate-500">
+            <span className="text-[11px] font-semibold text-slate-400">خيارات المنصة</span>
             <button
               onClick={onOpenSettings}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"

@@ -18,6 +18,7 @@ import {
   ImageIcon,
 } from 'lucide-react';
 import { GlassLoop3D } from './GlassLoop3D';
+import { AuthControl } from './AuthControl';
 
 interface HeroViewProps {
   onToggleSidebar: () => void;
@@ -47,13 +48,16 @@ export const HeroView: React.FC<HeroViewProps> = ({ onToggleSidebar, onStartChat
           </span>
         </div>
 
-        <button
-          onClick={onStartChat}
-          className="px-4 py-2 rounded-full text-xs font-bold bg-[#7C3AED] hover:bg-[#6D28D9] text-white shadow-md shadow-[#7C3AED]/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-        >
-          <span>ابدأ الشات</span>
-          <ArrowLeft className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <AuthControl variant="header" />
+          <button
+            onClick={onStartChat}
+            className="px-4 py-2 rounded-full text-xs font-bold bg-[#7C3AED] hover:bg-[#6D28D9] text-white shadow-md shadow-[#7C3AED]/20 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+          >
+            <span>ابدأ الشات</span>
+            <ArrowLeft className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </header>
 
       {/* Main Content Area */}
