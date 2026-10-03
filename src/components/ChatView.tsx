@@ -1,17 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Menu,
-  ArrowUp,
-  Paperclip,
+  ArrowLeft,
   Copy,
   Check,
-  Sparkles,
   Bot,
   User,
   Loader2,
-  ChevronDown,
+  Mic,
+  Send,
 } from 'lucide-react';
 import { AuthControl } from './AuthControl';
+import { CrystalSurface } from './ui/CrystalSurface';
 
 export interface ChatMessage {
   id: string;
@@ -20,14 +19,14 @@ export interface ChatMessage {
 }
 
 interface ChatViewProps {
-  onToggleSidebar: () => void;
+  onBackToEnvironment: () => void;
   messages: ChatMessage[];
   onSendMessage: (query: string) => Promise<void>;
   loading: boolean;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({
-  onToggleSidebar,
+  onBackToEnvironment,
   messages,
   onSendMessage,
   loading,
@@ -73,222 +72,146 @@ export const ChatView: React.FC<ChatViewProps> = ({
     setInput(e.target.value);
     const textarea = e.target;
     textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen bg-[#FFFCF5] text-slate-800 overflow-hidden relative font-sans">
-      {/* Top Bar Minimal (Light Mode) */}
-      <header className="h-14 border-b border-[#F0ECE1] flex items-center justify-between px-3 sm:px-4 z-10 bg-[#FFFCF5]/90 backdrop-blur-md">
-        {/* Left: Hamburger Button (Always visible) */}
+    <div className="flex-1 flex flex-col h-full overflow-hidden relative select-none z-10">
+      {/* Top Header Bar */}
+      <header className="h-14 border-b border-white/[0.06] flex items-center justify-between px-4 sm:px-6 z-20 bg-[#07050D]/80 backdrop-blur-md">
         <button
-          onClick={onToggleSidebar}
-          className="p-2 rounded-xl text-slate-600 hover:text-black hover:bg-black/5 transition-colors cursor-pointer"
-          title="قائمة التنقل"
-          aria-label="Toggle sidebar"
+          onClick={onBackToEnvironment}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full crystal-surface hover:bg-white/[0.08] hover:border-purple-400/30 text-xs font-medium text-white/70 hover:text-white transition-colors cursor-pointer"
+          title="Back to Home"
         >
-          <Menu className="w-5 h-5" />
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Home</span>
         </button>
 
-        {/* Center: Model Name */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-black/5 cursor-pointer transition-colors border border-purple-200/60 bg-purple-50/60">
-          <Sparkles className="w-3.5 h-3.5 text-[#7C3AED]" />
-          <span className="font-semibold text-xs sm:text-sm text-purple-950">
-            AetherAI - Gemini 1.5 Flash Free
-          </span>
-          <ChevronDown className="w-3.5 h-3.5 text-purple-400" />
-        </div>
+        <span className="text-xs font-mono tracking-[4px] text-white/40 uppercase">
+          AETHER
+        </span>
 
-        {/* Right: AuthControl */}
-        <div className="flex items-center justify-end">
-          <AuthControl variant="compact" />
-        </div>
+        {/* User Account */}
+        <AuthControl variant="header" />
       </header>
 
-      {/* Messages Scroll Area (Centered max-width 768px) */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
-        <div className="max-w-[768px] mx-auto w-full flex flex-col space-y-6">
-          {/* Empty state greeting when no messages */}
-          {messages.length === 0 && (
-            <div className="min-h-[50vh] flex flex-col items-center justify-center text-center px-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#7C3AED] flex items-center justify-center text-white mb-4 shadow-xl shadow-[#7C3AED]/20">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-2">
-                كيف يمكنني مساعدتك اليوم؟
-              </h2>
-              <p className="text-sm text-slate-500 max-w-md">
-                محرك ذكاء اصطناعي فائق السرعة عبر Gemini 1.5 Flash مجاناً لتحويل أفكارك إلى نجاح رقمي.
-              </p>
-
-              {/* Quick Prompt Cards with Pastel Tones */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 w-full max-w-xl text-right" dir="rtl">
-                <button
-                  onClick={() => onSendMessage('اقترح خطة إطلاق مشروع SaaS من الصفر')}
-                  className="p-4 rounded-2xl bg-[#FFFFFF] hover:bg-[#FDF9F0] border border-[#EDE8DC] text-xs sm:text-sm text-slate-700 transition-all text-right shadow-xs hover:shadow-md cursor-pointer"
-                >
-                  <div className="font-bold text-slate-900 mb-1 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-purple-500 inline-block" />
-                    <span>خطة إطلاق مشروع SaaS</span>
-                  </div>
-                  <div className="text-slate-500 text-xs">من الفكرة إلى النموذج الأولي المربح</div>
-                </button>
-
-                <button
-                  onClick={() => onSendMessage('اكتب كود React + Tailwind عصري وجميل')}
-                  className="p-4 rounded-2xl bg-[#FFFFFF] hover:bg-[#FDF9F0] border border-[#EDE8DC] text-xs sm:text-sm text-slate-700 transition-all text-right shadow-xs hover:shadow-md cursor-pointer"
-                >
-                  <div className="font-bold text-slate-900 mb-1 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-pink-500 inline-block" />
-                    <span>توليد أكواد برمجية نظيفة</span>
-                  </div>
-                  <div className="text-slate-500 text-xs">TypeScript، واجهات وتكاملات برمجية</div>
-                </button>
-
-                <button
-                  onClick={() => onSendMessage('كيف أستفيد من شبكة TRC20 في المعاملات المالية؟')}
-                  className="p-4 rounded-2xl bg-[#FFFFFF] hover:bg-[#FDF9F0] border border-[#EDE8DC] text-xs sm:text-sm text-slate-700 transition-all text-right shadow-xs hover:shadow-md cursor-pointer"
-                >
-                  <div className="font-bold text-slate-900 mb-1 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-                    <span>استخدام شبكة TRC20</span>
-                  </div>
-                  <div className="text-slate-500 text-xs">رسوم منخفضة وتأكيد فوري عبر OKX</div>
-                </button>
-
-                <button
-                  onClick={() => onSendMessage('لخص استراتيجية نمو رقمي مبتكرة لهذا العام')}
-                  className="p-4 rounded-2xl bg-[#FFFFFF] hover:bg-[#FDF9F0] border border-[#EDE8DC] text-xs sm:text-sm text-slate-700 transition-all text-right shadow-xs hover:shadow-md cursor-pointer"
-                >
-                  <div className="font-bold text-slate-900 mb-1 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
-                    <span>استراتيجيات النمو الرقمي</span>
-                  </div>
-                  <div className="text-slate-500 text-xs">تسويق، أتمتة، واستقطاب العملاء</div>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Messages list */}
-          {messages.map((msg) => {
+      {/* Messages Stream */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-4 max-w-2xl w-full mx-auto">
+        {messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2 opacity-50">
+            <p className="text-xs text-white/60 font-light">
+              Begin a conversation with Aether.
+            </p>
+          </div>
+        ) : (
+          messages.map((msg) => {
             const isUser = msg.sender === 'user';
+
             return (
               <div
                 key={msg.id}
-                className={`w-full flex ${isUser ? 'justify-end' : 'justify-start'}`}
+                className={`flex gap-3 items-start animate-in fade-in duration-200 ${
+                  isUser ? 'flex-row-reverse' : 'flex-row'
+                }`}
               >
-                {isUser ? (
-                  /* User message: soft rounded bubble */
-                  <div
-                    className="max-w-[80%] sm:max-w-[70%] bg-[#F0ECE1] text-slate-900 px-5 py-3 rounded-[24px] text-sm sm:text-base leading-relaxed break-words whitespace-pre-wrap shadow-xs text-right"
-                    dir="auto"
-                  >
-                    {msg.text}
-                  </div>
-                ) : (
-                  /* AI message: transparent with purple avatar on left, with copy button */
-                  <div className="w-full flex items-start gap-3 sm:gap-4 py-2">
-                    {/* Purple Avatar on Left */}
-                    <div className="w-8 h-8 rounded-full bg-[#7C3AED] flex items-center justify-center text-white flex-shrink-0 mt-0.5 shadow-sm shadow-[#7C3AED]/30">
-                      <Sparkles className="w-4 h-4" />
-                    </div>
+                {/* Avatar Icon */}
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-xs border ${
+                    isUser
+                      ? 'bg-purple-600/30 border-purple-400/40 text-purple-200'
+                      : 'bg-white/[0.06] border-white/[0.1] text-purple-300'
+                  }`}
+                >
+                  {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+                </div>
 
-                    {/* AI Message Content */}
-                    <div className="flex-1 min-w-0 space-y-2 text-right" dir="auto">
-                      <div className="text-sm sm:text-base text-slate-800 leading-relaxed break-words whitespace-pre-wrap bg-white/70 p-4 sm:p-5 rounded-2xl border border-[#EDE8DC] shadow-xs">
-                        {msg.text || (
-                          <div className="flex items-center gap-2 text-purple-700 py-1" dir="rtl">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span className="text-xs font-semibold">جاري الكتابة عبر Gemini Flash...</span>
-                          </div>
+                {/* Bubble Container */}
+                <div
+                  className={`relative group max-w-[85%] sm:max-w-[75%] rounded-2xl p-3 sm:p-3.5 text-xs sm:text-sm leading-relaxed ${
+                    isUser
+                      ? 'bg-purple-600/25 border border-purple-400/30 text-white rounded-tr-sm'
+                      : 'crystal-surface text-white/90 rounded-tl-sm'
+                  }`}
+                >
+                  {/* Message Text */}
+                  <div className="whitespace-pre-wrap select-text font-sans">
+                    {msg.text || (
+                      <span className="flex items-center gap-1.5 text-purple-300 text-xs">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Aether is thinking...</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Copy Button */}
+                  {!isUser && msg.text && (
+                    <div className="mt-1.5 pt-1.5 border-t border-white/[0.04] flex items-center justify-end">
+                      <button
+                        onClick={() => handleCopy(msg.id, msg.text)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-white/50 hover:text-white transition-opacity flex items-center gap-1 text-[11px] cursor-pointer"
+                        title="Copy message"
+                      >
+                        {copiedId === msg.id ? (
+                          <Check className="w-3 h-3 text-purple-400" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
                         )}
-                      </div>
-
-                      {/* Copy button under each AI message */}
-                      {msg.text && (
-                        <div className="flex items-center gap-2 pt-1">
-                          <button
-                            onClick={() => handleCopy(msg.id, msg.text)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-black/5 text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                            title="نسخ الرسالة"
-                          >
-                            {copiedId === msg.id ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                <span className="text-emerald-700 text-[11px] font-semibold">تم النسخ</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span className="text-[11px] font-medium">نسخ</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      )}
+                      </button>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             );
-          })}
-          <div ref={messagesEndRef} />
-        </div>
+          })
+        )}
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Bottom Input (Fixed bottom, centered max-width 768px, rounded 28px pill shape, background #FFFFFF) */}
-      <div className="w-full pb-4 px-4 z-10 bg-gradient-to-t from-[#FFFCF5] via-[#FFFCF5]/90 to-transparent pt-3">
-        <div className="max-w-[768px] mx-auto w-full">
-          <form
-            onSubmit={handleSubmit}
-            className="relative flex items-center gap-2 bg-[#FFFFFF] rounded-[28px] px-3.5 py-2 shadow-lg shadow-black/[0.04] border border-[#E5E0D5] focus-within:border-[#7C3AED]/70 transition-colors"
+      {/* Floating Bottom Input Area */}
+      <div className="p-3 sm:p-4 z-20">
+        <div className="max-w-2xl mx-auto">
+          <CrystalSurface
+            rounded="card"
+            className="p-1.5 sm:p-2 flex items-end gap-2 border-white/[0.1] shadow-xl"
           >
-            {/* Attachment Icon */}
+            {/* Visual Mic Button */}
             <button
               type="button"
-              className="p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors flex-shrink-0 cursor-pointer"
-              title="إرفاق ملف"
+              aria-label="Voice Input"
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white/50 hover:text-purple-300 hover:bg-white/[0.06] transition-colors cursor-pointer flex-shrink-0"
             >
-              <Paperclip className="w-4 h-4" />
+              <Mic className="w-4 h-4" />
             </button>
 
-            {/* Input field */}
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={handleInputResize}
-              onKeyDown={handleKeyDown}
-              placeholder="اسأل أي شيء..."
-              rows={1}
-              disabled={loading}
-              className="flex-1 bg-transparent text-sm sm:text-base text-slate-800 placeholder-slate-400 outline-none resize-none py-1.5 max-h-[160px] text-right"
-              dir="rtl"
-            />
+            {/* Auto-growing Textarea */}
+            <div className="flex-1 flex items-center min-h-[44px]">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={input}
+                onChange={handleInputResize}
+                onKeyDown={handleKeyDown}
+                disabled={loading}
+                placeholder="Type to Aether..."
+                className="w-full bg-transparent px-3 py-2 text-xs sm:text-sm text-white placeholder-white/35 focus:outline-none resize-none max-h-36 disabled:cursor-not-allowed"
+              />
+            </div>
 
-            {/* Send Arrow Button Inside Input (Purple #7C3AED) */}
+            {/* Send Button */}
             <button
-              type="submit"
+              onClick={() => handleSubmit()}
               disabled={!input.trim() || loading}
-              className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all cursor-pointer ${
-                input.trim() && !loading
-                  ? 'bg-[#7C3AED] text-white hover:bg-[#6D28D9] shadow-md shadow-[#7C3AED]/30'
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
-              aria-label="إرسال"
+              aria-label="Send message"
+              className="w-10 h-10 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 disabled:opacity-30 disabled:pointer-events-none text-white flex items-center justify-center transition-all duration-150 shadow-[0_0_18px_-2px_rgba(168,85,247,0.5)] flex-shrink-0 cursor-pointer active:scale-95"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin text-white" />
               ) : (
-                <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                <Send className="w-4 h-4" />
               )}
             </button>
-          </form>
-
-          {/* Footnote */}
-          <div className="text-[11px] text-slate-400 text-center mt-2 font-medium">
-            قد يقدم AetherAI معلومات غير دقيقة. يرجى التحقق من المعلومات المهمة.
-          </div>
+          </CrystalSurface>
         </div>
       </div>
     </div>

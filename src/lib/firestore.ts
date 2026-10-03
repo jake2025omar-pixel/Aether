@@ -47,7 +47,7 @@ export const isFirestoreAvailable = Boolean(db);
 /**
  * Synchronize user profile on successful authentication.
  * - Creates users/{uid} document on first login.
- * - Safely updates safe profile fields (displayName, email, photoURL, updatedAt) on subsequent logins.
+ * - Safely updates mutable profile fields on subsequent logins.
  * - Preserves existing user data.
  * - Does not throw uncaught exceptions.
  */
@@ -55,7 +55,7 @@ export async function syncUserProfile(user: User): Promise<ProfileResult> {
   if (!db) {
     return {
       profile: null,
-      error: 'خدمة Firestore غير مهيأة بعد في هذا الإصدار.',
+      error: 'Firestore service is not initialized.',
     };
   }
 
@@ -121,13 +121,13 @@ export async function syncUserProfile(user: User): Promise<ProfileResult> {
       console.warn('Firestore sync error:', error);
     }
 
-    let userFacingMessage = 'تعذر الاتصال بقاعدة بيانات المستخدم (Firestore).';
+    let userFacingMessage = 'Could not connect to user profile storage.';
     if (error?.code === 'permission-denied') {
       userFacingMessage =
-        'قاعدة بيانات Firestore غير مفعلة في مشروع Firebase أو لم يتم تكوين صلاحيات الوصول.';
+        'Firestore permissions or security rules denied access.';
     } else if (error?.code === 'unavailable') {
       userFacingMessage =
-        'خدمة Firestore غير متاحة حالياً أو الجهاز غير متصل بالإنترنت.';
+        'Firestore service is currently unavailable. Please check your connection.';
     }
 
     return {
@@ -142,7 +142,7 @@ export async function syncUserProfile(user: User): Promise<ProfileResult> {
  */
 export async function getUserProfile(uid: string): Promise<ProfileResult> {
   if (!db) {
-    return { profile: null, error: 'خدمة Firestore غير مهيأة.' };
+    return { profile: null, error: 'Firestore is not initialized.' };
   }
 
   try {
@@ -164,7 +164,7 @@ export async function getUserProfile(uid: string): Promise<ProfileResult> {
     }
     return {
       profile: null,
-      error: 'تعذر جلب ملف المستخدم من قاعدة البيانات.',
+      error: 'Failed to retrieve profile data from storage.',
     };
   }
 }

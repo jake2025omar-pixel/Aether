@@ -1,80 +1,94 @@
 @import "tailwindcss";
 
 @layer base {
-  html {
-    font-family: 'Cairo', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    color-scheme: light;
-    background-color: #FFFCF5;
+  :root {
+    /* Quister Semantic Color System for Aether */
+    --aether-lavender: #A855F7;
+    --aether-mint-cream: #E6FFF5;
+    --aether-text-primary: #FFFFFF;
+    --aether-text-secondary: rgba(255, 255, 255, 0.70);
+    --aether-text-tertiary: rgba(255, 255, 255, 0.40);
+    --aether-glass-base: rgba(18, 12, 28, 0.55);
+    --aether-glass-border: rgba(255, 255, 255, 0.08);
+    --aether-crystal-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45), 0 0 30px -4px rgba(168, 85, 247, 0.18);
   }
-  
-  code, pre, kbd {
-    font-family: 'JetBrains Mono', monospace;
+
+  html {
+    color-scheme: dark;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  body {
+    background-color: #07050D;
+    color: var(--aether-text-primary);
+    overflow: hidden;
+    user-select: none;
   }
 }
 
-/* Givingli & Linearity-style soft glass cards & 3D shadows */
-.bento-card {
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 12px 36px -10px rgba(0, 0, 0, 0.05), 0 24px 60px -20px rgba(0, 0, 0, 0.04);
+/* Glassmorphism & Crystal Surface utility classes */
+.crystal-surface {
+  background: var(--aether-glass-base);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--aether-glass-border);
+  box-shadow: var(--aether-crystal-shadow);
+}
+
+.crystal-surface-subtle {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-nav-pill {
+  background: rgba(18, 12, 28, 0.65);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
 }
 
-.bento-card:hover {
-  transform: translateY(-6px) scale(1.008);
-  box-shadow: 0 24px 50px -12px rgba(0, 0, 0, 0.09), 0 40px 80px -25px rgba(0, 0, 0, 0.06);
-}
-
-.glass-pill {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.04);
-}
-
-/* Floating animation */
-@keyframes softFloat {
-  0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-8px) rotate(1deg);
-  }
-}
-
-@keyframes softFloatReverse {
-  0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-6px) rotate(-1.5deg);
-  }
-}
-
-.animate-soft-float {
-  animation: softFloat 5s ease-in-out infinite;
-}
-
-.animate-soft-float-delayed {
-  animation: softFloatReverse 6s ease-in-out 1s infinite;
-}
-
-/* Custom Scrollbar for Light Mode */
+/* Subtle scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #E5E5DF;
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #C4C4BC;
+  background: rgba(168, 85, 247, 0.35);
 }
 
+@keyframes lavender-breathe {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.05);
+  }
+}
 
+.animate-lavender-breathe {
+  animation: lavender-breathe 8s ease-in-out infinite;
+}
 
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

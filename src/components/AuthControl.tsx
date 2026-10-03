@@ -6,7 +6,7 @@ interface AuthControlProps {
   variant?: 'sidebar' | 'header' | 'compact';
 }
 
-export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' }) => {
+export const AuthControl: React.FC<AuthControlProps> = () => {
   const {
     user,
     profile,
@@ -49,45 +49,45 @@ export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' })
   // 1. Loading state
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-2 px-3 text-xs text-slate-400 gap-2">
-        <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
-        <span>جارٍ التحقق...</span>
+      <div className="flex items-center justify-center py-1.5 px-3 text-xs text-white/50 gap-2 crystal-surface rounded-full">
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400" />
+        <span>Authenticating...</span>
       </div>
     );
   }
 
-  // Active display name and photo (prefers Firestore profile, falls back to Google Auth user)
-  const activeDisplayName = profile?.displayName || user?.displayName || 'مستخدم Aether';
+  // Active display name and photo
+  const activeDisplayName = profile?.displayName || user?.displayName || 'Aether User';
   const activeEmail = profile?.email || user?.email;
   const activePhotoURL = profile?.photoURL || user?.photoURL;
   const userInitial = (activeDisplayName || activeEmail || 'U').charAt(0).toUpperCase();
 
-  // 2. Authenticated state — Header / Compact variant
-  if (user && (variant === 'header' || variant === 'compact')) {
+  // 2. Authenticated state
+  if (user) {
     return (
       <div className="relative">
         <button
           onClick={() => setMenuOpen((prev) => !prev)}
-          className="flex items-center gap-2 p-1 pl-2 pr-1 rounded-full bg-white hover:bg-slate-50 border border-[#EFECE6] shadow-xs transition-colors cursor-pointer"
+          className="flex items-center gap-2 p-1 pl-2.5 pr-1 rounded-full crystal-surface hover:border-purple-400/35 transition-colors cursor-pointer active:scale-95"
           title={activeDisplayName}
         >
           {activePhotoURL ? (
             <img
               src={activePhotoURL}
               alt={activeDisplayName}
-              className="w-7 h-7 rounded-full object-cover border border-purple-200"
+              className="w-7 h-7 rounded-full object-cover border border-white/20"
               referrerPolicy="no-referrer"
             />
           ) : (
-            <div className="w-7 h-7 rounded-full bg-[#7C3AED] text-white flex items-center justify-center text-xs font-bold">
+            <div className="w-7 h-7 rounded-full bg-purple-600 text-white flex items-center justify-center text-xs font-semibold shadow-xs">
               {userInitial}
             </div>
           )}
-          <span className="text-xs font-semibold text-slate-800 max-w-[100px] truncate hidden sm:inline">
+          <span className="text-xs font-medium text-white/90 max-w-[110px] truncate hidden sm:inline">
             {activeDisplayName.split(' ')[0]}
           </span>
           {profileLoading && (
-            <Loader2 className="w-3 h-3 animate-spin text-purple-600" />
+            <Loader2 className="w-3 h-3 animate-spin text-purple-400" />
           )}
         </button>
 
@@ -97,28 +97,25 @@ export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' })
               className="fixed inset-0 z-40"
               onClick={() => setMenuOpen(false)}
             />
-            <div
-              className="absolute left-0 mt-2 w-56 rounded-2xl bg-white border border-[#EFECE6] shadow-xl p-3 z-50 animate-in fade-in zoom-in-95 duration-150"
-              dir="rtl"
-            >
-              <div className="pb-2.5 mb-2.5 border-b border-[#F0ECE1]">
-                <p className="text-xs font-bold text-slate-900 truncate">
+            <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-[#0F0C1B]/95 backdrop-blur-xl border border-white/[0.12] shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="pb-2.5 mb-2.5 border-b border-white/[0.08]">
+                <p className="text-xs font-semibold text-white truncate">
                   {activeDisplayName}
                 </p>
-                <p className="text-[11px] text-slate-500 truncate" dir="ltr">
+                <p className="text-[11px] text-white/50 truncate">
                   {activeEmail}
                 </p>
               </div>
 
               {profileError && (
-                <div className="mb-2 p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[10px] flex items-start gap-1 justify-between">
+                <div className="mb-2 p-2 rounded-xl bg-purple-900/30 border border-purple-500/30 text-purple-200 text-[10px] flex items-start gap-1 justify-between">
                   <div className="flex items-start gap-1">
-                    <AlertCircle className="w-3 h-3 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <AlertCircle className="w-3 h-3 text-purple-400 flex-shrink-0 mt-0.5" />
                     <span>{profileError}</span>
                   </div>
                   <button
                     onClick={clearProfileError}
-                    className="p-0.5 hover:text-amber-950 cursor-pointer"
+                    className="p-0.5 hover:text-white cursor-pointer"
                   >
                     <X className="w-2.5 h-2.5" />
                   </button>
@@ -131,11 +128,11 @@ export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' })
                   signOut();
                 }}
                 disabled={signingOut}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors cursor-pointer disabled:opacity-50"
               >
                 <span className="flex items-center gap-2">
                   <LogOut className="w-3.5 h-3.5" />
-                  <span>تسجيل الخروج</span>
+                  <span>Sign Out</span>
                 </span>
                 {signingOut && <Loader2 className="w-3 h-3 animate-spin" />}
               </button>
@@ -146,137 +143,37 @@ export const AuthControl: React.FC<AuthControlProps> = ({ variant = 'sidebar' })
     );
   }
 
-  // 3. Authenticated state — Sidebar variant
-  if (user && variant === 'sidebar') {
-    return (
-      <div className="space-y-2">
-        {authError && (
-          <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-start gap-1.5 justify-between">
-            <div className="flex items-start gap-1.5">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <span>{authError}</span>
-            </div>
-            <button
-              onClick={clearAuthError}
-              className="p-0.5 hover:text-amber-950 cursor-pointer"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        )}
-
-        {profileError && (
-          <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-start gap-1.5 justify-between">
-            <div className="flex items-start gap-1.5">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <span>{profileError}</span>
-            </div>
-            <button
-              onClick={clearProfileError}
-              className="p-0.5 hover:text-amber-950 cursor-pointer"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between px-2 py-2 rounded-xl bg-white border border-[#EFECE6] shadow-xs">
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            {activePhotoURL ? (
-              <img
-                src={activePhotoURL}
-                alt={activeDisplayName}
-                className="w-8 h-8 rounded-full object-cover border border-purple-200 flex-shrink-0"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center text-white text-xs font-bold shadow-xs flex-shrink-0">
-                {userInitial}
-              </div>
-            )}
-            <div className="flex flex-col overflow-hidden">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-slate-800 truncate leading-tight">
-                  {activeDisplayName}
-                </span>
-                {profileLoading && (
-                  <Loader2 className="w-3 h-3 animate-spin text-purple-600 flex-shrink-0" />
-                )}
-              </div>
-              <span className="text-[10px] text-slate-500 truncate" dir="ltr">
-                {activeEmail}
-              </span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => signOut()}
-            disabled={signingOut}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer flex-shrink-0"
-            title="تسجيل الخروج"
-          >
-            {signingOut ? (
-              <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
-            ) : (
-              <LogOut className="w-4 h-4" />
-            )}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // 4. Unauthenticated state — Google Sign-In Button
+  // 3. Unauthenticated state — Google Sign-In Button
   return (
-    <div className="w-full space-y-2">
+    <div className="flex items-center gap-2">
       {authError && (
-        <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-start gap-1.5 justify-between">
-          <div className="flex items-start gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
-            <span>{authError}</span>
-          </div>
-          <button
-            onClick={clearAuthError}
-            className="p-0.5 hover:text-amber-950 cursor-pointer"
-          >
-            <X className="w-3 h-3" />
+        <div className="p-1.5 px-2.5 rounded-full bg-purple-900/30 border border-purple-500/30 text-purple-200 text-[11px] flex items-center gap-1.5">
+          <AlertCircle className="w-3 h-3 text-purple-400 flex-shrink-0" />
+          <span className="max-w-[150px] truncate">{authError}</span>
+          <button onClick={clearAuthError} className="p-0.5 hover:text-white cursor-pointer">
+            <X className="w-2.5 h-2.5" />
           </button>
         </div>
       )}
 
-      {variant === 'sidebar' ? (
-        <button
-          onClick={() => signInWithGoogle()}
-          disabled={signingIn}
-          className="w-full py-2.5 px-3 rounded-2xl bg-white hover:bg-slate-50 active:scale-[0.98] border border-[#EFECE6] text-slate-800 text-xs font-bold shadow-xs hover:shadow-sm transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-60"
-        >
-          {signingIn ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin text-[#7C3AED]" />
-              <span>جارٍ تسجيل الدخول...</span>
-            </>
-          ) : (
-            <>
-              <GoogleIcon />
-              <span>تسجيل الدخول باستخدام Google</span>
-            </>
-          )}
-        </button>
-      ) : (
-        <button
-          onClick={() => signInWithGoogle()}
-          disabled={signingIn}
-          className="py-1.5 px-3 rounded-full bg-white hover:bg-slate-50 active:scale-95 border border-[#EFECE6] text-slate-800 text-xs font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
-          title="تسجيل الدخول باستخدام Google"
-        >
-          {signingIn ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#7C3AED]" />
-          ) : (
+      <button
+        onClick={() => signInWithGoogle()}
+        disabled={signingIn}
+        className="py-1.5 px-3.5 min-h-[40px] rounded-full crystal-surface hover:border-purple-400/40 active:scale-95 text-white/90 text-xs font-medium shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
+        title="Sign in with Google"
+      >
+        {signingIn ? (
+          <>
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400" />
+            <span>Signing in...</span>
+          </>
+        ) : (
+          <>
             <GoogleIcon />
-          )}
-          <span className="hidden sm:inline">تسجيل الدخول</span>
-        </button>
-      )}
+            <span>Sign In</span>
+          </>
+        )}
+      </button>
     </div>
   );
 };

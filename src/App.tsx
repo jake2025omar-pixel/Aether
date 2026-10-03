@@ -1,80 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { Sidebar } from './components/Sidebar';
+import React, { useState } from 'react';
 import { ChatView, ChatMessage } from './components/ChatView';
-import { HeroView } from './components/HeroView';
-import { SupportDrawer } from './components/SupportDrawer';
-import { AboutModal } from './components/AboutModal';
-import { SettingsModal } from './components/SettingsModal';
+import { CompanionEnvironment } from './components/CompanionEnvironment';
+import { InteractionBar } from './components/InteractionBar';
+import { AboutView } from './components/AboutView';
+import { SupportView } from './components/SupportView';
+import { Navigation, NavDestination } from './components/ui/Navigation';
+import { AuthControl } from './components/AuthControl';
+import { AtmosphericSpace } from './components/AtmosphericSpace';
 
 export default function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  // Default to hero so the user lands on the colorful Givingli-style Bento Grid!
-  const [activeView, setActiveView] = useState<'chat' | 'hero'>('hero');
-  const [supportOpen, setSupportOpen] = useState(false);
-  const [aboutOpen, setAboutOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeView, setActiveView] = useState<NavDestination>('home');
 
-  // Manage chat sessions
+  // Manage chat session
   const [currentChatId, setCurrentChatId] = useState<string>('default-session');
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({
     'default-session': [],
   });
-  const [chatHistory, setChatHistory] = useState<{ id: string; title: string }[]>([]);
   const [loading, setLoading] = useState(false);
-
-  // Auto-collapse sidebar on smaller screens on mount
-  useEffect(() => {
-    if (window.innerWidth < 1024) {
-      setSidebarOpen(false);
-    }
-  }, []);
-
-  const handleToggleSidebar = () => {
-    setSidebarOpen((prev) => !prev);
-  };
-
-  const handleNewChat = () => {
-    const newId = 'chat-' + Date.now();
-    setChats((prev) => ({ ...prev, [newId]: [] }));
-    setCurrentChatId(newId);
-    setActiveView('chat');
-    if (window.innerWidth < 1024) {
-      setSidebarOpen(false);
-    }
-  };
-
-  const handleSelectChat = (id: string) => {
-    setCurrentChatId(id);
-    setActiveView('chat');
-    if (window.innerWidth < 1024) {
-      setSidebarOpen(false);
-    }
-  };
-
-  const handleDeleteChat = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setChatHistory((prev) => prev.filter((c) => c.id !== id));
-    setChats((prev) => {
-      const copy = { ...prev };
-      delete copy[id];
-      return copy;
-    });
-    if (currentChatId === id) {
-      const remaining = chatHistory.filter((c) => c.id !== id);
-      if (remaining.length > 0) {
-        setCurrentChatId(remaining[0].id);
-      } else {
-        handleNewChat();
-      }
-    }
-  };
-
-  const handleClearAllChats = () => {
-    setChatHistory([]);
-    const freshId = 'chat-' + Date.now();
-    setChats({ [freshId]: [] });
-    setCurrentChatId(freshId);
-  };
 
   const handleSendMessage = async (query: string) => {
     if (!query.trim() || loading) return;
@@ -85,7 +27,6 @@ export default function App() {
     const geminiMessageId = 'g-' + Date.now();
 
     const currentMessages = chats[currentChatId] || [];
-    const isFirstMessage = currentMessages.length === 0;
 
     // Update messages in state
     setChats((prev) => ({
@@ -96,12 +37,6 @@ export default function App() {
         { id: geminiMessageId, sender: 'gemini', text: '' },
       ],
     }));
-
-    // Update history title if first message
-    if (isFirstMessage) {
-      const title = query.length > 28 ? query.substring(0, 28) + '...' : query;
-      setChatHistory((prev) => [{ id: currentChatId, title }, ...prev]);
-    }
 
     setLoading(true);
 
@@ -166,7 +101,7 @@ export default function App() {
         }
       }
 
-      // If streaming response was somehow empty, fallback to non-streaming call
+      // If streaming response was empty, fallback to non-streaming call
       if (!streamedAnswer.trim()) {
         const fallbackRes = await fetch('/api/chat', {
           method: 'POST',
@@ -198,7 +133,7 @@ export default function App() {
           msg.id === geminiMessageId
             ? {
                 ...msg,
-                text: 'عذراً، حدث خطأ أثناء الاتصال بمحرك Gemini 1.5 Flash. يرجى المحاولة ثانية.',
+                text: 'Connection to server failed. Please try again.',
               }
             : msg
         ),
@@ -209,70 +144,87 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#FFFCF5] overflow-hidden text-slate-800 font-sans">
-      {/* 1. LEFT SIDEBAR (260px, White #FFFFFF, collapsible) */}
-      <Sidebar
-        isOpen={sidebarOpen}
-        onToggle={handleToggleSidebar}
-        activeView={activeView}
-        onSelectView={(v) => {
-          setActiveView(v);
-          if (window.innerWidth < 1024) setSidebarOpen(false);
-        }}
-        onOpenSupport={() => {
-          setSupportOpen(true);
-          if (window.innerWidth < 1024) setSidebarOpen(false);
-        }}
-        onOpenAbout={() => {
-          setAboutOpen(true);
-          if (window.innerWidth < 1024) setSidebarOpen(false);
-        }}
-        onOpenSettings={() => {
-          setSettingsOpen(true);
-          if (window.innerWidth < 1024) setSidebarOpen(false);
-        }}
-        onNewChat={handleNewChat}
-        chatHistory={chatHistory}
-        currentChatId={currentChatId}
-        onSelectChat={handleSelectChat}
-        onDeleteChat={handleDeleteChat}
-      />
+    <div className="relative w-screen h-screen overflow-hidden bg-[#07050D] text-white flex flex-col font-sans select-none">
+      {/* Dynamic Cosmic Atmosphere & Pointer Splat Background */}
+      <AtmosphericSpace />
 
-      {/* 2. MAIN AREA (Creamy white #FFFCF5) */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden bg-[#FFFCF5] relative">
-        {activeView === 'chat' ? (
+      {/* 1. TOP MINIMAL HUD BAR */}
+      <header className="fixed top-0 inset-x-0 h-16 px-4 sm:px-8 z-30 flex items-center justify-between pointer-events-none">
+        {/* Left: Quiet Brand Wordmark */}
+        <div className="pointer-events-auto">
+          <button
+            onClick={() => setActiveView('home')}
+            className="flex items-center gap-2 p-1.5 text-xs font-mono tracking-[4px] text-white/50 hover:text-white transition-colors cursor-pointer uppercase"
+            title="Home"
+          >
+            <span>AETHER</span>
+          </button>
+        </div>
+
+        {/* Center: Desktop Navigation HUD */}
+        <div className="hidden md:flex items-center pointer-events-auto">
+          <Navigation
+            currentView={activeView}
+            onSelectView={setActiveView}
+          />
+        </div>
+
+        {/* Right: User Authentication Pill */}
+        <div className="pointer-events-auto">
+          <AuthControl variant="header" />
+        </div>
+      </header>
+
+      {/* 2. MAIN VIEWPORT AREA */}
+      <main className="flex-1 w-full h-full relative overflow-hidden pt-16 pb-20 md:pb-6 flex flex-col z-10">
+        {activeView === 'home' && (
+          <div className="relative w-full h-full flex flex-col justify-between">
+            {/* Center Anchor: Quister Landing Hero Crystal Surface */}
+            <div className="flex-1 flex items-center justify-center">
+              <CompanionEnvironment
+                onStartInteraction={() => setActiveView('chat')}
+              />
+            </div>
+
+            {/* Bottom Floating Interaction Bar */}
+            <div className="w-full pb-4 sm:pb-8 z-20">
+              <InteractionBar
+                onSendMessage={handleSendMessage}
+                loading={loading}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeView === 'chat' && (
           <ChatView
-            onToggleSidebar={handleToggleSidebar}
+            onBackToEnvironment={() => setActiveView('home')}
             messages={chats[currentChatId] || []}
             onSendMessage={handleSendMessage}
             loading={loading}
           />
-        ) : (
-          <HeroView
-            onToggleSidebar={handleToggleSidebar}
-            onStartChat={() => setActiveView('chat')}
-          />
+        )}
+
+        {activeView === 'about' && (
+          <div className="flex-1 overflow-y-auto">
+            <AboutView onBack={() => setActiveView('home')} />
+          </div>
+        )}
+
+        {activeView === 'support' && (
+          <div className="flex-1 overflow-y-auto">
+            <SupportView onBack={() => setActiveView('home')} />
+          </div>
         )}
       </main>
 
-      {/* 3. SUPPORT DRAWER (White Bento Style, slides from right when "الدعم" is clicked) */}
-      <SupportDrawer
-        isOpen={supportOpen}
-        onClose={() => setSupportOpen(false)}
-      />
-
-      {/* 4. ABOUT MODAL ("حول") */}
-      <AboutModal
-        isOpen={aboutOpen}
-        onClose={() => setAboutOpen(false)}
-      />
-
-      {/* 5. SETTINGS MODAL */}
-      <SettingsModal
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onClearAllChats={handleClearAllChats}
-      />
+      {/* 3. MOBILE FLOATING NAVIGATION HUD (Docked at bottom on mobile) */}
+      <div className="fixed bottom-4 inset-x-0 flex justify-center z-30 pointer-events-none md:hidden px-4">
+        <Navigation
+          currentView={activeView}
+          onSelectView={setActiveView}
+        />
+      </div>
     </div>
   );
 }

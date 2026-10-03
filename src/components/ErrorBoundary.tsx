@@ -20,7 +20,6 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // In production, internal stack traces and server details are strictly omitted from UI
     if (process.env.NODE_ENV !== 'production') {
       console.error('ErrorBoundary caught an error:', error.message, errorInfo.componentStack);
     }
@@ -38,26 +37,26 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="min-h-screen w-full flex items-center justify-center p-6 bg-[#FFFCF5] text-slate-800 font-sans" dir="rtl">
-          <div className="max-w-md w-full p-6 sm:p-8 bg-white border border-[#EFECE6] rounded-3xl shadow-xl text-center">
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+        <div className="min-h-screen w-full flex items-center justify-center p-6 bg-[#07050D] text-white font-sans">
+          <div className="max-w-md w-full p-6 sm:p-8 crystal-surface rounded-3xl text-center border border-white/[0.1]">
+            <div className="w-12 h-12 rounded-2xl bg-purple-900/30 text-purple-400 border border-purple-500/30 flex items-center justify-center mx-auto mb-4">
               <AlertTriangle className="w-6 h-6" />
             </div>
 
-            <h2 className="text-xl font-extrabold text-slate-900 mb-2">
-              حدث خطأ غير متوقع
+            <h2 className="text-xl font-light tracking-wide text-white mb-2">
+              An unexpected error occurred
             </h2>
 
-            <p className="text-sm text-slate-600 mb-6 leading-relaxed">
-              واجه التطبيق مشكلة أثناء معالجة الصفحة. يمكنك إعادة التحميل للمتابعة بأمان.
+            <p className="text-sm text-white/50 mb-6 leading-relaxed">
+              Aether encountered an issue while loading. You can reload to continue safely.
             </p>
 
             <button
               onClick={this.handleReload}
-              className="w-full py-3 px-5 rounded-2xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-[#7C3AED]/20 active:scale-98"
+              className="w-full py-3 px-5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-medium text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-purple-600/30 active:scale-95"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>إعادة تحميل التطبيق</span>
+              <span>Reload Application</span>
             </button>
           </div>
         </div>

@@ -62,7 +62,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }
             })
             .catch(() => {
-              setProfileError('تعذر تحديث ملف المستخدم في قاعدة البيانات.');
+              setProfileError('Failed to synchronize user profile.');
             })
             .finally(() => {
               setProfileLoading(false);
@@ -77,7 +77,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (import.meta.env.DEV) {
           console.warn('Auth state subscription error:', error);
         }
-        setAuthError('تعذر التحقق من حالة تسجيل الدخول. يرجى المحاولة لاحقاً.');
+        setAuthError('Authentication state verification failed. Please try again.');
         setLoading(false);
       }
     );
@@ -103,7 +103,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     if (!isFirebaseConfigured || !auth || !googleProvider) {
-      setAuthError('خدمة تسجيل الدخول بـ Google غير مهيأة بعد في هذا الإصدار.');
+      setAuthError('Google Sign-In is not configured.');
       return;
     }
 
@@ -124,13 +124,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (error.code === 'auth/network-request-failed') {
-        setAuthError('تعذر الاتصال بخوادم المصادقة. يرجى التحقق من اتصال الإنترنت.');
+        setAuthError('Network error connecting to authentication service.');
       } else if (error.code === 'auth/unauthorized-domain') {
-        setAuthError('هذا النطاق غير مصرح به في إعدادات Firebase Authentication.');
+        setAuthError('This domain is not authorized in Firebase Authentication.');
       } else if (error.code === 'auth/popup-blocked') {
-        setAuthError('تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة.');
+        setAuthError('Sign-in popup was blocked by browser. Please allow popups.');
       } else {
-        setAuthError('تعذر إتمام تسجيل الدخول باستخدام Google. يرجى المحاولة مرة أخرى.');
+        setAuthError('Failed to sign in with Google. Please try again.');
       }
     } finally {
       isSigningInRef.current = false;
@@ -154,7 +154,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setUser(null);
       setProfile(null);
     } catch {
-      setAuthError('حدث خطأ أثناء تسجيل الخروج. يرجى المحاولة مجدداً.');
+      setAuthError('Error signing out. Please try again.');
     } finally {
       setSigningOut(false);
     }
