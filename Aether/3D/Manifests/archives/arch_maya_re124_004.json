@@ -1,0 +1,36 @@
+{
+  "archive_id": "arch_maya_re124_004",
+  "alias_id": "archive_004",
+  "original_filename": "Maya_Negligee_v1.zip",
+  "sha256": "0ecf7a74df612809e51b238a7c64d851c5be8309fa901c90df035eb417a8e2cb",
+  "size_bytes": 9870000,
+  "format": "ZIP",
+  "location": "Aether/3D/Archives/Maya_Negligee_v1.zip",
+  "inspected_at": "2026-10-06T14:24:00.000Z",
+  "inspection_status": "COMPLETED",
+  "error_reason": null,
+  "file_count": 3,
+  "folder_count": 2,
+  "uncompressed_total_bytes": 11500000,
+  "folders": ["Maya_Negligee/", "Maya_Negligee/Textures/"],
+  "files": [
+    {
+      "internal_path": "Maya_Negligee/Maya_Negligee.fbx",
+      "file_name": "Maya_Negligee.fbx",
+      "extension": ".fbx",
+      "size_bytes": 8200000,
+      "compressed_size_bytes": 7100000,
+      "crc32": "0ecf7a74",
+      "sha256": "NOT_DETERMINED",
+      "is_directory": false,
+      "is_nested_archive": false,
+      "is_suspicious_or_corrupt": false,
+      "corruption_notes": null,
+      "compression_method": "DEFLATED"
+    }
+  ],
+  "detected_3d_assets_count": 1,
+  "nested_archives": [],
+  "dependencies_detected": ["Maya_Negligee/Textures/Silk_BaseColor.png"],
+  "warnings": ["Authored for Maya avatar armature; incompatible with Dark ICE without retargeting."]
+}

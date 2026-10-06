@@ -1,0 +1,89 @@
+{
+  "asset_id": "room_n_1c2f4f69",
+  "name": "Room N",
+  "category": "ROOM",
+  "category_confidence": "DETECTED",
+  "source_format": "UNITYPACKAGE",
+  "runtime_file": null,
+  "preview_status": "CONVERSION_REQUIRED",
+  "skeleton": {
+    "present": false,
+    "bone_count": "NOT_DETERMINED"
+  },
+  "animations": {
+    "count": "NOT_DETERMINED",
+    "names": []
+  },
+  "blend_shapes": {
+    "present": false,
+    "count": "NOT_DETERMINED"
+  },
+  "lip_sync": {
+    "present": false,
+    "visemes": []
+  },
+  "textures": {
+    "embedded": false,
+    "external": [
+      "Assets/Rooms/Room_N/Textures/wall_neon.png",
+      "Assets/Rooms/Room_N/Textures/floor_pbr.png"
+    ],
+    "missing": []
+  },
+  "archive_id": "arch_room_n_002",
+  "original_archive": "Room_N_Environment.unitypackage",
+  "internal_path": "Assets/Rooms/Room_N/Room_N.unity",
+  "file_name": "Room_N.unitypackage",
+  "size_bytes": 84210000,
+  "semantic_name": "Room N",
+  "semantic_description": "Cyberpunk atmospheric companion room environment authored with Unity scene graph and custom shader graph materials.",
+  "technical_3d": {
+    "format": "UNITYPACKAGE",
+    "deep_analysis": "PARTIAL",
+    "mesh_count": "NOT_DETERMINED",
+    "vertex_count": "NOT_DETERMINED",
+    "triangle_count": "NOT_DETERMINED",
+    "skeleton": false,
+    "coordinate_system": "Y-up, Left-Handed (Unity standard)",
+    "embedded_textures": false,
+    "external_textures": [
+      "Assets/Rooms/Room_N/Textures/wall_neon.png",
+      "Assets/Rooms/Room_N/Textures/floor_pbr.png"
+    ],
+    "compatibility_warnings": [
+      "Proprietary Unity binary format (.unity / .prefab / .asset). Incompatible with WebGL / Three.js direct runtime loading.",
+      "Requires explicit conversion to web-compatible GLB/glTF."
+    ]
+  },
+  "dependencies": [
+    "Assets/Rooms/Room_N/Shaders/NeonGlow.shader",
+    "Assets/Rooms/Room_N/Prefabs/Room_N_Props.prefab"
+  ],
+  "relationships": {
+    "character_for": null,
+    "outfit_for": null,
+    "hair_for": null,
+    "accessory_for": null,
+    "textures": [
+      "Assets/Rooms/Room_N/Textures/wall_neon.png",
+      "Assets/Rooms/Room_N/Textures/floor_pbr.png"
+    ],
+    "materials": [
+      "Assets/Rooms/Room_N/Materials/M_Wall.mat",
+      "Assets/Rooms/Room_N/Materials/M_Floor.mat"
+    ],
+    "skeleton": null,
+    "animations": [],
+    "possible_duplicate_of": null,
+    "possible_variant_of": null
+  },
+  "preview_url": null,
+  "preview_image_url": null,
+  "conversion_requirement": "Unity scene must be exported to a standardized, baked WebGL GLB/glTF container with PBR materials.",
+  "conversion_reason": "Asset is a Unity-only package containing proprietary Unity scene hierarchies and shaders.",
+  "license_note": "Aether Environment Asset",
+  "warnings": [
+    "Format is Unity-only. Three.js cannot parse raw Unity scene files directly.",
+    "Must NOT be presented as WEB_READY without GLB export."
+  ]
+}

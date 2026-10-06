@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-10-06T14:24:00.000Z",
+  "schema_version": "1.0.0",
+  "total_archives": 4,
+  "total_assets": 4,
+  "categories_summary": {
+    "CHARACTER": 1,
+    "ROOM": 1,
+    "OUTFIT": 2
+  },
+  "archives": {
+    "arch_darkice_001": {
+      "original_filename": "Dark_ICE_VRM.zip",
+      "sha256": "c3256ebd4d660b1f7e028b1223945a8df289cdbc49c313a1a9e7f805f6d71b3e",
+      "size_bytes": 15728640,
+      "format": "ZIP",
+      "file_count": 1,
+      "manifest_path": "Aether/3D/Manifests/archives/arch_darkice_001.json",
+      "status": "INSPECTED"
+    },
+    "arch_room_n_002": {
+      "original_filename": "Room_N_Environment.unitypackage",
+      "sha256": "1c2f4f69ad937fe819bc304d49a7147b2c01d4aef810ec765ab37d894e6bf120",
+      "size_bytes": 84210000,
+      "format": "UNITYPACKAGE",
+      "file_count": 4,
+      "manifest_path": "Aether/3D/Manifests/archives/arch_room_n_002.json",
+      "status": "INSPECTED"
+    },
+    "arch_milk_re165_003": {
+      "original_filename": "Milk_Wedding_Dress_v1.zip",
+      "sha256": "b453c59ce1a039d58231d6837ca29b12d59acb47c0e816a3fd510b9872c3d9a1",
+      "size_bytes": 12450000,
+      "format": "ZIP",
+      "file_count": 3,
+      "manifest_path": "Aether/3D/Manifests/archives/arch_milk_re165_003.json",
+      "status": "INSPECTED"
+    },
+    "arch_maya_re124_004": {
+      "original_filename": "Maya_Negligee_v1.zip",
+      "sha256": "0ecf7a74df612809e51b238a7c64d851c5be8309fa901c90df035eb417a8e2cb",
+      "size_bytes": 9870000,
+      "format": "ZIP",
+      "file_count": 3,
+      "manifest_path": "Aether/3D/Manifests/archives/arch_maya_re124_004.json",
+      "status": "INSPECTED"
+    }
+  },
+  "assets": {
+    "char_dark_ice_c3256ebd4d660b1f": {
+      "archive_id": "arch_darkice_001",
+      "original_archive": "Dark_ICE_VRM.zip",
+      "internal_path": "models/Dark_ICE.vrm",
+      "file_name": "Dark_ICE.vrm",
+      "semantic_name": "Dark ICE",
+      "category": "CHARACTER",
+      "category_confidence": "DETECTED",
+      "preview_status": "ASSET_NOT_AVAILABLE",
+      "conversion_requirement": null,
+      "technical_summary": "VRM 1.0 humanoid avatar, 34.2k vertices, 138 bones, facial blend shapes.",
+      "dependencies": [],
+      "manifest_path": "Aether/3D/Manifests/assets/char_dark_ice_c3256ebd4d660b1f.json",
+      "warnings": [
+        "Physical VRM binary file is not currently present in the web server root. Runtime resolution: ASSET_NOT_AVAILABLE."
+      ]
+    },
+    "room_n_1c2f4f69": {
+      "archive_id": "arch_room_n_002",
+      "original_archive": "Room_N_Environment.unitypackage",
+      "internal_path": "Assets/Rooms/Room_N/Room_N.unity",
+      "file_name": "Room_N.unitypackage",
+      "semantic_name": "Room N",
+      "category": "ROOM",
+      "category_confidence": "DETECTED",
+      "preview_status": "CONVERSION_REQUIRED",
+      "conversion_requirement": "Export Unity scene to WebGL GLB/glTF container with baked PBR materials.",
+      "technical_summary": "Unitypackage scene with custom shaders and lighting data.",
+      "dependencies": [
+        "Assets/Rooms/Room_N/Shaders/NeonGlow.shader"
+      ],
+      "manifest_path": "Aether/3D/Manifests/assets/room_n_1c2f4f69.json",
+      "warnings": [
+        "Unity-only format. Three.js cannot parse raw Unity scene files directly."
+      ]
+    },
+    "outfit_milk_re165_b453c59c": {
+      "archive_id": "arch_milk_re165_003",
+      "original_archive": "Milk_Wedding_Dress_v1.zip",
+      "internal_path": "Milk_Wedding/Milk_WeddingDress.fbx",
+      "file_name": "Milk_WeddingDress.fbx",
+      "semantic_name": "Milk Wedding Dress",
+      "category": "OUTFIT",
+      "category_confidence": "DETECTED",
+      "preview_status": "CONVERSION_REQUIRED",
+      "conversion_requirement": "FBX to glTF conversion and Phase 05.4 skeleton retargeting to Dark ICE humanoid armature.",
+      "technical_summary": "FBX rigged to Milk base armature (86 bones, 18.5k vertices).",
+      "dependencies": [
+        "Milk_Wedding/Textures/Dress_Diffuse.png"
+      ],
+      "manifest_path": "Aether/3D/Manifests/assets/outfit_milk_re165_b453c59c.json",
+      "warnings": [
+        "Authored for Milk avatar base; incompatible with Dark ICE without skeleton retargeting."
+      ]
+    },
+    "outfit_maya_re124_0ecf7a74": {
+      "archive_id": "arch_maya_re124_0ecf7a74",
+      "original_archive": "Maya_Negligee_v1.zip",
+      "internal_path": "Maya_Negligee/Maya_Negligee.fbx",
+      "file_name": "Maya_Negligee.fbx",
+      "semantic_name": "Maya Negligee",
+      "category": "OUTFIT",
+      "category_confidence": "DETECTED",
+      "preview_status": "CONVERSION_REQUIRED",
+      "conversion_requirement": "FBX to glTF conversion and Phase 05.4 skeleton retargeting to Dark ICE humanoid armature.",
+      "technical_summary": "FBX rigged to Maya base armature (74 bones, 14.2k vertices).",
+      "dependencies": [
+        "Maya_Negligee/Textures/Silk_BaseColor.png"
+      ],
+      "manifest_path": "Aether/3D/Manifests/assets/outfit_maya_re124_0ecf7a74.json",
+      "warnings": [
+        "Authored for Maya avatar base; incompatible with Dark ICE without skeleton retargeting."
+      ]
+    }
+  }
+}

@@ -1,19 +1,33 @@
 import React from 'react';
-import { AetherHeroGlass } from './ui/AetherHeroGlass';
+import { RoomEnvironment3D } from './room/RoomEnvironment3D';
+import { CompanionState, CompanionEmotion } from '../lib/companionPersonality';
 
 interface CompanionEnvironmentProps {
+  companionState: CompanionState;
+  companionEmotion: CompanionEmotion;
+  visemeMouthOpen: number;
+  companionModelUrl?: string | null;
   onStartInteraction?: () => void;
 }
 
 export const CompanionEnvironment: React.FC<CompanionEnvironmentProps> = ({
+  companionState,
+  companionEmotion,
+  visemeMouthOpen,
+  companionModelUrl,
   onStartInteraction,
 }) => {
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden select-none px-4">
-      {/* Central Quister-style Landing Hero Surface */}
-      <div className="z-10 animate-in fade-in zoom-in-95 duration-500">
-        <AetherHeroGlass onClick={onStartInteraction} />
-      </div>
+    <div className="absolute inset-0 w-full h-full overflow-hidden select-none">
+      {/* Full-screen 3D Room N & Companion Environment */}
+      <RoomEnvironment3D
+        companionState={companionState}
+        companionEmotion={companionEmotion}
+        visemeMouthOpen={visemeMouthOpen}
+        companionModelUrl={companionModelUrl}
+        onCompanionClick={onStartInteraction}
+        className="w-full h-full"
+      />
     </div>
   );
 };

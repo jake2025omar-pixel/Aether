@@ -1,0 +1,70 @@
+{
+  "generated_at": "2026-10-06T14:24:00.000Z",
+  "total_archives_detected": 4,
+  "total_zips": 3,
+  "other_supported_archives": 1,
+  "unsupported_formats_count": 0,
+  "unreadable_archives_count": 0,
+  "duplicate_archive_hashes": {},
+  "missing_unreadable_archives": [],
+  "archives_already_processed": 4,
+  "archives_not_yet_processed": 0,
+  "queue": [
+    {
+      "archive_id": "arch_darkice_001",
+      "alias_id": "archive_001",
+      "original_filename": "Dark_ICE_VRM.zip",
+      "sha256": "c3256ebd4d660b1f7e028b1223945a8df289cdbc49c313a1a9e7f805f6d71b3e",
+      "size_bytes": 15728640,
+      "format": "ZIP",
+      "location": "Aether/3D/Archives/Dark_ICE_VRM.zip",
+      "status": "COMPLETED",
+      "inspection_status": "INSPECTED",
+      "discovered_at": "2026-10-06T14:20:00.000Z",
+      "last_inspected_at": "2026-10-06T14:24:00.000Z",
+      "error_message": null
+    },
+    {
+      "archive_id": "arch_room_n_002",
+      "alias_id": "archive_002",
+      "original_filename": "Room_N_Environment.unitypackage",
+      "sha256": "1c2f4f69ad937fe819bc304d49a7147b2c01d4aef810ec765ab37d894e6bf120",
+      "size_bytes": 84210000,
+      "format": "UNITYPACKAGE",
+      "location": "Aether/3D/Archives/Room_N_Environment.unitypackage",
+      "status": "COMPLETED",
+      "inspection_status": "INSPECTED",
+      "discovered_at": "2026-10-06T14:20:00.000Z",
+      "last_inspected_at": "2026-10-06T14:24:00.000Z",
+      "error_message": null
+    },
+    {
+      "archive_id": "arch_milk_re165_003",
+      "alias_id": "archive_003",
+      "original_filename": "Milk_Wedding_Dress_v1.zip",
+      "sha256": "b453c59ce1a039d58231d6837ca29b12d59acb47c0e816a3fd510b9872c3d9a1",
+      "size_bytes": 12450000,
+      "format": "ZIP",
+      "location": "Aether/3D/Archives/Milk_Wedding_Dress_v1.zip",
+      "status": "COMPLETED",
+      "inspection_status": "INSPECTED",
+      "discovered_at": "2026-10-06T14:20:00.000Z",
+      "last_inspected_at": "2026-10-06T14:24:00.000Z",
+      "error_message": null
+    },
+    {
+      "archive_id": "arch_maya_re124_004",
+      "alias_id": "archive_004",
+      "original_filename": "Maya_Negligee_v1.zip",
+      "sha256": "0ecf7a74df612809e51b238a7c64d851c5be8309fa901c90df035eb417a8e2cb",
+      "size_bytes": 9870000,
+      "format": "ZIP",
+      "location": "Aether/3D/Archives/Maya_Negligee_v1.zip",
+      "status": "COMPLETED",
+      "inspection_status": "INSPECTED",
+      "discovered_at": "2026-10-06T14:20:00.000Z",
+      "last_inspected_at": "2026-10-06T14:24:00.000Z",
+      "error_message": null
+    }
+  ]
+}

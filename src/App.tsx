@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { ChatView, ChatMessage } from './components/ChatView';
 import { CompanionEnvironment } from './components/CompanionEnvironment';
 import { InteractionBar } from './components/InteractionBar';
@@ -7,41 +7,79 @@ import { SupportView } from './components/SupportView';
 import { Navigation, NavDestination } from './components/ui/Navigation';
 import { AuthControl } from './components/AuthControl';
 import { AtmosphericSpace } from './components/AtmosphericSpace';
+import { DeveloperInspectionModal } from './components/dev/DeveloperInspectionModal';
+import { Terminal } from 'lucide-react';
+import {
+  CompanionState,
+  CompanionEmotion,
+  AETHER_COMPANION_SYSTEM_PROMPT,
+  parseCompanionResponse,
+} from './lib/companionPersonality';
+import { companionVoice } from './lib/companionVoice';
 
 export default function App() {
   const [activeView, setActiveView] = useState<NavDestination>('home');
 
-  // Manage chat session
+  // Companion 3D State & Expression
+  const [companionState, setCompanionState] = useState<CompanionState>('IDLE');
+  const [companionEmotion, setCompanionEmotion] = useState<CompanionEmotion>('NEUTRAL');
+  const [visemeMouthOpen, setVisemeMouthOpen] = useState<number>(0);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  // Manage chat sessions
   const [currentChatId, setCurrentChatId] = useState<string>('default-session');
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({
     'default-session': [],
   });
   const [loading, setLoading] = useState(false);
+  const [isDevModalOpen, setIsDevModalOpen] = useState(false);
 
-  const handleSendMessage = async (query: string) => {
+  // Global Developer Mode shortcut: Shift + D
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        // Toggle if not typing in input
+        if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+          setIsDevModalOpen((prev) => !prev);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Reference for history payload
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+
+  /**
+   * Handles user input from the 3D room (Voice or Text),
+   * querying Gemini and speaking the response aloud with Lip Sync.
+   */
+  const handleCompanionInteraction = useCallback(async (query: string) => {
     if (!query.trim() || loading) return;
 
-    setActiveView('chat');
+    // Interrupt any ongoing speech
+    companionVoice.stopSpeaking();
+    setVoiceError(null);
+    setCompanionState('THINKING');
+    setLoading(true);
 
     const userMessageId = 'u-' + Date.now();
-    const geminiMessageId = 'g-' + Date.now();
+    const companionMessageId = 'c-' + Date.now();
+    const currentMessages = chatsRef.current[currentChatId] || [];
 
-    const currentMessages = chats[currentChatId] || [];
-
-    // Update messages in state
+    // Save into history in background
     setChats((prev) => ({
       ...prev,
       [currentChatId]: [
         ...(prev[currentChatId] || []),
         { id: userMessageId, sender: 'user', text: query },
-        { id: geminiMessageId, sender: 'gemini', text: '' },
       ],
     }));
 
-    setLoading(true);
-
     try {
-      const historyPayload = currentMessages.map((m) => ({
+      const historyPayload = currentMessages.slice(-6).map((m) => ({
         role: m.sender === 'user' ? 'user' : 'model',
         text: m.text,
       }));
@@ -52,112 +90,133 @@ export default function App() {
         body: JSON.stringify({
           message: query,
           history: historyPayload,
-          stream: true,
+          systemInstruction: AETHER_COMPANION_SYSTEM_PROMPT,
+          stream: false,
         }),
       });
 
       if (!res.ok) {
-        throw new Error(`Server returned HTTP ${res.status}`);
+        throw new Error(`Server returned status ${res.status}`);
       }
 
-      if (!res.body) {
-        throw new Error('No readable stream returned');
-      }
+      const data = await res.json();
+      const rawAnswer = data.text || '';
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let streamedAnswer = '';
+      // Parse emotion tag and clean spoken text
+      const { emotion, cleanText } = parseCompanionResponse(rawAnswer);
+      setCompanionEmotion(emotion);
 
-      let buffer = '';
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(trimmed.replace('data: ', '').trim());
-              if (data.text) {
-                streamedAnswer += data.text;
-                setChats((prev) => ({
-                  ...prev,
-                  [currentChatId]: (prev[currentChatId] || []).map((msg) =>
-                    msg.id === geminiMessageId ? { ...msg, text: streamedAnswer } : msg
-                  ),
-                }));
-              }
-              if (data.error) {
-                throw new Error(data.error);
-              }
-            } catch {
-              // Ignore non-json
-            }
-          }
-        }
-      }
-
-      // If streaming response was empty, fallback to non-streaming call
-      if (!streamedAnswer.trim()) {
-        const fallbackRes = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: query,
-            history: historyPayload,
-            stream: false,
-          }),
-        });
-        if (fallbackRes.ok) {
-          const fallbackData = await fallbackRes.json();
-          if (fallbackData.text) {
-            streamedAnswer = fallbackData.text;
-            setChats((prev) => ({
-              ...prev,
-              [currentChatId]: (prev[currentChatId] || []).map((msg) =>
-                msg.id === geminiMessageId ? { ...msg, text: streamedAnswer } : msg
-              ),
-            }));
-          }
-        }
-      }
-    } catch (err: unknown) {
-      console.error('Chat error:', err);
+      // Save companion text into history
       setChats((prev) => ({
         ...prev,
-        [currentChatId]: (prev[currentChatId] || []).map((msg) =>
-          msg.id === geminiMessageId
-            ? {
-                ...msg,
-                text: 'Connection to server failed. Please try again.',
-              }
-            : msg
-        ),
+        [currentChatId]: [
+          ...(prev[currentChatId] || []),
+          { id: companionMessageId, sender: 'gemini', text: cleanText },
+        ],
       }));
+
+      // Speak response through TTS with live lip sync visemes
+      companionVoice.speak(cleanText, {
+        onStart: () => {
+          setCompanionState('SPEAKING');
+        },
+        onViseme: (mouthVal) => {
+          setVisemeMouthOpen(mouthVal);
+        },
+        onEnd: () => {
+          setCompanionState('IDLE');
+          setVisemeMouthOpen(0);
+        },
+      });
+    } catch (err: unknown) {
+      console.error('Companion interaction error:', err);
+      setCompanionState('IDLE');
+      setCompanionEmotion('CONFUSED');
+      setVoiceError('Connection issue. Please try again.');
+      setTimeout(() => setVoiceError(null), 4000);
     } finally {
       setLoading(false);
     }
-  };
+  }, [loading, currentChatId]);
+
+  /**
+   * Voice Input Trigger (Microphone Recording)
+   */
+  const handleToggleVoice = useCallback(() => {
+    // If companion is speaking, stop speaking immediately
+    if (companionState === 'SPEAKING') {
+      companionVoice.stopSpeaking();
+      setCompanionState('IDLE');
+      setVisemeMouthOpen(0);
+      return;
+    }
+
+    // If currently listening, stop
+    if (companionState === 'LISTENING') {
+      companionVoice.stopListening();
+      setCompanionState('IDLE');
+      return;
+    }
+
+    setVoiceError(null);
+    setCompanionState('LISTENING');
+
+    const started = companionVoice.startListening('auto', {
+      onResult: (transcript) => {
+        if (transcript.trim()) {
+          handleCompanionInteraction(transcript.trim());
+        } else {
+          setCompanionState('IDLE');
+        }
+      },
+      onError: (err) => {
+        setCompanionState('IDLE');
+        if (err !== 'no-speech') {
+          setVoiceError('Microphone unavailable or permission denied.');
+          setTimeout(() => setVoiceError(null), 4000);
+        }
+      },
+      onEnd: () => {
+        setCompanionState((prev) => (prev === 'LISTENING' ? 'IDLE' : prev));
+      },
+    });
+
+    if (!started) {
+      setCompanionState('IDLE');
+      setVoiceError('Speech recognition is not supported on this browser.');
+      setTimeout(() => setVoiceError(null), 4000);
+    }
+  }, [companionState, handleCompanionInteraction]);
+
+  const handleStopSpeaking = useCallback(() => {
+    companionVoice.stopSpeaking();
+    setCompanionState('IDLE');
+    setVisemeMouthOpen(0);
+  }, []);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#07050D] text-white flex flex-col font-sans select-none">
-      {/* Dynamic Cosmic Atmosphere & Pointer Splat Background */}
+    <div className="relative w-screen h-screen overflow-hidden bg-[#06030B] text-white flex flex-col font-sans select-none">
+      {/* Background Cosmic Atmosphere */}
       <AtmosphericSpace />
 
       {/* 1. TOP MINIMAL HUD BAR */}
       <header className="fixed top-0 inset-x-0 h-16 px-4 sm:px-8 z-30 flex items-center justify-between pointer-events-none">
-        {/* Left: Quiet Brand Wordmark */}
-        <div className="pointer-events-auto">
+        {/* Left: Quiet Brand Wordmark & Discrete Dev Trigger */}
+        <div className="pointer-events-auto flex items-center gap-1.5">
           <button
             onClick={() => setActiveView('home')}
             className="flex items-center gap-2 p-1.5 text-xs font-mono tracking-[4px] text-white/50 hover:text-white transition-colors cursor-pointer uppercase"
             title="Home"
           >
             <span>AETHER</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsDevModalOpen(true)}
+            className="p-1 rounded text-white/20 hover:text-purple-300 transition-colors cursor-pointer"
+            title="Internal 3D Asset Inspection (Shift + D)"
+          >
+            <Terminal className="w-3.5 h-3.5" />
           </button>
         </div>
 
@@ -178,29 +237,38 @@ export default function App() {
       {/* 2. MAIN VIEWPORT AREA */}
       <main className="flex-1 w-full h-full relative overflow-hidden pt-16 pb-20 md:pb-6 flex flex-col z-10">
         {activeView === 'home' && (
-          <div className="relative w-full h-full flex flex-col justify-between">
-            {/* Center Anchor: Quister Landing Hero Crystal Surface */}
-            <div className="flex-1 flex items-center justify-center">
+          <div className="relative w-full h-full flex flex-col justify-end overflow-hidden">
+            {/* Full-Screen 3D Room N & Companion Environment */}
+            <div className="absolute inset-0 z-0">
               <CompanionEnvironment
-                onStartInteraction={() => setActiveView('chat')}
+                companionState={companionState}
+                companionEmotion={companionEmotion}
+                visemeMouthOpen={visemeMouthOpen}
+                onStartInteraction={handleToggleVoice}
               />
             </div>
 
-            {/* Bottom Floating Interaction Bar */}
-            <div className="w-full pb-4 sm:pb-8 z-20">
+            {/* Bottom Floating Interaction Bar (Microphone + Text + Send) */}
+            <div className="relative w-full pb-4 sm:pb-8 z-20 pointer-events-auto">
               <InteractionBar
-                onSendMessage={handleSendMessage}
-                loading={loading}
+                onSendMessage={handleCompanionInteraction}
+                onToggleVoice={handleToggleVoice}
+                isListening={companionState === 'LISTENING'}
+                isSpeaking={companionState === 'SPEAKING'}
+                onStopSpeaking={handleStopSpeaking}
+                loading={loading || companionState === 'THINKING'}
+                voiceError={voiceError}
               />
             </div>
           </div>
         )}
 
+        {/* Optional Secondary Views (Accessible via navigation pill) */}
         {activeView === 'chat' && (
           <ChatView
             onBackToEnvironment={() => setActiveView('home')}
             messages={chats[currentChatId] || []}
-            onSendMessage={handleSendMessage}
+            onSendMessage={handleCompanionInteraction}
             loading={loading}
           />
         )}
@@ -225,6 +293,12 @@ export default function App() {
           onSelectView={setActiveView}
         />
       </div>
+
+      {/* 4. ISOLATED DEVELOPER MODE INSPECTION MODAL (Hidden from end users) */}
+      <DeveloperInspectionModal
+        isOpen={isDevModalOpen}
+        onClose={() => setIsDevModalOpen(false)}
+      />
     </div>
   );
 }

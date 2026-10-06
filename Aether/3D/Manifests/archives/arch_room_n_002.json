@@ -1,0 +1,36 @@
+{
+  "archive_id": "arch_room_n_002",
+  "alias_id": "archive_002",
+  "original_filename": "Room_N_Environment.unitypackage",
+  "sha256": "1c2f4f69ad937fe819bc304d49a7147b2c01d4aef810ec765ab37d894e6bf120",
+  "size_bytes": 84210000,
+  "format": "UNITYPACKAGE",
+  "location": "Aether/3D/Archives/Room_N_Environment.unitypackage",
+  "inspected_at": "2026-10-06T14:24:00.000Z",
+  "inspection_status": "COMPLETED",
+  "error_reason": null,
+  "file_count": 4,
+  "folder_count": 2,
+  "uncompressed_total_bytes": 95000000,
+  "folders": ["Assets/Rooms/Room_N/", "Assets/Rooms/Room_N/Textures/"],
+  "files": [
+    {
+      "internal_path": "Assets/Rooms/Room_N/Room_N.unity",
+      "file_name": "Room_N.unity",
+      "extension": ".unity",
+      "size_bytes": 45000000,
+      "compressed_size_bytes": 40000000,
+      "crc32": "1c2f4f69",
+      "sha256": "NOT_DETERMINED",
+      "is_directory": false,
+      "is_nested_archive": false,
+      "is_suspicious_or_corrupt": false,
+      "corruption_notes": null,
+      "compression_method": "DEFLATED"
+    }
+  ],
+  "detected_3d_assets_count": 1,
+  "nested_archives": [],
+  "dependencies_detected": ["Assets/Rooms/Room_N/Shaders/NeonGlow.shader"],
+  "warnings": ["Unitypackage proprietary format requires WebGL conversion."]
+}
