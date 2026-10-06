@@ -1,0 +1,21 @@
+{
+  "asset_id": "char_maya_unconfirmed",
+  "name": "Maya",
+  "category": "CHARACTER",
+  "classification": "UNCONFIRMED",
+  "source_format": "NOT_DETERMINED",
+  "runtime_file": null,
+  "preview_status": "NOT_DETERMINED",
+  "technical": {
+    "skeleton": "NOT_DETERMINED",
+    "animations": "NOT_DETERMINED",
+    "blend_shapes": "NOT_DETERMINED",
+    "textures": "NOT_DETERMINED",
+    "body_geometry": "UNCONFIRMED"
+  },
+  "evidence_note": "Project notes mention Maya body, hair, head, shoes and armature, but the original Maya binary archive was not available for direct verification.",
+  "warnings": [
+    "Do not classify Maya as a complete character or outfit until the original binary is inspected.",
+    "Do not retarget or combine with Dark ICE automatically."
+  ]
+}

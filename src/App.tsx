@@ -1,12 +1,13 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { ChatView, ChatMessage } from './components/ChatView';
+import { WardrobeView } from './components/WardrobeView';
+
+type ChatMessage = { id: string; sender: 'user' | 'gemini'; text: string };
 import { CompanionEnvironment } from './components/CompanionEnvironment';
 import { InteractionBar } from './components/InteractionBar';
 import { AboutView } from './components/AboutView';
 import { SupportView } from './components/SupportView';
 import { Navigation, NavDestination } from './components/ui/Navigation';
 import { AuthControl } from './components/AuthControl';
-import { AtmosphericSpace } from './components/AtmosphericSpace';
 import { DeveloperInspectionModal } from './components/dev/DeveloperInspectionModal';
 import { Terminal } from 'lucide-react';
 import {
@@ -196,9 +197,6 @@ export default function App() {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#06030B] text-white flex flex-col font-sans select-none">
-      {/* Background Cosmic Atmosphere */}
-      <AtmosphericSpace />
-
       {/* 1. TOP MINIMAL HUD BAR */}
       <header className="fixed top-0 inset-x-0 h-16 px-4 sm:px-8 z-30 flex items-center justify-between pointer-events-none">
         {/* Left: Quiet Brand Wordmark & Discrete Dev Trigger */}
@@ -263,14 +261,9 @@ export default function App() {
           </div>
         )}
 
-        {/* Optional Secondary Views (Accessible via navigation pill) */}
-        {activeView === 'chat' && (
-          <ChatView
-            onBackToEnvironment={() => setActiveView('home')}
-            messages={chats[currentChatId] || []}
-            onSendMessage={handleCompanionInteraction}
-            loading={loading}
-          />
+        {/* Wardrobe is intentionally separate from the room; chat remains voice-first and has no duplicate page. */}
+        {activeView === 'wardrobe' && (
+          <WardrobeView onBack={() => setActiveView('home')} />
         )}
 
         {activeView === 'about' && (

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Home, MessageSquare, Info, Heart } from 'lucide-react';
+import { Home, Shirt, Info, Heart } from 'lucide-react';
 
-export type NavDestination = 'home' | 'chat' | 'about' | 'support';
+export type NavDestination = 'home' | 'wardrobe' | 'about' | 'support';
 
 export interface NavigationProps {
   currentView: NavDestination;
@@ -16,7 +16,7 @@ export const Navigation: React.FC<NavigationProps> = ({
 }) => {
   const items = [
     { id: 'home' as const, label: 'Home', icon: Home },
-    { id: 'chat' as const, label: 'Chat', icon: MessageSquare },
+    { id: 'wardrobe' as const, label: 'Wardrobe', icon: Shirt },
     { id: 'about' as const, label: 'About', icon: Info },
     { id: 'support' as const, label: 'Support', icon: Heart },
   ];

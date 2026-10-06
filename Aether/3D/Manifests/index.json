@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-06T14:24:00.000Z",
+  "generated_at": "2026-10-06T17:33:00.000Z",
   "schema_version": "1.0.0",
   "total_archives": 4,
-  "total_assets": 4,
+  "total_assets": 5,
   "categories_summary": {
-    "CHARACTER": 1,
+    "CHARACTER": 2,
     "ROOM": 1,
     "OUTFIT": 2
   },
@@ -19,13 +19,13 @@
       "status": "INSPECTED"
     },
     "arch_room_n_002": {
-      "original_filename": "Room_N_Environment.unitypackage",
-      "sha256": "1c2f4f69ad937fe819bc304d49a7147b2c01d4aef810ec765ab37d894e6bf120",
-      "size_bytes": 84210000,
-      "format": "UNITYPACKAGE",
-      "file_count": 4,
+      "original_filename": "Room_N.zip",
+      "sha256": "1c2f4f69d4260a45748304aa259442da94b02d1bb71abbc17675c424822be698",
+      "size_bytes": 212558848,
+      "format": "ZIP",
+      "file_count": "NOT_DETERMINED",
       "manifest_path": "Aether/3D/Manifests/archives/arch_room_n_002.json",
-      "status": "INSPECTED"
+      "status": "FAILED_PARTIAL"
     },
     "arch_milk_re165_003": {
       "original_filename": "Milk_Wedding_Dress_v1.zip",
@@ -66,21 +66,22 @@
     },
     "room_n_1c2f4f69": {
       "archive_id": "arch_room_n_002",
-      "original_archive": "Room_N_Environment.unitypackage",
+      "original_archive": "Room_N.zip",
       "internal_path": "Assets/Rooms/Room_N/Room_N.unity",
-      "file_name": "Room_N.unitypackage",
+      "file_name": "Room N.unitypackage",
       "semantic_name": "Room N",
       "category": "ROOM",
       "category_confidence": "DETECTED",
-      "preview_status": "CONVERSION_REQUIRED",
-      "conversion_requirement": "Export Unity scene to WebGL GLB/glTF container with baked PBR materials.",
-      "technical_summary": "Unitypackage scene with custom shaders and lighting data.",
+      "preview_status": "CORRUPTED",
+      "conversion_requirement": "Re-upload complete archive, then export Unity scene to GLB/glTF with baked PBR materials.",
+      "technical_summary": "Incomplete ZIP upload; Unity scene geometry, furniture, materials and collisions are NOT_DETERMINED.",
       "dependencies": [
         "Assets/Rooms/Room_N/Shaders/NeonGlow.shader"
       ],
       "manifest_path": "Aether/3D/Manifests/assets/room_n_1c2f4f69.json",
       "warnings": [
-        "Unity-only format. Three.js cannot parse raw Unity scene files directly."
+        "ZIP central directory is missing; the observed UnityPackage stream is incomplete.",
+        "Do not present the procedural fallback as the original Room N asset."
       ]
     },
     "outfit_milk_re165_b453c59c": {
@@ -119,6 +120,23 @@
       "manifest_path": "Aether/3D/Manifests/assets/outfit_maya_re124_0ecf7a74.json",
       "warnings": [
         "Authored for Maya avatar base; incompatible with Dark ICE without skeleton retargeting."
+      ]
+    },
+    "char_maya_unconfirmed": {
+      "archive_id": "arch_maya_re124_004",
+      "original_archive": "Maya_Negligee_v1.zip",
+      "internal_path": "NOT_DETERMINED",
+      "file_name": "NOT_DETERMINED",
+      "semantic_name": "Maya",
+      "category": "CHARACTER",
+      "category_confidence": "UNCONFIRMED",
+      "preview_status": "NOT_DETERMINED",
+      "conversion_requirement": "Original binary source inspection required.",
+      "technical_summary": "Project notes mention a possible complete Maya body, hair, head, shoes and armature; this is not proven from the available binary.",
+      "dependencies": [],
+      "manifest_path": "Aether/3D/Manifests/assets/char_maya_unconfirmed.json",
+      "warnings": [
+        "Do not classify as complete character or outfit until the original archive is directly inspected."
       ]
     }
   }
