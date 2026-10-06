@@ -1,89 +1,15 @@
 {
-  "asset_id": "outfit_maya_re124_0ecf7a74",
-  "name": "Maya (Package / Outfit)",
-  "category": "OUTFIT",
-  "category_confidence": "UNCONFIRMED",
-  "source_format": "FBX",
-  "runtime_file": null,
-  "preview_status": "CONVERSION_REQUIRED",
-  "skeleton": {
-    "present": true,
-    "bone_count": 74
-  },
-  "animations": {
-    "count": "NOT_DETERMINED",
-    "names": []
-  },
-  "blend_shapes": {
-    "present": "NOT_DETERMINED",
-    "count": "NOT_DETERMINED"
-  },
-  "lip_sync": {
-    "present": "NOT_DETERMINED",
-    "visemes": []
-  },
-  "textures": {
-    "embedded": false,
-    "external": [
-      "Maya_Negligee/Textures/Silk_BaseColor.png",
-      "Maya_Negligee/Textures/Silk_Roughness.png"
-    ],
-    "missing": []
-  },
-  "archive_id": "arch_maya_re124_004",
-  "original_archive": "Maya_Negligee_v1.zip",
-  "internal_path": "Maya_Negligee/Maya_Negligee.fbx",
-  "file_name": "Maya_Negligee.fbx",
-  "size_bytes": 9870000,
-  "semantic_name": "Maya Negligee",
-  "semantic_description": "Asset package associated with Maya avatar base. External evidence suggests possible full base avatar presence (Body, Head, Hair, Armature), but current archive entry documents Maya_Negligee.fbx.",
-  "technical_3d": {
-    "format": "FBX",
-    "deep_analysis": "PARTIAL",
-    "mesh_count": 2,
-    "vertex_count": 14200,
-    "triangle_count": 21300,
-    "skeleton": true,
-    "bone_count": 74,
-    "coordinate_system": "Y-up (FBX)",
-    "embedded_textures": false,
-    "external_textures": [
-      "Maya_Negligee/Textures/Silk_BaseColor.png",
-      "Maya_Negligee/Textures/Silk_Roughness.png"
-    ],
-    "compatibility_warnings": [
-      "Rigged to Maya avatar skeleton hierarchy. Incompatible with Dark ICE without skeleton retargeting.",
-      "Raw FBX format requires conversion to glTF/GLB for web preview.",
-      "Requires forensic uncompression of raw archive to verify whether full character body meshes are bundled."
-    ]
-  },
-  "dependencies": [
-    "Maya_Negligee/Textures/Silk_BaseColor.png",
-    "Maya_Negligee/Textures/Silk_Roughness.png"
-  ],
-  "relationships": {
-    "character_for": "avatar_maya_base",
-    "outfit_for": null,
-    "hair_for": null,
-    "accessory_for": null,
-    "textures": [
-      "Maya_Negligee/Textures/Silk_BaseColor.png",
-      "Maya_Negligee/Textures/Silk_Roughness.png"
-    ],
-    "materials": ["Maya_Silk_Mat"],
-    "skeleton": "armature_maya_re124",
-    "animations": [],
-    "possible_duplicate_of": null,
-    "possible_variant_of": null
-  },
-  "preview_url": null,
-  "preview_image_url": null,
-  "conversion_requirement": "Requires FBX-to-glTF conversion and Phase 05.4 armature retargeting + weight transfer before equipping on Dark ICE.",
-  "conversion_reason": "Authored for Maya avatar base in proprietary FBX/Unity setup; bone hierarchy does not match Dark ICE.",
-  "license_note": "Aether Library Asset - Maya Series",
-  "warnings": [
-    "Do NOT assume Maya is only a dress. External evidence suggests Maya package may contain complete base avatar.",
-    "Do not attempt to retarget or equip onto Dark ICE without armature analysis.",
-    "Raw FBX is marked CONVERSION_REQUIRED."
-  ]
+  "asset_id":"outfit_maya_re124_0ecf7a74",
+  "name":"Maya RE124 Frilled Negligee",
+  "category":"OUTFIT",
+  "category_confidence":"DETECTED",
+  "source_format":"FBX_BINARY",
+  "source_file":{"original_filename":"Maya_RE124.zip","sha256":"0ecf7a7463e5f8f951f5f1023448b8dea96f8fb9ca15110c5f04c79ea0c29f71","size_bytes":3494143},
+  "runtime_file":"/assets/outfits/maya_re124/Maya%20RE124.fbx",
+  "preview_status":"CONVERSION_REQUIRED",
+  "technical":{"modeling_tool":"Blender 2.79b","mesh_count":"NOT_DETERMINED_FROM_REPORT","vertex_count":"NOT_DETERMINED_FROM_REPORT","triangle_count":"NOT_DETERMINED_FROM_REPORT","skeleton":"Maya avatar armature","bone_count":"NOT_DETERMINED","animations":"NOT_DETERMINED","blend_shapes":"NOT_DETERMINED","textures":["Maya RE124.png","Maya RE124 2.png","Maya RE124 3.png","Maya RE124 4.png"],"texture_variants":["var_classic_white","var_night_black","var_pastel_pink","var_sky_blue"],"physics":"PhysBones reported"},
+  "runtime":{"loader":"NOT_APPLICABLE_UNTIL_GLTF_CONVERSION","conversion_target":"GLB/glTF","target_path":"/assets/outfits/maya_re124/maya_re124.glb"},
+  "relationships":{"target_avatar":"Maya (舞夜)","compatible_character_ids":["char_maya_unconfirmed"],"dark_ice_status":"RETARGET_REQUIRED"},
+  "preview_image":"/assets/outfits/maya_re124/guides/画像①.png",
+  "warnings":["The supplied source is a clothing package for Maya; it does not prove that the Maya base avatar is included.","Do not label this FBX as a complete Maya character.","Do not equip on Dark ICE without skeleton and skin-weight retargeting."]
 }

@@ -1,0 +1,15 @@
+{
+  "asset_id":"room_neon_world_3_59517a50",
+  "name":"Neon World 3",
+  "category":"ENVIRONMENT",
+  "category_confidence":"DETECTED",
+  "source_format":"UNITYPACKAGE_GZIP_TAR",
+  "source_file":{"original_filename":"Neon_World_3.zip","sha256":"59517a50194d0984c1f5cbf2ae2ccfe8201c347726d8b7f2be46efb1047d442b","size_bytes":174632998,"integrity":"VALID_WITH_FILENAME_WARNING"},
+  "runtime_file":null,
+  "preview_status":"CONVERSION_REQUIRED",
+  "scene":{"scene_path":"Assets/Neon World 3/Scenes/Neon World 3","inner_entry_count":2152,"models_detected":["SimplePillow.fbx","ModernCandle.fbx"],"prefabs_detected":["Alarm.prefab"],"furniture":"DETECTED_BUT_NOT_COUNTED","collisions":"NOT_DETERMINED","spawn_points":"NOT_DETERMINED","lighting_data":true,"reflection_probe":true},
+  "runtime":{"recommended_format":"GLB","target_path":"/assets/environments/neon_world_3/Neon_World_3.glb","loader":"Three.js GLTFLoader","web_status":"CONVERSION_REQUIRED"},
+  "relationships":{"intended_role":"AETHER_PRIMARY_ENVIRONMENT","characters":["char_dark_ice_c3256ebd4d660b1f","char_maya_unconfirmed"],"outfits":["outfit_milk_re165_b453c59c","outfit_maya_re124_0ecf7a74"]},
+  "license":{"copyright":"Mamboix, 2024","commercial_use":"NOT_PERMITTED_WITHOUT_PERMISSION","source_license_file":"Neon World 3/License.txt"},
+  "warnings":["UnityPackage cannot load directly in Three.js.","Unity shaders, Udon scripts and VRC components need web equivalents or must be omitted.","Exact furniture and collider counts require Unity inspection or GLB export."]
+}

@@ -20,6 +20,7 @@ import { companionVoice } from './lib/companionVoice';
 
 export default function App() {
   const [activeView, setActiveView] = useState<NavDestination>('home');
+  const primaryCharacterUrl = '/assets/characters/dark_ice/dark_ice.vrm';
 
   // Companion 3D State & Expression
   const [companionState, setCompanionState] = useState<CompanionState>('IDLE');
@@ -249,6 +250,7 @@ export default function App() {
                 companionEmotion={companionEmotion}
                 visemeMouthOpen={visemeMouthOpen}
                 onStartInteraction={handleToggleVoice}
+                companionModelUrl={primaryCharacterUrl}
               />
             </div>
 

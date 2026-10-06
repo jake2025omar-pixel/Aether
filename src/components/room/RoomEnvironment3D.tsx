@@ -10,6 +10,7 @@ export interface RoomEnvironment3DProps {
   companionEmotion: CompanionEmotion;
   visemeMouthOpen: number;
   companionModelUrl?: string | null;
+  roomModelUrl?: string | null;
   onCompanionClick?: () => void;
   className?: string;
 }
@@ -19,6 +20,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   companionEmotion,
   visemeMouthOpen,
   companionModelUrl,
+  roomModelUrl,
   onCompanionClick,
   className = '',
 }) => {
@@ -152,21 +154,39 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     scene.add(roomGroup);
 
-    // 6. Mount Companion Rig
+    // 6. Load the real room only when a converted GLB exists; retain the procedural room on failure.
     let isCancelled = false;
+    if (roomModelUrl) {
+      loadWeb3DAsset(roomModelUrl).then((res) => {
+        if (isCancelled || !res.success || !res.scene) return;
+        scene.remove(roomGroup);
+        res.scene.name = 'NeonWorld3Runtime';
+        scene.add(res.scene);
+      });
+    }
+
+    // 7. Mount Companion Rig with a procedural fallback if the VRM cannot load.
+    const mountFallbackRig = () => {
+      if (isCancelled || companionRigRef.current) return;
+      const rig = new CompanionRig(null);
+      companionRigRef.current = rig;
+      scene.add(rig.root);
+      rig.setEmotion(companionEmotion);
+    };
     if (companionModelUrl) {
       loadWeb3DAsset(companionModelUrl, true).then((res) => {
         if (isCancelled) return;
-        const rig = new CompanionRig(res.vrm || null);
+        if (!res.success || !res.vrm) {
+          mountFallbackRig();
+          return;
+        }
+        const rig = new CompanionRig(res.vrm);
         companionRigRef.current = rig;
         scene.add(rig.root);
         rig.setEmotion(companionEmotion);
       });
     } else {
-      const rig = new CompanionRig(null);
-      companionRigRef.current = rig;
-      scene.add(rig.root);
-      rig.setEmotion(companionEmotion);
+      mountFallbackRig();
     }
 
     // 7. Subtle interactive parallax on mouse / touch move
@@ -232,7 +252,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       }
       renderer.dispose();
     };
-  }, [companionModelUrl]);
+  }, [companionModelUrl, roomModelUrl]);
 
   // Render Status Badge Icon
   const getStatusIcon = () => {

@@ -7,6 +7,7 @@ interface CompanionEnvironmentProps {
   companionEmotion: CompanionEmotion;
   visemeMouthOpen: number;
   companionModelUrl?: string | null;
+  roomModelUrl?: string | null;
   onStartInteraction?: () => void;
 }
 
@@ -15,6 +16,7 @@ export const CompanionEnvironment: React.FC<CompanionEnvironmentProps> = ({
   companionEmotion,
   visemeMouthOpen,
   companionModelUrl,
+  roomModelUrl,
   onStartInteraction,
 }) => {
   return (
@@ -25,6 +27,7 @@ export const CompanionEnvironment: React.FC<CompanionEnvironmentProps> = ({
         companionEmotion={companionEmotion}
         visemeMouthOpen={visemeMouthOpen}
         companionModelUrl={companionModelUrl}
+        roomModelUrl={roomModelUrl}
         onCompanionClick={onStartInteraction}
         className="w-full h-full"
       />

@@ -1,12 +1,13 @@
 {
-  "generated_at": "2026-10-06T17:33:00.000Z",
+  "generated_at": "2026-10-07T01:21:00.000Z",
   "schema_version": "1.0.0",
   "total_archives": 4,
-  "total_assets": 5,
+  "total_assets": 6,
   "categories_summary": {
     "CHARACTER": 2,
     "ROOM": 1,
-    "OUTFIT": 2
+    "OUTFIT": 2,
+    "ENVIRONMENT": 1
   },
   "archives": {
     "arch_darkice_001": {
@@ -55,14 +56,15 @@
       "semantic_name": "Dark ICE",
       "category": "CHARACTER",
       "category_confidence": "DETECTED",
-      "preview_status": "ASSET_NOT_AVAILABLE",
+      "preview_status": "WEB_READY",
       "conversion_requirement": null,
       "technical_summary": "VRM 1.0 humanoid avatar, 34.2k vertices, 138 bones, facial blend shapes.",
       "dependencies": [],
       "manifest_path": "Aether/3D/Manifests/assets/char_dark_ice_c3256ebd4d660b1f.json",
       "warnings": [
-        "Physical VRM binary file is not currently present in the web server root. Runtime resolution: ASSET_NOT_AVAILABLE."
-      ]
+        "Physical VRM is now present in the web runtime folder."
+      ],
+      "runtime_file": "public/assets/characters/dark_ice/dark_ice.vrm"
     },
     "room_n_1c2f4f69": {
       "archive_id": "arch_room_n_002",
@@ -86,7 +88,7 @@
     },
     "outfit_milk_re165_b453c59c": {
       "archive_id": "arch_milk_re165_003",
-      "original_archive": "Milk_Wedding_Dress_v1.zip",
+      "original_archive": "Milk_RE165.zip",
       "internal_path": "Milk_Wedding/Milk_WeddingDress.fbx",
       "file_name": "Milk_WeddingDress.fbx",
       "semantic_name": "Milk Wedding Dress",
@@ -94,18 +96,19 @@
       "category_confidence": "DETECTED",
       "preview_status": "CONVERSION_REQUIRED",
       "conversion_requirement": "FBX to glTF conversion and Phase 05.4 skeleton retargeting to Dark ICE humanoid armature.",
-      "technical_summary": "FBX rigged to Milk base armature (86 bones, 18.5k vertices).",
+      "technical_summary": "2 meshes, 13,515 vertices, 13,408 triangles, 108-bone Milk armature; authored for Milk avatar.",
       "dependencies": [
         "Milk_Wedding/Textures/Dress_Diffuse.png"
       ],
       "manifest_path": "Aether/3D/Manifests/assets/outfit_milk_re165_b453c59c.json",
       "warnings": [
         "Authored for Milk avatar base; incompatible with Dark ICE without skeleton retargeting."
-      ]
+      ],
+      "runtime_file": "public/assets/outfits/milk_re165/milk RE165.fbx"
     },
     "outfit_maya_re124_0ecf7a74": {
       "archive_id": "arch_maya_re124_0ecf7a74",
-      "original_archive": "Maya_Negligee_v1.zip",
+      "original_archive": "Maya_RE124.zip",
       "internal_path": "Maya_Negligee/Maya_Negligee.fbx",
       "file_name": "Maya_Negligee.fbx",
       "semantic_name": "Maya Negligee",
@@ -113,14 +116,15 @@
       "category_confidence": "DETECTED",
       "preview_status": "CONVERSION_REQUIRED",
       "conversion_requirement": "FBX to glTF conversion and Phase 05.4 skeleton retargeting to Dark ICE humanoid armature.",
-      "technical_summary": "FBX rigged to Maya base armature (74 bones, 14.2k vertices).",
+      "technical_summary": "Maya RE124 clothing FBX with four supplied texture variants; authored for Maya avatar.",
       "dependencies": [
         "Maya_Negligee/Textures/Silk_BaseColor.png"
       ],
       "manifest_path": "Aether/3D/Manifests/assets/outfit_maya_re124_0ecf7a74.json",
       "warnings": [
         "Authored for Maya avatar base; incompatible with Dark ICE without skeleton retargeting."
-      ]
+      ],
+      "runtime_file": "public/assets/outfits/maya_re124/Maya RE124.fbx"
     },
     "char_maya_unconfirmed": {
       "archive_id": "arch_maya_re124_004",
@@ -137,6 +141,24 @@
       "manifest_path": "Aether/3D/Manifests/assets/char_maya_unconfirmed.json",
       "warnings": [
         "Do not classify as complete character or outfit until the original archive is directly inspected."
+      ]
+    },
+    "room_neon_world_3_59517a50": {
+      "archive_id": "arch_neon_world_3_005",
+      "original_archive": "Neon_World_3.zip",
+      "internal_path": "Assets/Neon World 3/Scenes/Neon World 3",
+      "file_name": "NeonWorld3.unitypackage",
+      "semantic_name": "Neon World 3",
+      "category": "ENVIRONMENT",
+      "category_confidence": "DETECTED",
+      "preview_status": "CONVERSION_REQUIRED",
+      "conversion_requirement": "Export Unity scene to GLB/glTF and create web collision proxies.",
+      "technical_summary": "Readable UnityPackage with 2,152 inner entries, models, prefabs, materials, lighting data and reflection probe.",
+      "dependencies": [],
+      "manifest_path": "Aether/3D/Manifests/assets/room_neon_world_3_59517a50.json",
+      "warnings": [
+        "UnityPackage is not directly loadable by Three.js.",
+        "Commercial use requires license review."
       ]
     }
   }

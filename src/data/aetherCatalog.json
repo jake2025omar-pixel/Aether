@@ -1,0 +1,13 @@
+{
+  "schema_version":"1.0.0",
+  "default_environment":"room_neon_world_3_59517a50",
+  "default_character":"char_dark_ice_c3256ebd4d660b1f",
+  "assets":{
+    "room_neon_world_3_59517a50":{"manifest":"/Aether/3D/Manifests/assets/room_neon_world_3_59517a50.json","runtime_file":null,"status":"CONVERSION_REQUIRED"},
+    "char_dark_ice_c3256ebd4d660b1f":{"manifest":"/Aether/3D/Manifests/assets/char_dark_ice_c3256ebd4d660b1f.json","runtime_file":"/assets/characters/dark_ice/dark_ice.vrm","status":"WEB_READY"},
+    "char_maya_unconfirmed":{"manifest":"/Aether/3D/Manifests/assets/char_maya_unconfirmed.json","runtime_file":null,"status":"UNCONFIRMED"},
+    "outfit_milk_re165_b453c59c":{"manifest":"/Aether/3D/Manifests/assets/outfit_milk_re165_b453c59c.json","runtime_file":"/assets/outfits/milk_re165/milk%20RE165.fbx","status":"CONVERSION_REQUIRED"},
+    "outfit_maya_re124_0ecf7a74":{"manifest":"/Aether/3D/Manifests/assets/outfit_maya_re124_0ecf7a74.json","runtime_file":"/assets/outfits/maya_re124/Maya%20RE124.fbx","status":"CONVERSION_REQUIRED"}
+  },
+  "runtime_rules":{"never_auto_equip_cross_avatar_outfits":true,"never_infer_missing_character":true,"fallback_character":"procedural_companion_rig","environment_fallback":"procedural_room"}
+}

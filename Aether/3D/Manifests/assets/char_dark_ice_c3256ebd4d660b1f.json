@@ -3,79 +3,26 @@
   "name": "Dark ICE",
   "category": "CHARACTER",
   "category_confidence": "DETECTED",
-  "source_format": "VRM",
-  "runtime_file": null,
-  "preview_status": "ASSET_NOT_AVAILABLE",
-  "skeleton": {
-    "present": true,
-    "bone_count": 138
-  },
-  "animations": {
-    "count": "NOT_DETERMINED",
-    "names": []
-  },
-  "blend_shapes": {
-    "present": true,
-    "count": 13
-  },
-  "lip_sync": {
-    "present": true,
-    "visemes": ["aa", "ih", "ou", "ee", "oh"]
-  },
-  "textures": {
-    "embedded": true,
-    "external": [],
-    "missing": []
-  },
-  "archive_id": "arch_darkice_001",
-  "original_archive": "Dark_ICE_VRM.zip",
-  "internal_path": "models/Dark_ICE.vrm",
-  "file_name": "Dark_ICE.vrm",
-  "size_bytes": 15728640,
-  "semantic_name": "Dark ICE",
-  "semantic_description": "Default companion character candidate for Aether in VRM 1.0 format with amethyst and obsidian crystal cyber aesthetics.",
-  "technical_3d": {
-    "format": "VRM",
-    "deep_analysis": "COMPLETED",
+  "source_format": "VRM_1.0",
+  "source_file": {"original_filename":"Dark_ICE-ダークあいす-1.0.vrm","sha256":"c3256ebd4d660b1f7e028b1223945a8df289cdbc49c313a1a9e7f805f6d71b3e","size_bytes":15467704},
+  "runtime_file": "/assets/characters/dark_ice/dark_ice.vrm",
+  "preview_status": "WEB_READY",
+  "technical": {
+    "generator": "VRoid Studio 2.7.0",
+    "format": "VRM 1.0 / glTF 2.0 Binary",
     "mesh_count": 8,
     "vertex_count": 34200,
     "triangle_count": 48900,
-    "skeleton": true,
-    "bone_count": 138,
-    "blend_shapes": [
-      "neutral", "happy", "angry", "sad", "relaxed",
-      "blink", "blink_l", "blink_r", "aa", "ih", "ou", "ee", "oh"
-    ],
-    "facial_morphs": ["blink", "happy", "relaxed", "sad", "angry"],
-    "embedded_textures": true,
-    "external_textures": [],
-    "coordinate_system": "Y-up, Right-Handed (glTF / VRM standard)",
-    "scale_information": 1.0,
-    "compatibility_warnings": [
-      "VRM 1.0 humanoid avatar. Requires standard glTF 2.0 / VRM loader plugin.",
-      "Physical VRM binary is not currently present on disk in public runtime folder; evaluates to ASSET_NOT_AVAILABLE."
-    ]
+    "material_count": 13,
+    "embedded_texture_count": 23,
+    "skeleton": "HUMANOID",
+    "bone_count": 136,
+    "animations": "NOT_DETERMINED",
+    "blend_shapes": ["neutral","happy","angry","sad","relaxed","blink","blink_l","blink_r","aa","ih","ou","ee","oh"],
+    "lip_sync_visemes": ["aa","ih","ou","ee","oh"],
+    "spring_bones": true
   },
-  "dependencies": [],
-  "relationships": {
-    "character_for": null,
-    "outfit_for": null,
-    "hair_for": null,
-    "accessory_for": null,
-    "textures": ["embedded"],
-    "materials": ["MToon / PBR Metallic Roughness"],
-    "skeleton": "humanoid_vrm_standard",
-    "animations": [],
-    "possible_duplicate_of": null,
-    "possible_variant_of": null
-  },
-  "preview_url": null,
-  "preview_image_url": null,
-  "conversion_requirement": null,
-  "conversion_reason": "VRM format is web-ready, but the physical 3D binary file is not currently present in local runtime storage.",
-  "license_note": "Aether Project Core Asset",
-  "warnings": [
-    "Physical VRM binary file is not yet uploaded to web runtime directory. Runtime resolution evaluates strictly to ASSET_NOT_AVAILABLE.",
-    "Do not fabricate or substitute with dummy geometry in production inspection."
-  ]
+  "runtime": {"loader":"@pixiv/three-vrm","fallback":"procedural_companion_rig","load_on_home":true},
+  "relationships": {"environment":"room_neon_world_3_59517a50","compatible_outfits":["outfit_milk_re165_b453c59c","outfit_maya_re124_0ecf7a74"],"outfit_compatibility":"RETARGET_REQUIRED"},
+  "warnings": ["The VRM is web-ready, but the wedding outfits are authored for different avatar bases and must not be auto-equipped."]
 }

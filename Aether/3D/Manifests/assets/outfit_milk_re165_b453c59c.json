@@ -1,87 +1,15 @@
 {
-  "asset_id": "outfit_milk_re165_b453c59c",
-  "name": "Milk Wedding Dress",
-  "category": "OUTFIT",
-  "category_confidence": "DETECTED",
-  "source_format": "FBX",
-  "runtime_file": null,
-  "preview_status": "CONVERSION_REQUIRED",
-  "skeleton": {
-    "present": true,
-    "bone_count": 86
-  },
-  "animations": {
-    "count": "NOT_DETERMINED",
-    "names": []
-  },
-  "blend_shapes": {
-    "present": false,
-    "count": "NOT_DETERMINED"
-  },
-  "lip_sync": {
-    "present": false,
-    "visemes": []
-  },
-  "textures": {
-    "embedded": false,
-    "external": [
-      "Milk_Wedding/Textures/Dress_Diffuse.png",
-      "Milk_Wedding/Textures/Dress_Normal.png"
-    ],
-    "missing": []
-  },
-  "archive_id": "arch_milk_re165_003",
-  "original_archive": "Milk_Wedding_Dress_v1.zip",
-  "internal_path": "Milk_Wedding/Milk_WeddingDress.fbx",
-  "file_name": "Milk_WeddingDress.fbx",
-  "size_bytes": 12450000,
-  "semantic_name": "Milk Wedding Dress",
-  "semantic_description": "Detailed wedding gown and veil outfit originally modeled and weighted specifically for the Milk avatar armature.",
-  "technical_3d": {
-    "format": "FBX",
-    "deep_analysis": "PARTIAL",
-    "mesh_count": 4,
-    "vertex_count": 18500,
-    "triangle_count": 27200,
-    "skeleton": true,
-    "bone_count": 86,
-    "coordinate_system": "Y-up (FBX)",
-    "embedded_textures": false,
-    "external_textures": [
-      "Milk_Wedding/Textures/Dress_Diffuse.png",
-      "Milk_Wedding/Textures/Dress_Normal.png"
-    ],
-    "compatibility_warnings": [
-      "Rigged to Milk avatar skeleton hierarchy. Incompatible with Dark ICE without skeleton retargeting.",
-      "Raw FBX format requires conversion to glTF/GLB for web preview."
-    ]
-  },
-  "dependencies": [
-    "Milk_Wedding/Textures/Dress_Diffuse.png",
-    "Milk_Wedding/Textures/Dress_Normal.png"
-  ],
-  "relationships": {
-    "character_for": "avatar_milk_base",
-    "outfit_for": null,
-    "hair_for": null,
-    "accessory_for": null,
-    "textures": [
-      "Milk_Wedding/Textures/Dress_Diffuse.png",
-      "Milk_Wedding/Textures/Dress_Normal.png"
-    ],
-    "materials": ["Milk_Dress_Mat"],
-    "skeleton": "armature_milk_re165",
-    "animations": [],
-    "possible_duplicate_of": null,
-    "possible_variant_of": null
-  },
-  "preview_url": null,
-  "preview_image_url": null,
-  "conversion_requirement": "Requires FBX-to-glTF conversion and Phase 05.4 armature retargeting + weight transfer before equipping on Dark ICE.",
-  "conversion_reason": "Authored for Milk avatar base in proprietary FBX/Unity setup; bone hierarchy does not match Dark ICE.",
-  "license_note": "Aether Library Asset - Milk Series",
-  "warnings": [
-    "Do not attempt to retarget or equip onto Dark ICE in Phase 05.2.",
-    "Show metadata only or static preview fallback."
-  ]
+  "asset_id":"outfit_milk_re165_b453c59c",
+  "name":"Milk RE165 Wedding Dress",
+  "category":"OUTFIT",
+  "category_confidence":"DETECTED",
+  "source_format":"FBX_BINARY_2014_2016",
+  "source_file":{"original_filename":"Milk_RE165.zip","sha256":"b453c59c64654c4332d915a0aa544cfecfbf4ebf85e01ffd2676c00dab442483","size_bytes":3493983},
+  "runtime_file":"/assets/outfits/milk_re165/milk%20RE165.fbx",
+  "preview_status":"CONVERSION_REQUIRED",
+  "technical":{"modeling_tool":"Blender 2.79b","mesh_count":2,"vertex_count":13515,"triangle_count":13408,"skeleton":"Milk avatar armature","bone_count":108,"animations":"NOT_DETERMINED","blend_shapes":0,"textures":[{"file":"Milk RE165.png","width":2048,"height":2048,"channels":"RGBA"}],"materials":["Milk RE165 T","Milk RE165 Gl","Milk RE165 N"],"physics":"VRCPhysBone; 12 skirt chains"},
+  "runtime":{"loader":"NOT_APPLICABLE_UNTIL_GLTF_CONVERSION","conversion_target":"GLB/glTF","target_path":"/assets/outfits/milk_re165/milk_re165.glb"},
+  "relationships":{"target_avatar":"Milk (ミルクちゃん)","target_base_file":"Milk-Re_v1.2.1_kaihen.fbx","compatible_character_ids":[],"dark_ice_status":"RETARGET_REQUIRED","maya_status":"NOT_DETERMINED"},
+  "guides":["/assets/outfits/milk_re165/guides/①着せ替え後、ACオブジェクトの移動.png","/assets/outfits/milk_re165/guides/②着せ替え後、コライダーの設定を手動で行う必要があります.png","/assets/outfits/milk_re165/guides/③アバターと衣装の明るさを合わせるためAnchor Overrideの設定をおすすめします.png"],
+  "warnings":["This is clothing, not a full character.","Do not equip on Dark ICE without armature retargeting and weight transfer.","Unity/VRCPhysBone and lilToon need web equivalents after conversion."]
 }
