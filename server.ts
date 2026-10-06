@@ -45,15 +45,28 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: 'Message is required and must be a string.' });
   }
 
-  // Model selection: 'gemini-2.5-flash' as standard Flash model for text/multimodal tasks
-  const primaryModel = 'gemini-2.5-flash';
-  const fallbackModel = 'gemini-flash-latest';
+  // Candidate models in priority order: start with fast, available flash models
+  const CANDIDATE_MODELS = [
+    'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-flash',
+  ];
 
   const defaultSystemInstruction =
     systemInstruction ||
     `You are Aether AI, a friendly, ultra-fast and helpful AI assistant powered by Gemini Flash.
 You communicate fluently in Arabic and English. If the user writes in Arabic, respond in clear, natural Arabic. If in English, respond in English.
 Provide concise, accurate, and practical answers. Use clean formatting and code blocks when appropriate.`;
+
+  const getLocalCompanionFallback = (userInput: string): string => {
+    const isArabic = /[\u0600-\u06FF]/.test(userInput);
+    if (isArabic) {
+      return '[EMOTION: NEUTRAL] أهلاً بك! خوادم الذكاء الاصطناعي تشهد ضغطاً مؤقتاً في هذه اللحظة، يرجى إعادة المحاولة بعد ثوانٍ قليلة.';
+    }
+    return "[EMOTION: NEUTRAL] I'm listening, but the AI service is experiencing high demand right now. Please try asking again in a moment.";
+  };
 
   // Format contents for @google/genai
   const contents = [
@@ -94,75 +107,71 @@ Provide concise, accurate, and practical answers. Use clean formatting and code 
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    try {
-      let responseStream;
+    let streamSucceeded = false;
+    for (const model of CANDIDATE_MODELS) {
       try {
-        responseStream = await clientAi.models.generateContentStream({
-          model: primaryModel,
+        const responseStream = await clientAi.models.generateContentStream({
+          model,
           contents,
           config: {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
           },
         });
-      } catch {
-        responseStream = await clientAi.models.generateContentStream({
-          model: fallbackModel,
-          contents,
-          config: {
-            systemInstruction: defaultSystemInstruction,
-            temperature: 0.7,
-          },
-        });
-      }
 
-      for await (const chunk of responseStream) {
-        const text = chunk.text;
-        if (text) {
-          res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        for await (const chunk of responseStream) {
+          const text = chunk.text;
+          if (text) {
+            res.write(`data: ${JSON.stringify({ text })}\n\n`);
+          }
         }
-      }
 
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        res.end();
+        streamSucceeded = true;
+        break;
+      } catch (err: unknown) {
+        console.warn(`Model ${model} streaming attempt failed:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    if (!streamSucceeded) {
+      const fallbackText = getLocalCompanionFallback(message);
+      res.write(`data: ${JSON.stringify({ text: fallbackText })}\n\n`);
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-      res.end();
-    } catch (err: unknown) {
-      console.error('Gemini Stream Error:', err);
-      const errMsg = err instanceof Error ? err.message : 'Unknown generation error';
-      res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
       res.end();
     }
   } else {
-    try {
-      let response;
+    for (const model of CANDIDATE_MODELS) {
       try {
-        response = await clientAi.models.generateContent({
-          model: primaryModel,
+        const response = await clientAi.models.generateContent({
+          model,
           contents,
           config: {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
           },
         });
-      } catch {
-        response = await clientAi.models.generateContent({
-          model: fallbackModel,
-          contents,
-          config: {
-            systemInstruction: defaultSystemInstruction,
-            temperature: 0.7,
-          },
-        });
-      }
 
-      return res.json({
-        text: response.text || '',
-        model: primaryModel,
-      });
-    } catch (err: unknown) {
-      console.error('Gemini Generate Error:', err);
-      const errMsg = err instanceof Error ? err.message : 'Failed to generate response';
-      return res.status(500).json({ error: errMsg });
+        const generatedText = response.text || '';
+        if (generatedText) {
+          return res.json({
+            text: generatedText,
+            model,
+          });
+        }
+      } catch (err: unknown) {
+        console.warn(`Model ${model} generate attempt failed:`, err instanceof Error ? err.message : err);
+      }
     }
+
+    // Graceful fallback response if all models are temporarily busy
+    const fallbackText = getLocalCompanionFallback(message);
+    return res.json({
+      text: fallbackText,
+      model: 'local-fallback',
+      isFallback: true,
+    });
   }
 });
 

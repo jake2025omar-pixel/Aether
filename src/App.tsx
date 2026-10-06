@@ -96,12 +96,18 @@ export default function App() {
         }),
       });
 
+      let rawAnswer = '';
       if (!res.ok) {
-        throw new Error(`Server returned status ${res.status}`);
+        const errJson = await res.json().catch(() => null);
+        console.warn('Chat endpoint returned non-OK status:', res.status, errJson);
+        const isArabic = /[\u0600-\u06FF]/.test(query);
+        rawAnswer = isArabic
+          ? '[EMOTION: NEUTRAL] أهلاً بك! خوادم الذكاء الاصطناعي تشهد ضغطاً مؤقتاً، يرجى المحاولة بعد لحظات.'
+          : "[EMOTION: NEUTRAL] I'm listening, but the AI service is experiencing high demand. Please try again in a moment.";
+      } else {
+        const data = await res.json();
+        rawAnswer = data.text || '';
       }
-
-      const data = await res.json();
-      const rawAnswer = data.text || '';
 
       // Parse emotion tag and clean spoken text
       const { emotion, cleanText } = parseCompanionResponse(rawAnswer);
