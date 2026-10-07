@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { CompanionRig } from './CompanionRig';
 import { CompanionState, CompanionEmotion } from '../../lib/companionPersonality';
-import { loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
+import { dispose3DResource, loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
 import { Mic, Volume2, Sparkles, Brain } from 'lucide-react';
 
 export interface RoomEnvironment3DProps {
@@ -31,16 +31,22 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   const companionRigRef = useRef<CompanionRig | null>(null);
   const floorGlowRef = useRef<THREE.PointLight | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
+  const [characterLoading, setCharacterLoading] = useState(Boolean(companionModelUrl));
+  const [characterLoadFailed, setCharacterLoadFailed] = useState(false);
+  const emotionRef = useRef(companionEmotion);
+  const visemeRef = useRef(visemeMouthOpen);
   const targetLookPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.45, 3.4));
 
   // Sync Emotion & Visemes to 3D Companion Rig
   useEffect(() => {
+    emotionRef.current = companionEmotion;
     if (companionRigRef.current) {
       companionRigRef.current.setEmotion(companionEmotion);
     }
   }, [companionEmotion]);
 
   useEffect(() => {
+    visemeRef.current = visemeMouthOpen;
     if (companionRigRef.current) {
       companionRigRef.current.setViseme(visemeMouthOpen);
     }
@@ -68,13 +74,14 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     targetLookPosRef.current.copy(camera.position);
 
     // 3. WebGL Renderer
+    const isMobile = width < 768;
     const renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !isMobile,
       powerPreference: 'high-performance',
       alpha: false,
     });
     rendererRef.current = renderer;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.25 : 1.75));
     renderer.setSize(width, height);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
@@ -166,27 +173,40 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     }
 
     // 7. Mount Companion Rig with a procedural fallback if the VRM cannot load.
-    const mountFallbackRig = () => {
-      if (isCancelled || companionRigRef.current) return;
-      const rig = new CompanionRig(null);
-      companionRigRef.current = rig;
-      scene.add(rig.root);
-      rig.setEmotion(companionEmotion);
-    };
+    const fallbackRig = new CompanionRig(null);
+    companionRigRef.current = fallbackRig;
+    scene.add(fallbackRig.root);
+    fallbackRig.setEmotion(emotionRef.current);
+    fallbackRig.setViseme(visemeRef.current);
+    setCharacterLoading(Boolean(companionModelUrl));
+    setCharacterLoadFailed(false);
     if (companionModelUrl) {
       loadWeb3DAsset(companionModelUrl, true).then((res) => {
-        if (isCancelled) return;
-        if (!res.success || !res.vrm) {
-          mountFallbackRig();
+        if (isCancelled) {
+          if (res.scene) dispose3DResource(res.scene);
           return;
         }
+        if (!res.success || !res.vrm) {
+          setCharacterLoadFailed(true);
+          setCharacterLoading(false);
+          return;
+        }
+        companionRigRef.current?.dispose();
+        companionRigRef.current = null;
         const rig = new CompanionRig(res.vrm);
         companionRigRef.current = rig;
         scene.add(rig.root);
-        rig.setEmotion(companionEmotion);
+        rig.setEmotion(emotionRef.current);
+        rig.setViseme(visemeRef.current);
+        setCharacterLoading(false);
+      }).catch(() => {
+        if (!isCancelled) {
+          setCharacterLoadFailed(true);
+          setCharacterLoading(false);
+        }
       });
     } else {
-      mountFallbackRig();
+      setCharacterLoading(false);
     }
 
     // 7. Subtle interactive parallax on mouse / touch move
@@ -231,7 +251,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         if (w > 0 && h > 0 && cameraRef.current && rendererRef.current) {
           cameraRef.current.aspect = w / h;
           cameraRef.current.updateProjectionMatrix();
-          rendererRef.current.setSize(w, h);
+              rendererRef.current.setPixelRatio(
+                Math.min(window.devicePixelRatio, w < 768 ? 1.25 : 1.75)
+              );
+              rendererRef.current.setSize(w, h);
         }
       }
     });
@@ -244,7 +267,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       resizeObserver.disconnect();
 
       if (companionRigRef.current) {
-        companionRigRef.current.dispose();
+          companionRigRef.current.dispose();
+          companionRigRef.current = null;
       }
 
       if (renderer.domElement && container.contains(renderer.domElement)) {
@@ -307,6 +331,25 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
               {companionEmotion}
             </span>
           )}
+        </div>
+      </div>
+
+      <div className="absolute top-24 left-4 sm:left-8 z-20 pointer-events-none max-w-[min(20rem,calc(100%-2rem))]">
+        <div className="rounded-2xl border border-white/10 bg-[#100b1b]/65 px-4 py-3 shadow-2xl shadow-purple-950/20 backdrop-blur-xl">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-purple-200/75">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.8)]" />
+            Aether AI Companion
+          </div>
+          <p className="mt-1.5 text-sm font-medium text-white/90">
+            {characterLoadFailed ? 'Meet your companion' : 'A room that feels a little more alive.'}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-white/50">
+            {characterLoading
+              ? 'Preparing your 3D companion… you can start chatting now.'
+              : characterLoadFailed
+                ? 'Your companion is here and ready to talk.'
+                : 'Speak or type. Aether listens, responds and shows how it feels.'}
+          </p>
         </div>
       </div>
     </div>

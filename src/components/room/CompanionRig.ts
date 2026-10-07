@@ -17,6 +17,11 @@ export class CompanionRig {
   private rightEyebrow: THREE.Mesh | null = null;
   private mouthMesh: THREE.Mesh | null = null;
   private crystalCore: THREE.Mesh | null = null;
+  private readonly lookDirection = new THREE.Vector3();
+  private leftUpperArm: THREE.Object3D | null = null;
+  private rightUpperArm: THREE.Object3D | null = null;
+  private readonly leftArmRestZ = -0.85;
+  private readonly rightArmRestZ = 0.85;
 
   // Animation states
   private currentEmotion: CompanionEmotion = 'NEUTRAL';
@@ -33,6 +38,10 @@ export class CompanionRig {
       this.vrmInstance = vrm;
       this.isVrm = true;
       this.root.add(vrm.scene);
+      this.leftUpperArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+      this.rightUpperArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+      if (this.leftUpperArm) this.leftUpperArm.rotation.z = this.leftArmRestZ;
+      if (this.rightUpperArm) this.rightUpperArm.rotation.z = this.rightArmRestZ;
     } else {
       this.buildProceduralHumanoidRig();
     }
@@ -311,6 +320,9 @@ export class CompanionRig {
   public update(delta: number, elapsedTime: number, targetLookPos?: THREE.Vector3): void {
     if (this.isVrm && this.vrmInstance) {
       this.vrmInstance.update(delta);
+      const armSway = Math.sin(elapsedTime * 0.8) * 0.025;
+      if (this.leftUpperArm) this.leftUpperArm.rotation.z = this.leftArmRestZ - armSway;
+      if (this.rightUpperArm) this.rightUpperArm.rotation.z = this.rightArmRestZ + armSway;
     }
 
     // 1. Natural Sinusoidal Idle Breathing (Chest & Spine)
@@ -329,7 +341,7 @@ export class CompanionRig {
         this.headBone.rotation.y = 0.15;
       } else if (targetLookPos) {
         // Soft head track towards target
-        const lookDir = targetLookPos.clone().sub(this.root.position).normalize();
+        const lookDir = this.lookDirection.copy(targetLookPos).sub(this.root.position).normalize();
         this.headBone.rotation.y = THREE.MathUtils.lerp(this.headBone.rotation.y, lookDir.x * 0.25, 0.05);
         this.headBone.rotation.x = THREE.MathUtils.lerp(this.headBone.rotation.x, -lookDir.y * 0.15, 0.05);
       } else {

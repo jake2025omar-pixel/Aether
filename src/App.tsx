@@ -201,6 +201,11 @@ export default function App() {
     setCompanionState('IDLE');
     setVisemeMouthOpen(0);
   }, []);
+  const currentMessages = chats[currentChatId] || [];
+  const conversationEndRef = useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    conversationEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }, [currentMessages.length]);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#06030B] text-white flex flex-col font-sans select-none">
@@ -253,6 +258,50 @@ export default function App() {
                 companionModelUrl={primaryCharacterUrl}
               />
             </div>
+
+            {currentMessages.length > 0 ? (
+              <div
+                aria-live="polite"
+                aria-label="Conversation with Aether"
+                className="relative z-20 mx-auto mb-3 flex max-h-[28vh] w-full max-w-2xl flex-col gap-2 overflow-y-auto px-4 [scrollbar-width:thin]"
+              >
+                {currentMessages.slice(-4).map((message) => (
+                  <div
+                    key={message.id}
+                    className={`max-w-[88%] rounded-2xl border px-4 py-2.5 text-sm leading-relaxed shadow-xl backdrop-blur-xl ${
+                      message.sender === 'user'
+                        ? 'self-end border-purple-300/15 bg-purple-950/65 text-white'
+                        : 'self-start border-white/10 bg-[#100b1b]/75 text-white/90'
+                    }`}
+                  >
+                    <span className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-purple-200/60">
+                      {message.sender === 'user' ? 'You' : 'Aether'}
+                    </span>
+                    <span className="whitespace-pre-wrap">{message.text}</span>
+                  </div>
+                ))}
+                <div ref={conversationEndRef} />
+              </div>
+            ) : (
+              <div className="relative z-20 mx-auto mb-3 flex w-full max-w-2xl flex-wrap justify-center gap-2 px-4">
+                <button
+                  type="button"
+                  onClick={() => handleCompanionInteraction('Introduce yourself and tell me what you can do.')}
+                  disabled={loading}
+                  className="rounded-full border border-white/10 bg-black/35 px-3.5 py-2 text-xs text-white/75 backdrop-blur-lg transition hover:border-purple-300/30 hover:bg-purple-950/50 hover:text-white disabled:opacity-50"
+                >
+                  Meet your companion
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCompanionInteraction('How are you feeling today?')}
+                  disabled={loading}
+                  className="rounded-full border border-white/10 bg-black/35 px-3.5 py-2 text-xs text-white/75 backdrop-blur-lg transition hover:border-purple-300/30 hover:bg-purple-950/50 hover:text-white disabled:opacity-50"
+                >
+                  Ask how Aether feels
+                </button>
+              </div>
+            )}
 
             {/* Bottom Floating Interaction Bar (Microphone + Text + Send) */}
             <div className="relative w-full pb-4 sm:pb-8 z-20 pointer-events-auto">
