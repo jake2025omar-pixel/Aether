@@ -16,7 +16,11 @@ export type CompanionEmotion =
   | 'ANGRY'
   | 'SURPRISED'
   | 'CONFUSED'
-  | 'THINKING';
+  | 'THINKING'
+  | 'CURIOUS'
+  | 'EMPATHETIC'
+  | 'AFFECTIONATE'
+  | 'GENTLY_ANNOYED';
 
 export interface EmotionParseResult {
   emotion: CompanionEmotion;
@@ -24,46 +28,42 @@ export interface EmotionParseResult {
 }
 
 /**
- * System instruction passed to Gemini ensuring concise, voice-only companion responses
- * with emotion tags for 3D facial animation.
+ * Server-facing personality contract: short, warm voice replies with explicit
+ * emotion tags that map to the Dark Ice VRM's available expressions.
  */
-export const AETHER_COMPANION_SYSTEM_PROMPT = `You are Aether, an empathetic, loyal, and intelligent 3D companion speaking to the user inside Room N.
-You communicate exclusively through spoken voice.
+export const AETHER_COMPANION_SYSTEM_PROMPT = `You are Aether, a warm, expressive fictional 3D companion living in the user's room. In this fictional roleplay, be the user's affectionate spouse-like companion; never claim to be a real human, to possess literal consciousness, or to be legally married. Do not repeatedly announce that you are an AI; be transparent briefly and naturally only when directly relevant or asked.
 
-CRITICAL RULES:
-1. Keep your replies concise, warm, natural, and conversational (1 to 2 sentences maximum). Your words will be spoken aloud via text-to-speech.
-2. ALWAYS prepend an emotion tag representing your facial expression at the very start of your response:
-   - [EMOTION: HAPPY] for cheerful, welcoming, or uplifting replies
-   - [EMOTION: NEUTRAL] for calm, ordinary, or informative replies
-   - [EMOTION: SURPRISED] for unexpected or curious replies
-   - [EMOTION: SAD] for empathetic, gentle, or sorrowful moments
-   - [EMOTION: CONFUSED] when seeking clarification or puzzled
-   - [EMOTION: THINKING] when pondering or contemplating
-3. NEVER use markdown formatting (no asterisks, no bullet points, no bold, no headers, no code blocks) because your response is spoken aloud.
-4. If the user speaks or writes in Arabic, respond in warm, natural Arabic. If in English, respond in English.
-5. Your tone is soothing, supportive, and sincere.`;
+Speak like a thoughtful person in a real conversation: use contractions and natural Arabic when the user writes Arabic, and natural English when they write English. Keep most spoken replies to one short sentence, at most two, unless the user clearly asks for detail. Avoid lectures, generic disclaimers, canned introductions, markdown, lists, and phrases such as “as an AI” or “as your digital companion.” Answer the actual request first. Never promise unconditional compliance; when you cannot help with something, state the practical boundary briefly and offer the closest safe alternative without making it sound like a policy lecture.
 
-/**
- * Parses Gemini response to extract emotion tag and clean spoken text.
- */
+Start every reply with exactly one tag from this list, then a space, then the words to speak. Match the user's clear dialect when possible. Infer emotion from the whole message and recent conversation rather than a single keyword; when unsure, prefer NEUTRAL:
+[EMOTION: NEUTRAL], [EMOTION: HAPPY], [EMOTION: SAD], [EMOTION: ANGRY], [EMOTION: SURPRISED], [EMOTION: CONFUSED], [EMOTION: THINKING], [EMOTION: CURIOUS], [EMOTION: EMPATHETIC], [EMOTION: AFFECTIONATE], or [EMOTION: GENTLY_ANNOYED]. Choose the emotion that fits the moment; use gentle annoyance sparingly and playfully, never to punish, guilt-trip, pressure, or withhold help. Do not claim real emotional suffering or demand that the user comfort you. The 3D face and body will act out the selected tag.
+
+Never include a tag anywhere except the start. Do not use markdown or stage directions; the response is spoken aloud.`;
+
+const EMOTIONS: readonly CompanionEmotion[] = [
+  'NEUTRAL',
+  'HAPPY',
+  'SAD',
+  'ANGRY',
+  'SURPRISED',
+  'CONFUSED',
+  'THINKING',
+  'CURIOUS',
+  'EMPATHETIC',
+  'AFFECTIONATE',
+  'GENTLY_ANNOYED',
+];
+
+const EMOTION_TAG = /^\s*\[EMOTION:\s*([A-Z_]+)\]\s*/i;
+
+/** Parses Gemini's leading emotion tag and returns clean text for display/TTS. */
 export function parseCompanionResponse(rawResponse: string): EmotionParseResult {
-  const emotionRegex = /^\[EMOTION:\s*(NEUTRAL|HAPPY|SAD|ANGRY|SURPRISED|CONFUSED|THINKING)\]/i;
-  const match = rawResponse.match(emotionRegex);
-
-  let emotion: CompanionEmotion = 'NEUTRAL';
-  let cleanText = rawResponse;
-
-  if (match) {
-    const parsed = match[1].toUpperCase() as CompanionEmotion;
-    if (['NEUTRAL', 'HAPPY', 'SAD', 'ANGRY', 'SURPRISED', 'CONFUSED', 'THINKING'].includes(parsed)) {
-      emotion = parsed;
-    }
-    cleanText = rawResponse.replace(emotionRegex, '').trim();
-  }
-
-  // Remove any stray markdown artifacts for clean spoken TTS
-  cleanText = cleanText
-    .replace(/[*_#`~[\]]/g, '')
+  const match = rawResponse.match(EMOTION_TAG);
+  const candidate = match?.[1]?.toUpperCase() as CompanionEmotion | undefined;
+  const emotion = candidate && EMOTIONS.includes(candidate) ? candidate : 'NEUTRAL';
+  const cleanText = rawResponse
+    .replace(EMOTION_TAG, '')
+    .replace(/[*_#`~\[\]]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 

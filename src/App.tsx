@@ -215,7 +215,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#06030B] text-white flex flex-col font-sans select-none">
+    <div className="aether-app-shell relative w-screen h-screen overflow-hidden bg-[#06030B] text-white flex flex-col font-sans select-none">
       {/* 0. Full-Screen 3D Room & Companion Fixed Canvas Backdrop */}
       {activeView === 'home' && (
         <div className="fixed inset-0 z-0 pointer-events-auto">

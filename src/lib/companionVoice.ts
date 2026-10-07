@@ -21,6 +21,7 @@ class CompanionVoiceService {
   private currentUtterance: SpeechSynthesisUtterance | null = null;
   private cachedVoices: SpeechSynthesisVoice[] = [];
   private currentPlaybackHandlers: VoicePlaybackHandlers | null = null;
+  private playbackId = 0;
 
   constructor() {
     this.initSpeechRecognition();
@@ -124,6 +125,8 @@ class CompanionVoiceService {
    */
   public speak(text: string, handlers: VoicePlaybackHandlers): void {
     if (!this.isSpeechSynthesisSupported() || !text.trim()) {
+      this.stopSpeaking();
+      handlers.onViseme(0);
       handlers.onEnd();
       return;
     }
@@ -137,32 +140,77 @@ class CompanionVoiceService {
     const utterance = new SpeechSynthesisUtterance(text);
     this.currentUtterance = utterance;
     utterance.lang = lang;
-    utterance.rate = isArabic ? 1.0 : 1.05;
-    utterance.pitch = 1.15; // Slightly warm, friendly pitch for companion
+    utterance.rate = isArabic ? 0.98 : 1.0;
+    utterance.pitch = 1.03;
 
-    // Select the best voice available
+    // Prefer the requested regional voice, then any voice in the right language.
     const voices = this.cachedVoices.length > 0 ? this.cachedVoices : window.speechSynthesis.getVoices();
-    const matchingVoice = voices.find((v) => v.lang.startsWith(isArabic ? 'ar' : 'en'));
+    const language = isArabic ? 'ar' : 'en';
+    const normalizedLang = lang.toLowerCase();
+    const matchingVoice = voices.find((voice) => voice.lang.toLowerCase() === normalizedLang)
+      || voices.find((voice) => voice.lang.toLowerCase().startsWith(`${language}-`))
+      || voices.find((voice) => voice.lang.toLowerCase() === language);
     if (matchingVoice) {
       utterance.voice = matchingVoice;
     }
 
+    const playbackId = ++this.playbackId;
+    const isCurrentPlayback = () => this.playbackId === playbackId && this.currentUtterance === utterance;
     this.currentPlaybackHandlers = handlers;
+    const words = text.match(/\S+/gu) || [];
+    const segments = words.map((word) => {
+      const letters = word.replace(/[^\p{L}\p{N}]/gu, '');
+      const syllables = isArabic
+        ? Math.max(1, Math.min(4, Math.ceil([...letters].length / 3)))
+        : Math.max(1, Math.min(4, (letters.match(/[aeiouy]/gi) || []).length));
+      const duration = Math.max(140, Math.min(520, 95 + syllables * 115));
+      const pause = /[.!?؟،;:]$/u.test(word) ? 180 : 45;
+      return { duration, pause, syllables };
+    });
+    let fallbackStartAt = 0;
+    const fallbackSegments = segments.map((segment) => {
+      const start = fallbackStartAt;
+      fallbackStartAt += segment.duration + segment.pause;
+      return { ...segment, start };
+    });
 
-    // Viseme simulation clock
-    let visemePhase = 0;
+    let speechStartedAt = 0;
+    let boundaryStartAt = 0;
+    let boundaryDuration = 0;
+    let boundarySyllables = 1;
+    let hasSpeechBoundary = false;
+    let completed = false;
+
+    const syllabicAperture = (progress: number, syllableCount: number): number => {
+      const clampedProgress = Math.max(0, Math.min(1, progress));
+      const syllableProgress = (clampedProgress * syllableCount) % 1;
+      const syllablePulse = Math.sin(syllableProgress * Math.PI);
+      const wordEnvelope = Math.sin(clampedProgress * Math.PI);
+      return Math.max(0, Math.min(0.72, wordEnvelope * (0.28 + syllablePulse * 0.44)));
+    };
+
     const startVisemeLoop = () => {
       if (this.visemeInterval) clearInterval(this.visemeInterval);
-
       this.visemeInterval = window.setInterval(() => {
-        visemePhase += 0.28;
-        // Realistic natural phoneme opening (syllables oscillate between 0.05 and 0.65)
-        const syllableWave = Math.sin(visemePhase);
-        const subHarmonic = Math.cos(visemePhase * 1.8);
-        const rawAperture = 0.35 + 0.32 * syllableWave * (0.75 + 0.25 * subHarmonic);
-        const mouthOpen = Math.max(0, Math.min(1, rawAperture));
-        handlers.onViseme(mouthOpen);
-      }, 50);
+        if (!isCurrentPlayback()) return;
+        const now = performance.now();
+        let progress = -1;
+        let syllables = 1;
+
+        if (hasSpeechBoundary) {
+          progress = (now - boundaryStartAt) / boundaryDuration;
+          syllables = boundarySyllables;
+        } else {
+          const elapsed = now - speechStartedAt;
+          const segment = fallbackSegments.find((item) => elapsed >= item.start && elapsed < item.start + item.duration);
+          if (segment) {
+            progress = (elapsed - segment.start) / segment.duration;
+            syllables = segment.syllables;
+          }
+        }
+
+        handlers.onViseme(progress >= 0 && progress <= 1 ? syllabicAperture(progress, syllables) : 0);
+      }, 40);
     };
 
     const stopVisemeLoop = () => {
@@ -173,24 +221,38 @@ class CompanionVoiceService {
       handlers.onViseme(0);
     };
 
+    const finishPlayback = () => {
+      if (!isCurrentPlayback() || completed) return;
+      completed = true;
+      stopVisemeLoop();
+      this.currentUtterance = null;
+      this.currentPlaybackHandlers = null;
+      handlers.onEnd();
+    };
+
     utterance.onstart = () => {
+      if (!isCurrentPlayback()) return;
+      speechStartedAt = performance.now();
       handlers.onStart();
       startVisemeLoop();
     };
 
-    utterance.onend = () => {
-      stopVisemeLoop();
-      this.currentUtterance = null;
-      handlers.onEnd();
-      this.currentPlaybackHandlers = null;
+    utterance.onboundary = (event: SpeechSynthesisEvent) => {
+      if (!isCurrentPlayback() || event.name !== 'word') return;
+      const start = Math.max(0, event.charIndex || 0);
+      const fallbackWord = text.slice(start).match(/^[^\s.,!?؟،;:]+/u)?.[0] || '';
+      const word = text.slice(start, start + (event.charLength || fallbackWord.length)) || fallbackWord;
+      const letters = word.replace(/[^\p{L}\p{N}]/gu, '');
+      boundarySyllables = isArabic
+        ? Math.max(1, Math.min(4, Math.ceil([...letters].length / 3)))
+        : Math.max(1, Math.min(4, (letters.match(/[aeiouy]/gi) || []).length));
+      boundaryDuration = Math.max(140, Math.min(520, 95 + boundarySyllables * 115));
+      boundaryStartAt = performance.now();
+      hasSpeechBoundary = true;
     };
 
-    utterance.onerror = () => {
-      stopVisemeLoop();
-      this.currentUtterance = null;
-      handlers.onEnd();
-      this.currentPlaybackHandlers = null;
-    };
+    utterance.onend = finishPlayback;
+    utterance.onerror = finishPlayback;
 
     window.speechSynthesis.speak(utterance);
   }
@@ -199,20 +261,23 @@ class CompanionVoiceService {
    * Immediately stops any active companion speech and ensures mouth returns to resting pose
    */
   public stopSpeaking(): void {
+    this.playbackId += 1;
     if (this.visemeInterval) {
       clearInterval(this.visemeInterval);
       this.visemeInterval = null;
     }
 
+    const handlers = this.currentPlaybackHandlers;
+    this.currentUtterance = null;
+    this.currentPlaybackHandlers = null;
+
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
-    this.currentUtterance = null;
 
-    if (this.currentPlaybackHandlers) {
-      this.currentPlaybackHandlers.onViseme(0);
-      this.currentPlaybackHandlers.onEnd();
-      this.currentPlaybackHandlers = null;
+    if (handlers) {
+      handlers.onViseme(0);
+      handlers.onEnd();
     }
   }
 }

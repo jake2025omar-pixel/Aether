@@ -6,23 +6,25 @@ import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
+const PRIMARY_GEMINI_MODEL = 'gemini-flash-latest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
+const trustedProxyHops = Number.parseInt(process.env.TRUST_PROXY_HOPS || '', 10);
+if (Number.isInteger(trustedProxyHops) && trustedProxyHops > 0 && trustedProxyHops <= 5) {
+  app.set('trust proxy', trustedProxyHops);
+}
 
 // Security: Disable express fingerprinting
 app.disable('x-powered-by');
 
-// Security: Basic security headers & CORS
+// Security headers. The website calls its API same-origin; do not expose the AI proxy to arbitrary origins.
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-gemini-api-key');
 
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
@@ -82,13 +84,13 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     hasApiKey: !!process.env.GEMINI_API_KEY,
-    model: 'gemini-flash-latest',
+    model: PRIMARY_GEMINI_MODEL,
   });
 });
 
 // Streaming Chat API endpoint
 app.post('/api/chat', async (req, res) => {
-  const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
 
   if (isRateLimited(clientIp)) {
     return res.status(429).json({
@@ -119,16 +121,24 @@ app.post('/api/chat', async (req, res) => {
       }))
     : [];
 
+  const providerAbortController = new AbortController();
   let isClientDisconnected = false;
-  req.on('close', () => {
+  req.once('aborted', () => {
     isClientDisconnected = true;
+    providerAbortController.abort();
+  });
+  res.once('close', () => {
+    if (!res.writableEnded) {
+      isClientDisconnected = true;
+      providerAbortController.abort();
+    }
   });
 
   // Candidate models in priority order: start with fast, available flash models
   const CANDIDATE_MODELS = [
+    PRIMARY_GEMINI_MODEL,
     'gemini-3.1-flash-lite',
     'gemini-3.8-flash',
-    'gemini-flash-latest',
     'gemini-2.5-flash-lite',
     'gemini-2.5-flash',
   ];
@@ -156,9 +166,8 @@ Provide concise, accurate, and practical answers. Use clean formatting and code 
     },
   ];
 
-  // Request-specific or server client
-  const clientKey = (req.headers['x-gemini-api-key'] as string) || apiKey;
-  if (!clientKey) {
+  // The Gemini credential must come only from the server environment, never from a browser header.
+  if (!apiKey || !ai) {
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -173,10 +182,7 @@ Provide concise, accurate, and practical answers. Use clean formatting and code 
     }
   }
 
-  const clientAi = clientKey === apiKey && ai ? ai : new GoogleGenAI({
-    apiKey: clientKey,
-    httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-  });
+  const clientAi = ai;
 
   if (stream) {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -193,6 +199,7 @@ Provide concise, accurate, and practical answers. Use clean formatting and code 
           config: {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
+            abortSignal: providerAbortController.signal,
           },
         });
 
@@ -230,6 +237,7 @@ Provide concise, accurate, and practical answers. Use clean formatting and code 
           config: {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
+            abortSignal: providerAbortController.signal,
           },
         });
 

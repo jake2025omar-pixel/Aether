@@ -22,20 +22,21 @@ export interface Load3DResult {
 export function dispose3DResource(root: THREE.Object3D | null | undefined): void {
   if (!root) return;
 
+  const disposedGeometries = new Set<THREE.BufferGeometry>();
+  const disposedMaterials = new Set<THREE.Material>();
   root.traverse((obj) => {
-    if ((obj as THREE.Mesh).isMesh) {
-      const mesh = obj as THREE.Mesh;
+    if (!('geometry' in obj)) return;
+    const renderable = obj as THREE.Mesh | THREE.Line | THREE.Points;
+    if (renderable.geometry && !disposedGeometries.has(renderable.geometry)) {
+      disposedGeometries.add(renderable.geometry);
+      renderable.geometry.dispose();
+    }
 
-      if (mesh.geometry) {
-        mesh.geometry.dispose();
-      }
-
-      if (mesh.material) {
-        if (Array.isArray(mesh.material)) {
-          mesh.material.forEach((mat) => disposeMaterial(mat));
-        } else {
-          disposeMaterial(mesh.material);
-        }
+    const materials = Array.isArray(renderable.material) ? renderable.material : [renderable.material];
+    for (const material of materials) {
+      if (material && !disposedMaterials.has(material)) {
+        disposedMaterials.add(material);
+        disposeMaterial(material);
       }
     }
   });
@@ -112,10 +113,37 @@ export function calculateSceneMetrics(scene: THREE.Object3D): {
  */
 export async function loadWeb3DAsset(
   source: string | ArrayBuffer,
-  isVrmHint: boolean = false
+  isVrmHint: boolean = false,
+  signal?: AbortSignal
 ): Promise<Load3DResult> {
   return new Promise((resolve) => {
-    const loader = new GLTFLoader();
+    const manager = new THREE.LoadingManager();
+    const loader = new GLTFLoader(manager);
+    let settled = false;
+
+    const complete = (result: Load3DResult) => {
+      if (settled) {
+        if (result.success) dispose3DResource(result.vrm?.scene || result.scene);
+        return;
+      }
+      settled = true;
+      signal?.removeEventListener('abort', onAbort);
+      resolve(result);
+    };
+
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', onAbort);
+      manager.abort();
+      resolve({ success: false, error: '3D asset loading was aborted.' });
+    };
+
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
 
     // Register VRM Plugin if file is or might be VRM
     loader.register((parser) => new VRMLoaderPlugin(parser));
@@ -123,10 +151,14 @@ export async function loadWeb3DAsset(
     const onLoad = (gltf: any) => {
       try {
         const vrm: VRM | undefined = gltf.userData?.vrm;
+        const scene: THREE.Object3D = vrm ? vrm.scene : gltf.scene;
+        if (settled || signal?.aborted) {
+          dispose3DResource(scene);
+          return;
+        }
         if (vrm) {
           VRMUtils.rotateVRM0(vrm);
         }
-        const scene: THREE.Object3D = vrm ? vrm.scene : gltf.scene;
 
         // Ensure shadow receiving and casting
         scene.traverse((obj) => {
@@ -139,7 +171,7 @@ export async function loadWeb3DAsset(
         // Compute metrics
         const stats = calculateSceneMetrics(scene);
 
-        resolve({
+        complete({
           success: true,
           scene,
           vrm,
@@ -147,7 +179,7 @@ export async function loadWeb3DAsset(
         });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Unknown scene extraction error';
-        resolve({
+        complete({
           success: false,
           error: `Failed to initialize scene hierarchy: ${message}`,
         });
@@ -156,7 +188,7 @@ export async function loadWeb3DAsset(
 
     const onError = (err: unknown) => {
       const message = err instanceof Error ? err.message : String(err || 'Failed to load model');
-      resolve({
+      complete({
         success: false,
         error: `3D Loader error: ${message}`,
       });
@@ -164,13 +196,28 @@ export async function loadWeb3DAsset(
 
     try {
       if (typeof source === 'string') {
-        loader.load(source, onLoad, undefined, onError);
+        const resolvedUrl = new URL(source, typeof document !== 'undefined' ? document.baseURI : undefined);
+        const resourcePath = resolvedUrl.href.startsWith('data:')
+          ? ''
+          : resolvedUrl.href.slice(0, resolvedUrl.href.lastIndexOf('/') + 1);
+        fetch(resolvedUrl.href, { signal })
+          .then((response) => {
+            if (!response.ok && response.status !== 0) {
+              throw new Error(`Asset request failed with HTTP ${response.status}.`);
+            }
+            return response.arrayBuffer();
+          })
+          .then((data) => {
+            if (settled || signal?.aborted) return;
+            loader.parse(data, resourcePath, onLoad, onError);
+          })
+          .catch(onError);
       } else {
         loader.parse(source, '', onLoad, onError);
       }
     } catch (parseErr: unknown) {
       const message = parseErr instanceof Error ? parseErr.message : 'Parser crash';
-      resolve({
+      complete({
         success: false,
         error: `Critical loader fault: ${message}`,
       });

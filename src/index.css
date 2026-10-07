@@ -38,6 +38,16 @@
   }
 }
 
+.aether-room-stage {
+  height: 100vh;
+}
+
+@supports (height: 100svh) {
+  .aether-room-stage {
+    height: 100svh;
+  }
+}
+
 /* Glassmorphism & Crystal Surface utility classes */
 .crystal-surface {
   background: var(--aether-glass-base);

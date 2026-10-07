@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { VRM } from '@pixiv/three-vrm';
-import { CompanionEmotion } from '../../lib/companionPersonality';
+import { CompanionEmotion, CompanionState } from '../../lib/companionPersonality';
 import { dispose3DResource } from '@/Aether/3D/Preview/AssetPreviewLoader';
 
 export class CompanionRig {
@@ -17,12 +17,37 @@ export class CompanionRig {
   private rightEyebrow: THREE.Mesh | null = null;
   private mouthMesh: THREE.Mesh | null = null;
   private crystalCore: THREE.Mesh | null = null;
+  private proceduralLeftArm: THREE.Mesh | null = null;
+  private proceduralRightArm: THREE.Mesh | null = null;
+  private vrmHeadBone: THREE.Object3D | null = null;
+  private vrmSpineBone: THREE.Object3D | null = null;
+  private vrmLeftUpperArm: THREE.Object3D | null = null;
+  private vrmRightUpperArm: THREE.Object3D | null = null;
+  private readonly vrmHeadRest = new THREE.Euler();
+  private readonly vrmSpineRest = new THREE.Euler();
+  private readonly leftArmRest = new THREE.Euler();
+  private readonly rightArmRest = new THREE.Euler();
+  private readonly lookDirection = new THREE.Vector3();
+  private targetLeftBrowRotation = 0;
+  private targetRightBrowRotation = 0;
+  private targetLeftBrowHeight = 0.05;
+  private targetRightBrowHeight = 0.05;
 
   // Animation states
   private currentEmotion: CompanionEmotion = 'NEUTRAL';
-  private targetViseme: number = 0; // 0 (closed) to 1 (wide open)
+  private currentState: CompanionState = 'IDLE';
+  private motionEnabled = true;
+  private gestureTime = 1;
+  private targetViseme: number = 0; // 0 (closed) to 1 (open)
   private displayedViseme: number = 0; // Smoothly damped mouth aperture
   private activeEmotionVrmPreset: string = 'relaxed';
+  private readonly emotionWeights: Record<string, number> = {
+    happy: 0,
+    angry: 0,
+    sad: 0,
+    relaxed: 0,
+    surprised: 0,
+  };
   private blinkTimer: number = 0;
   private nextBlinkTime: number = 3.5;
   private isBlinking: boolean = false;
@@ -35,6 +60,10 @@ export class CompanionRig {
       this.vrmInstance = vrm;
       this.isVrm = true;
       this.root.add(vrm.scene);
+      this.vrmHeadBone = vrm.humanoid?.getNormalizedBoneNode('head') || null;
+      this.vrmSpineBone = vrm.humanoid?.getNormalizedBoneNode('spine') || null;
+      if (this.vrmHeadBone) this.vrmHeadRest.copy(this.vrmHeadBone.rotation);
+      if (this.vrmSpineBone) this.vrmSpineRest.copy(this.vrmSpineBone.rotation);
       this.applyNaturalVrmRestPose(vrm);
     } else {
       this.buildProceduralHumanoidRig();
@@ -56,9 +85,13 @@ export class CompanionRig {
     // Natural companion idle stance: arms relaxed along body sides
     if (leftUpperArm) {
       leftUpperArm.rotation.set(0.12, 0.05, -1.25);
+      this.vrmLeftUpperArm = leftUpperArm;
+      this.leftArmRest.copy(leftUpperArm.rotation);
     }
     if (rightUpperArm) {
       rightUpperArm.rotation.set(0.12, -0.05, 1.25);
+      this.vrmRightUpperArm = rightUpperArm;
+      this.rightArmRest.copy(rightUpperArm.rotation);
     }
     if (leftLowerArm) {
       leftLowerArm.rotation.set(0, -0.15, -0.12);
@@ -238,11 +271,15 @@ export class CompanionRig {
     leftArm.position.set(-0.19, 0.05, 0);
     leftArm.rotation.z = -0.15;
     chest.add(leftArm);
+    this.proceduralLeftArm = leftArm;
+    this.leftArmRest.copy(leftArm.rotation);
 
     const rightArm = new THREE.Mesh(armGeo, outfitMat);
     rightArm.position.set(0.19, 0.05, 0);
     rightArm.rotation.z = 0.15;
     chest.add(rightArm);
+    this.proceduralRightArm = rightArm;
+    this.rightArmRest.copy(rightArm.rotation);
 
     // Floor Pedestal Ring (Ground Anchor at Y = 0)
     const pedestalGeo = new THREE.RingGeometry(0.42, 0.45, 32);
@@ -267,6 +304,10 @@ export class CompanionRig {
       SURPRISED: 'surprised',
       CONFUSED: 'surprised',
       THINKING: 'relaxed',
+      CURIOUS: 'surprised',
+      EMPATHETIC: 'sad',
+      AFFECTIONATE: 'happy',
+      GENTLY_ANNOYED: 'angry',
     };
     this.activeEmotionVrmPreset = vrmMap[emotion] || 'relaxed';
 
@@ -274,40 +315,66 @@ export class CompanionRig {
     if (this.leftEyebrow && this.rightEyebrow) {
       switch (emotion) {
         case 'HAPPY':
-          this.leftEyebrow.rotation.z = -0.15;
-          this.rightEyebrow.rotation.z = 0.15;
-          this.leftEyebrow.position.y = 0.055;
-          this.rightEyebrow.position.y = 0.055;
+        case 'AFFECTIONATE':
+          this.targetLeftBrowRotation = -0.15;
+          this.targetRightBrowRotation = 0.15;
+          this.targetLeftBrowHeight = 0.055;
+          this.targetRightBrowHeight = 0.055;
           break;
         case 'SAD':
-          this.leftEyebrow.rotation.z = 0.2;
-          this.rightEyebrow.rotation.z = -0.2;
-          this.leftEyebrow.position.y = 0.045;
-          this.rightEyebrow.position.y = 0.045;
+        case 'EMPATHETIC':
+          this.targetLeftBrowRotation = 0.2;
+          this.targetRightBrowRotation = -0.2;
+          this.targetLeftBrowHeight = 0.045;
+          this.targetRightBrowHeight = 0.045;
           break;
         case 'SURPRISED':
-          this.leftEyebrow.rotation.z = 0;
-          this.rightEyebrow.rotation.z = 0;
-          this.leftEyebrow.position.y = 0.065;
-          this.rightEyebrow.position.y = 0.065;
+        case 'CURIOUS':
+          this.targetLeftBrowRotation = 0;
+          this.targetRightBrowRotation = 0;
+          this.targetLeftBrowHeight = 0.065;
+          this.targetRightBrowHeight = 0.065;
           break;
         case 'ANGRY':
-          this.leftEyebrow.rotation.z = 0.25;
-          this.rightEyebrow.rotation.z = -0.25;
-          this.leftEyebrow.position.y = 0.042;
-          this.rightEyebrow.position.y = 0.042;
+        case 'GENTLY_ANNOYED':
+          this.targetLeftBrowRotation = 0.25;
+          this.targetRightBrowRotation = -0.25;
+          this.targetLeftBrowHeight = 0.042;
+          this.targetRightBrowHeight = 0.042;
           break;
         case 'CONFUSED':
         case 'THINKING':
-          this.leftEyebrow.rotation.z = -0.25;
-          this.rightEyebrow.rotation.z = 0.05;
+          this.targetLeftBrowRotation = -0.25;
+          this.targetRightBrowRotation = 0.05;
+          this.targetLeftBrowHeight = 0.05;
+          this.targetRightBrowHeight = 0.05;
           break;
         default:
-          this.leftEyebrow.rotation.z = 0;
-          this.rightEyebrow.rotation.z = 0;
-          this.leftEyebrow.position.y = 0.05;
-          this.rightEyebrow.position.y = 0.05;
+          this.targetLeftBrowRotation = 0;
+          this.targetRightBrowRotation = 0;
+          this.targetLeftBrowHeight = 0.05;
+          this.targetRightBrowHeight = 0.05;
           break;
+      }
+    }
+  }
+
+  public setState(state: CompanionState): void {
+    if (state === this.currentState) return;
+    this.currentState = state;
+    this.gestureTime = state === 'SPEAKING' || state === 'LISTENING' ? 0 : 1;
+  }
+
+  public setMotionEnabled(enabled: boolean): void {
+    this.motionEnabled = enabled;
+    if (!enabled) {
+      this.gestureTime = 1;
+      this.blinkTimer = 0;
+      this.isBlinking = false;
+      if (this.leftEye) this.leftEye.scale.y = 1;
+      if (this.rightEye) this.rightEye.scale.y = 1;
+      if (this.isVrm && this.vrmInstance?.expressionManager) {
+        this.vrmInstance.expressionManager.setValue('blink', 0);
       }
     }
   }
@@ -334,130 +401,177 @@ export class CompanionRig {
 
   /**
    * Updates idle breathing, eye blinking, lookAt tracking, and expressions every frame
-   */
+  */
   public update(delta: number, elapsedTime: number, targetLookPos?: THREE.Vector3): void {
-    // 1. Smoothly interpolate displayed mouth viseme
-    this.displayedViseme = THREE.MathUtils.damp(this.displayedViseme, this.targetViseme, 22, delta);
-    if (this.targetViseme === 0 && this.displayedViseme < 0.005) {
-      this.displayedViseme = 0;
+    const frameDelta = Math.min(Math.max(delta, 0), 0.05);
+    const motion = this.motionEnabled ? 1 : 0;
+    const breath = Math.sin(elapsedTime * 1.6) * 0.012 * motion;
+
+    this.displayedViseme = THREE.MathUtils.damp(this.displayedViseme, this.targetViseme, 18, frameDelta);
+    if (this.targetViseme === 0 && this.displayedViseme < 0.005) this.displayedViseme = 0;
+
+    if (this.currentState === 'SPEAKING' || this.currentState === 'LISTENING') {
+      this.gestureTime += frameDelta;
+    } else {
+      this.gestureTime = 1;
     }
+    const gestureProgress = Math.min(this.gestureTime / 0.72, 1);
+    const gesturePulse = Math.sin(gestureProgress * Math.PI) * (1 - gestureProgress) * motion;
+
+    const lookDir = targetLookPos
+      ? this.lookDirection.copy(targetLookPos).sub(this.root.position).normalize()
+      : null;
+    const lookYaw = motion
+      ? (lookDir ? THREE.MathUtils.clamp(lookDir.x * 0.16, -0.12, 0.12) : Math.sin(elapsedTime * 0.55) * 0.025)
+      : 0;
+    const lookPitch = motion && lookDir ? THREE.MathUtils.clamp(-lookDir.y * 0.08, -0.08, 0.08) : 0;
+    const stateTilt = this.currentState === 'LISTENING' ? 0.045 : 0;
+    const emotionTilt = this.currentEmotion === 'CURIOUS' || this.currentEmotion === 'CONFUSED'
+      ? -0.055
+      : this.currentEmotion === 'SAD' || this.currentEmotion === 'EMPATHETIC'
+        ? 0.025
+        : this.currentEmotion === 'GENTLY_ANNOYED'
+          ? -0.025
+          : 0;
 
     if (this.isVrm && this.vrmInstance) {
-      this.vrmInstance.update(delta);
+      if (this.motionEnabled) {
+        this.vrmInstance.update(frameDelta);
+      } else {
+        // Preserve expressions and lip sync without advancing look-at or spring-bone physics.
+        this.vrmInstance.expressionManager?.update();
+      }
 
-      if (this.vrmInstance.expressionManager) {
-        const manager = this.vrmInstance.expressionManager;
-
-        // Dedicated single-channel mouth speech (aa):
-        // Capped at 0.42 to ensure lips stay firmly attached and never tear or expose dark void
-        const safeMouthAperture = this.displayedViseme * 0.42;
-        manager.setValue('aa', safeMouthAperture);
+      const manager = this.vrmInstance.expressionManager;
+      if (manager) {
+        // Dark Ice maps aa to Fcl_MTH_A; a conservative single-channel value avoids extreme mouth deformation.
+        manager.setValue('aa', Math.min(0.18, this.displayedViseme * 0.2));
         manager.setValue('oh', 0);
         manager.setValue('ih', 0);
         manager.setValue('ou', 0);
         manager.setValue('ee', 0);
 
-        // Emotion mouth decoupling:
-        // Whole-face emotion presets (happy, relaxed, surprised) contain built-in mouth smiles/curves.
-        // As the speech viseme opens, we smoothly attenuate the emotion weight on the mouth
-        // so mouth shapes NEVER compound additively or exceed the natural biological range.
-        const emotions = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
-        const speechSuppression = Math.max(0, 1.0 - this.displayedViseme * 0.85);
-        const targetEmotionWeight = 0.55 * speechSuppression;
-
-        for (const e of emotions) {
-          if (e === this.activeEmotionVrmPreset) {
-            manager.setValue(e, targetEmotionWeight);
-          } else {
-            manager.setValue(e, 0);
-          }
+        const speechSuppression = Math.max(0.42, 1 - this.displayedViseme * 0.9);
+        const emotionBase = this.currentEmotion === 'NEUTRAL' ? 0.18
+          : this.currentEmotion === 'GENTLY_ANNOYED' ? 0.2 : 0.34;
+        for (const preset of Object.keys(this.emotionWeights)) {
+          const targetWeight = preset === this.activeEmotionVrmPreset ? emotionBase * speechSuppression : 0;
+          const weight = THREE.MathUtils.damp(this.emotionWeights[preset], targetWeight, 5.5, frameDelta);
+          this.emotionWeights[preset] = weight;
+          manager.setValue(preset, weight);
         }
       }
 
-      const spineNode = this.vrmInstance.humanoid?.getNormalizedBoneNode('spine');
-      const headNode = this.vrmInstance.humanoid?.getNormalizedBoneNode('head');
-      const breathOffset = Math.sin(elapsedTime * 1.6) * 0.015;
-
-      if (spineNode) {
-        spineNode.rotation.x = breathOffset;
+      if (this.vrmSpineBone) {
+        const lean = this.currentState === 'LISTENING' ? 0.018 : 0;
+        this.vrmSpineBone.rotation.x = THREE.MathUtils.damp(
+          this.vrmSpineBone.rotation.x,
+          this.vrmSpineRest.x + breath + lean * motion,
+          3.5,
+          frameDelta
+        );
       }
 
-      if (headNode && targetLookPos) {
-        const lookDir = targetLookPos.clone().sub(this.root.position).normalize();
-        headNode.rotation.y = THREE.MathUtils.lerp(headNode.rotation.y, lookDir.x * 0.22, 0.04);
-        headNode.rotation.x = THREE.MathUtils.lerp(headNode.rotation.x, -lookDir.y * 0.12, 0.04);
+      if (this.vrmHeadBone) {
+        const thinkingTilt = this.currentEmotion === 'THINKING' ? -0.07 : 0;
+        this.vrmHeadBone.rotation.x = THREE.MathUtils.damp(
+          this.vrmHeadBone.rotation.x,
+          this.vrmHeadRest.x + lookPitch + thinkingTilt * motion + gesturePulse * 0.035,
+          4.5,
+          frameDelta
+        );
+        this.vrmHeadBone.rotation.y = THREE.MathUtils.damp(
+          this.vrmHeadBone.rotation.y,
+          this.vrmHeadRest.y + lookYaw + (this.currentEmotion === 'THINKING' ? 0.08 * motion : 0),
+          4,
+          frameDelta
+        );
+        this.vrmHeadBone.rotation.z = THREE.MathUtils.damp(
+          this.vrmHeadBone.rotation.z,
+          this.vrmHeadRest.z + (stateTilt + emotionTilt) * motion,
+          3.5,
+          frameDelta
+        );
+      }
+
+      const armGesture = gesturePulse * (this.currentState === 'SPEAKING' ? 0.065 : 0.035);
+      if (this.vrmRightUpperArm) {
+        this.vrmRightUpperArm.rotation.copy(this.rightArmRest);
+        this.vrmRightUpperArm.rotation.x += armGesture;
+      }
+      if (this.vrmLeftUpperArm) {
+        this.vrmLeftUpperArm.rotation.copy(this.leftArmRest);
+        this.vrmLeftUpperArm.rotation.x -= armGesture * 0.35;
       }
     }
 
-    // Procedural fallback mouth scaling
     if (this.mouthMesh) {
-      const scaleY = 1.0 + this.displayedViseme * 1.5;
-      const scaleX = 1.0 + this.displayedViseme * 0.2;
-      this.mouthMesh.scale.set(scaleX, scaleY, 1.0);
+      this.mouthMesh.scale.set(1 + this.displayedViseme * 0.2, 1 + this.displayedViseme * 1.2, 1);
     }
-
-    // 1. Natural Sinusoidal Idle Breathing (Chest & Spine)
-    const breathRate = 1.6;
-    const breathOffset = Math.sin(elapsedTime * breathRate) * 0.015;
-
     if (this.chestBone) {
-      this.chestBone.position.y = 0.22 + breathOffset;
-      this.chestBone.rotation.x = Math.sin(elapsedTime * breathRate) * 0.015;
+      this.chestBone.position.y = 0.22 + breath;
+      this.chestBone.rotation.x = breath * 0.8;
     }
-
-    // 2. Idle Head Sway and Look-At Tracking
     if (this.headBone) {
-      if (this.currentEmotion === 'THINKING') {
-        this.headBone.rotation.x = -0.1;
-        this.headBone.rotation.y = 0.15;
-      } else if (targetLookPos) {
-        // Soft head track towards target
-        const lookDir = targetLookPos.clone().sub(this.root.position).normalize();
-        this.headBone.rotation.y = THREE.MathUtils.lerp(this.headBone.rotation.y, lookDir.x * 0.25, 0.05);
-        this.headBone.rotation.x = THREE.MathUtils.lerp(this.headBone.rotation.x, -lookDir.y * 0.15, 0.05);
-      } else {
-        this.headBone.rotation.y = Math.sin(elapsedTime * 0.8) * 0.03;
-        this.headBone.rotation.z = Math.cos(elapsedTime * 0.5) * 0.01;
-      }
+      this.headBone.rotation.x = THREE.MathUtils.damp(
+        this.headBone.rotation.x,
+        lookPitch + (this.currentEmotion === 'THINKING' ? -0.07 * motion : 0) + gesturePulse * 0.035,
+        4.5,
+        frameDelta
+      );
+      this.headBone.rotation.y = THREE.MathUtils.damp(this.headBone.rotation.y, lookYaw, 4, frameDelta);
+      this.headBone.rotation.z = THREE.MathUtils.damp(
+        this.headBone.rotation.z,
+        (stateTilt + emotionTilt) * motion,
+        3.5,
+        frameDelta
+      );
+    }
+    if (this.leftEyebrow && this.rightEyebrow) {
+      this.leftEyebrow.rotation.z = THREE.MathUtils.damp(this.leftEyebrow.rotation.z, this.targetLeftBrowRotation, 7, frameDelta);
+      this.rightEyebrow.rotation.z = THREE.MathUtils.damp(this.rightEyebrow.rotation.z, this.targetRightBrowRotation, 7, frameDelta);
+      this.leftEyebrow.position.y = THREE.MathUtils.damp(this.leftEyebrow.position.y, this.targetLeftBrowHeight, 7, frameDelta);
+      this.rightEyebrow.position.y = THREE.MathUtils.damp(this.rightEyebrow.position.y, this.targetRightBrowHeight, 7, frameDelta);
+    }
+    if (!this.isVrm) {
+      const armGesture = gesturePulse * (this.currentState === 'SPEAKING' ? 0.08 : 0.04);
+      if (this.proceduralRightArm) this.proceduralRightArm.rotation.z = this.rightArmRest.z + armGesture;
+      if (this.proceduralLeftArm) this.proceduralLeftArm.rotation.z = this.leftArmRest.z - armGesture * 0.35;
     }
 
-    // 3. Crystal Core Pulse
     if (this.crystalCore) {
-      this.crystalCore.rotation.y += delta * 1.5;
-      const pulseScale = 1.0 + Math.sin(elapsedTime * 3.0) * 0.08;
-      this.crystalCore.scale.set(pulseScale, pulseScale, pulseScale);
+      this.crystalCore.rotation.y += frameDelta * 1.2 * motion;
+      const pulseScale = 1 + Math.sin(elapsedTime * 2.4) * 0.045 * motion;
+      this.crystalCore.scale.setScalar(pulseScale);
     }
 
-    // 4. Random Human Eye Blinking Cycle
-    this.blinkTimer += delta;
-    if (!this.isBlinking && this.blinkTimer >= this.nextBlinkTime) {
-      this.isBlinking = true;
-      this.blinkProgress = 0;
-      this.blinkTimer = 0;
-      this.nextBlinkTime = 2.5 + Math.random() * 3.0; // Next blink in 2.5 to 5.5s
-    }
-
-    if (this.isBlinking) {
-      this.blinkProgress += delta * 8.0; // Fast 120ms blink duration
-      const blinkScaleY = Math.max(0.08, Math.abs(Math.cos(this.blinkProgress * Math.PI)));
-
-      if (this.leftEye && this.rightEye) {
-        this.leftEye.scale.y = blinkScaleY;
-        this.rightEye.scale.y = blinkScaleY;
+    if (this.motionEnabled) {
+      this.blinkTimer += frameDelta;
+      if (!this.isBlinking && this.blinkTimer >= this.nextBlinkTime) {
+        this.isBlinking = true;
+        this.blinkProgress = 0;
+        this.blinkTimer = 0;
+        this.nextBlinkTime = 2.8 + Math.random() * 3.2;
       }
-
-      if (this.isVrm && this.vrmInstance?.expressionManager) {
-        this.vrmInstance.expressionManager.setValue('blink', 1.0 - blinkScaleY);
-      }
-
-      if (this.blinkProgress >= 1.0) {
-        this.isBlinking = false;
+      if (this.isBlinking) {
+        this.blinkProgress += frameDelta * 8;
+        const blinkScaleY = Math.max(0.08, Math.abs(Math.cos(this.blinkProgress * Math.PI)));
         if (this.leftEye && this.rightEye) {
-          this.leftEye.scale.y = 1.0;
-          this.rightEye.scale.y = 1.0;
+          this.leftEye.scale.y = blinkScaleY;
+          this.rightEye.scale.y = blinkScaleY;
         }
         if (this.isVrm && this.vrmInstance?.expressionManager) {
-          this.vrmInstance.expressionManager.setValue('blink', 0);
+          this.vrmInstance.expressionManager.setValue('blink', 1 - blinkScaleY);
+        }
+        if (this.blinkProgress >= 1) {
+          this.isBlinking = false;
+          if (this.leftEye && this.rightEye) {
+            this.leftEye.scale.y = 1;
+            this.rightEye.scale.y = 1;
+          }
+          if (this.isVrm && this.vrmInstance?.expressionManager) {
+            this.vrmInstance.expressionManager.setValue('blink', 0);
+          }
         }
       }
     }

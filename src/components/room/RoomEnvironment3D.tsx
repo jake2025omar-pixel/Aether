@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CompanionRig } from './CompanionRig';
 import { CompanionState, CompanionEmotion } from '../../lib/companionPersonality';
-import { loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
+import { dispose3DResource, loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
 import { Mic, Volume2, Sparkles, Brain } from 'lucide-react';
 
 export interface RoomEnvironment3DProps {
@@ -105,7 +105,15 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   const companionRigRef = useRef<CompanionRig | null>(null);
   const floorGlowRef = useRef<THREE.PointLight | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
+  const stateRef = useRef(companionState);
+  const emotionRef = useRef(companionEmotion);
+  const visemeRef = useRef(visemeMouthOpen);
+  const motionEnabledRef = useRef(true);
   const targetLookPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.45, 3.4));
+
+  stateRef.current = companionState;
+  emotionRef.current = companionEmotion;
+  visemeRef.current = visemeMouthOpen;
 
   // Sync Emotion & Visemes to 3D Companion Rig
   useEffect(() => {
@@ -119,6 +127,24 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       companionRigRef.current.setViseme(visemeMouthOpen);
     }
   }, [visemeMouthOpen]);
+
+  useEffect(() => {
+    if (companionRigRef.current) {
+      companionRigRef.current.setState(companionState);
+    }
+  }, [companionState]);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const syncMotionPreference = () => {
+      motionEnabledRef.current = !preference.matches;
+      companionRigRef.current?.setMotionEnabled(motionEnabledRef.current);
+    };
+    syncMotionPreference();
+    preference.addEventListener('change', syncMotionPreference);
+    return () => preference.removeEventListener('change', syncMotionPreference);
+  }, []);
 
   // Main 3D Room & Companion Scene Setup
   useEffect(() => {
@@ -160,7 +186,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     renderer.domElement.style.top = '0';
     renderer.domElement.style.left = '0';
     renderer.domElement.style.width = '100vw';
-    renderer.domElement.style.height = '100vh';
+    renderer.domElement.style.height = '100svh';
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.pointerEvents = 'auto';
 
@@ -222,10 +248,12 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     const particleCount = 65;
     const particleGeo = new THREE.BufferGeometry();
     const particlePositions = new Float32Array(particleCount * 3);
+    const particleBaseY = new Float32Array(particleCount);
     const particleSpeeds = new Float32Array(particleCount);
     for (let i = 0; i < particleCount; i++) {
       particlePositions[i * 3] = (Math.random() - 0.5) * 8.0;
       particlePositions[i * 3 + 1] = 0.2 + Math.random() * 2.8;
+      particleBaseY[i] = particlePositions[i * 3 + 1];
       particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 5.5 - 0.4;
       particleSpeeds[i] = 0.3 + Math.random() * 0.7;
     }
@@ -246,10 +274,17 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     // 6. Real room conversion fallback handler
     let isCancelled = false;
+    const roomLoadController = new AbortController();
+    const companionLoadController = new AbortController();
     if (roomModelUrl) {
-      loadWeb3DAsset(roomModelUrl).then((res) => {
-        if (isCancelled || !res.success || !res.scene) return;
+      loadWeb3DAsset(roomModelUrl, false, roomLoadController.signal).then((res) => {
+        if (isCancelled) {
+          if (res.scene) dispose3DResource(res.scene);
+          return;
+        }
+        if (!res.success || !res.scene) return;
         scene.remove(roomGroup);
+        dispose3DResource(roomGroup);
         res.scene.name = 'NeonWorld3Runtime';
         scene.add(res.scene);
       });
@@ -261,13 +296,18 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       const rig = new CompanionRig(null);
       companionRigRef.current = rig;
       scene.add(rig.root);
-      rig.setEmotion(companionEmotion);
-      rig.setViseme(visemeMouthOpen);
-    };
+      rig.setEmotion(emotionRef.current);
+      rig.setViseme(visemeRef.current);
+      rig.setState(stateRef.current);
+      rig.setMotionEnabled(motionEnabledRef.current);
+    }
 
     if (companionModelUrl) {
-      loadWeb3DAsset(companionModelUrl, true).then((res) => {
-        if (isCancelled) return;
+      loadWeb3DAsset(companionModelUrl, true, companionLoadController.signal).then((res) => {
+        if (isCancelled) {
+          if (res.vrm?.scene || res.scene) dispose3DResource(res.vrm?.scene || res.scene);
+          return;
+        }
         if (!res.success || !res.vrm) {
           console.warn('[Room3D] Companion load failed, using procedural rig:', res.error);
           mountFallbackRig();
@@ -280,8 +320,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         const rig = new CompanionRig(res.vrm);
         companionRigRef.current = rig;
         scene.add(rig.root);
-        rig.setEmotion(companionEmotion);
-        rig.setViseme(visemeMouthOpen);
+        rig.setEmotion(emotionRef.current);
+        rig.setViseme(visemeRef.current);
+        rig.setState(stateRef.current);
+        rig.setMotionEnabled(motionEnabledRef.current);
       }).catch((err) => {
         console.warn('[Room3D] Companion model load exception:', err);
         mountFallbackRig();
@@ -361,6 +403,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     // 9. Animation Loop
     const clock = new THREE.Clock();
+    let wasMotionEnabled = true;
     const animate = () => {
       animFrameIdRef.current = requestAnimationFrame(animate);
       const delta = clock.getDelta();
@@ -387,17 +430,23 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       }
 
       // Atmospheric floor light pulse
+      const motionEnabled = motionEnabledRef.current;
       if (floorGlowRef.current) {
-        floorGlowRef.current.intensity = 2.0 + Math.sin(elapsed * 2.2) * 0.4;
+        floorGlowRef.current.intensity = motionEnabled ? 2.0 + Math.sin(elapsed * 2.2) * 0.4 : 2.0;
       }
 
-      // Gentle floating particle drift
-      const positions = particleGeo.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i < particleCount; i++) {
-        const py = positions.getY(i) + Math.sin(elapsed * particleSpeeds[i] + i) * 0.0012;
-        positions.setY(i, py);
+      // Keep atmospheric particles still for reduced-motion preferences.
+      if (motionEnabled || wasMotionEnabled) {
+        const positions = particleGeo.attributes.position as THREE.BufferAttribute;
+        for (let i = 0; i < particleCount; i++) {
+          const py = motionEnabled
+            ? particleBaseY[i] + Math.sin(elapsed * particleSpeeds[i] + i) * 0.025
+            : particleBaseY[i];
+          positions.setY(i, py);
+        }
+        positions.needsUpdate = true;
       }
-      positions.needsUpdate = true;
+      wasMotionEnabled = motionEnabled;
 
       renderer.render(scene, camera);
     };
@@ -459,6 +508,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     return () => {
       isCancelled = true;
+      roomLoadController.abort();
+      companionLoadController.abort();
       container.removeEventListener('wheel', handleWheel);
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
@@ -472,22 +523,21 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
       if (companionRigRef.current) {
         companionRigRef.current.dispose();
+        companionRigRef.current = null;
       }
 
-      auraTexture.dispose();
-      particleTexture.dispose();
-      auraGeo.dispose();
-      auraMat.dispose();
-      particleGeo.dispose();
-      particleMat.dispose();
-      floorGeo.dispose();
-      floorMat.dispose();
+      dispose3DResource(scene);
 
       if (renderer.domElement && container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
       scene.clear();
       renderer.dispose();
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
+      floorGlowRef.current = null;
+      animFrameIdRef.current = null;
     };
   }, [companionModelUrl, roomModelUrl]);
 
@@ -521,7 +571,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   return (
     <div
       style={{ touchAction: 'none' }}
-      className={`fixed inset-0 w-full h-full overflow-hidden select-none pointer-events-auto ${className}`}
+      className={`aether-room-stage fixed inset-0 w-full h-full overflow-hidden select-none pointer-events-auto ${className}`}
     >
       {/* 3D WebGL Canvas */}
       <div

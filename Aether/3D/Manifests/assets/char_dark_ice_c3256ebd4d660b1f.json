@@ -18,7 +18,7 @@
     "skeleton": "HUMANOID",
     "bone_count": 136,
     "animations": "NOT_DETERMINED",
-    "blend_shapes": ["neutral","happy","angry","sad","relaxed","blink","blink_l","blink_r","aa","ih","ou","ee","oh"],
+    "blend_shapes": ["neutral","happy","angry","sad","relaxed","blink","blinkLeft","blinkRight","aa","ih","ou","ee","oh"],
     "lip_sync_visemes": ["aa","ih","ou","ee","oh"],
     "spring_bones": true
   },
