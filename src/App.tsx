@@ -208,7 +208,7 @@ export default function App() {
   }, [currentMessages.length]);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#06030B] text-white flex flex-col font-sans select-none">
+    <div className="aether-app-shell relative w-screen overflow-hidden bg-[#06030B] text-white flex flex-col font-sans select-none">
       {/* 1. TOP MINIMAL HUD BAR */}
       <header className="fixed top-0 inset-x-0 h-16 px-4 sm:px-8 z-30 flex items-center justify-between pointer-events-none">
         {/* Left: Quiet Brand Wordmark & Discrete Dev Trigger */}
@@ -245,7 +245,7 @@ export default function App() {
       </header>
 
       {/* 2. MAIN VIEWPORT AREA */}
-      <main className="flex-1 w-full h-full relative overflow-hidden pt-16 pb-20 md:pb-6 flex flex-col z-10">
+      <main className="flex-1 min-h-0 w-full relative overflow-hidden pt-16 pb-20 md:pb-6 flex flex-col z-10">
         {activeView === 'home' && (
           <div className="relative w-full h-full flex flex-col justify-end overflow-hidden">
             {/* Full-Screen 3D Room N & Companion Environment */}

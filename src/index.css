@@ -26,6 +26,18 @@
   }
 }
 
+.aether-app-shell {
+  height: 100vh;
+  min-height: 100vh;
+}
+
+@supports (height: 100svh) {
+  .aether-app-shell {
+    height: 100svh;
+    min-height: 100svh;
+  }
+}
+
 /* Glassmorphism & Crystal Surface utility classes */
 .crystal-surface {
   background: var(--aether-glass-base);
