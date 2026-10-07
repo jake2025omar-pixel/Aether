@@ -17,15 +17,12 @@ export class CompanionRig {
   private rightEyebrow: THREE.Mesh | null = null;
   private mouthMesh: THREE.Mesh | null = null;
   private crystalCore: THREE.Mesh | null = null;
-  private readonly lookDirection = new THREE.Vector3();
-  private leftUpperArm: THREE.Object3D | null = null;
-  private rightUpperArm: THREE.Object3D | null = null;
-  private readonly leftArmRestZ = -0.85;
-  private readonly rightArmRestZ = 0.85;
 
   // Animation states
   private currentEmotion: CompanionEmotion = 'NEUTRAL';
-  private currentViseme: number = 0; // 0 (closed) to 1 (wide open)
+  private targetViseme: number = 0; // 0 (closed) to 1 (wide open)
+  private displayedViseme: number = 0; // Smoothly damped mouth aperture
+  private activeEmotionVrmPreset: string = 'relaxed';
   private blinkTimer: number = 0;
   private nextBlinkTime: number = 3.5;
   private isBlinking: boolean = false;
@@ -38,12 +35,42 @@ export class CompanionRig {
       this.vrmInstance = vrm;
       this.isVrm = true;
       this.root.add(vrm.scene);
-      this.leftUpperArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
-      this.rightUpperArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
-      if (this.leftUpperArm) this.leftUpperArm.rotation.z = this.leftArmRestZ;
-      if (this.rightUpperArm) this.rightUpperArm.rotation.z = this.rightArmRestZ;
+      this.applyNaturalVrmRestPose(vrm);
     } else {
       this.buildProceduralHumanoidRig();
+    }
+  }
+
+  /**
+   * Poses VRM humanoid arms and shoulders into a relaxed, natural standing posture.
+   */
+  private applyNaturalVrmRestPose(vrm: VRM): void {
+    if (!vrm.humanoid) return;
+    const leftUpperArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+    const rightUpperArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+    const leftLowerArm = vrm.humanoid.getNormalizedBoneNode('leftLowerArm');
+    const rightLowerArm = vrm.humanoid.getNormalizedBoneNode('rightLowerArm');
+    const leftHand = vrm.humanoid.getNormalizedBoneNode('leftHand');
+    const rightHand = vrm.humanoid.getNormalizedBoneNode('rightHand');
+
+    // Natural companion idle stance: arms relaxed along body sides
+    if (leftUpperArm) {
+      leftUpperArm.rotation.set(0.12, 0.05, -1.25);
+    }
+    if (rightUpperArm) {
+      rightUpperArm.rotation.set(0.12, -0.05, 1.25);
+    }
+    if (leftLowerArm) {
+      leftLowerArm.rotation.set(0, -0.15, -0.12);
+    }
+    if (rightLowerArm) {
+      rightLowerArm.rotation.set(0, 0.15, 0.12);
+    }
+    if (leftHand) {
+      leftHand.rotation.set(0.05, 0, 0.05);
+    }
+    if (rightHand) {
+      rightHand.rotation.set(0.05, 0, -0.05);
     }
   }
 
@@ -232,27 +259,18 @@ export class CompanionRig {
   public setEmotion(emotion: CompanionEmotion): void {
     this.currentEmotion = emotion;
 
-    if (this.isVrm && this.vrmInstance?.expressionManager) {
-      // Clear previous emotions
-      const manager = this.vrmInstance.expressionManager;
-      const emotions = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
-      emotions.forEach((e) => manager.setValue(e, 0));
+    const vrmMap: Record<CompanionEmotion, string> = {
+      NEUTRAL: 'relaxed',
+      HAPPY: 'happy',
+      SAD: 'sad',
+      ANGRY: 'angry',
+      SURPRISED: 'surprised',
+      CONFUSED: 'surprised',
+      THINKING: 'relaxed',
+    };
+    this.activeEmotionVrmPreset = vrmMap[emotion] || 'relaxed';
 
-      const vrmMap: Record<CompanionEmotion, string> = {
-        NEUTRAL: 'relaxed',
-        HAPPY: 'happy',
-        SAD: 'sad',
-        ANGRY: 'angry',
-        SURPRISED: 'surprised',
-        CONFUSED: 'surprised',
-        THINKING: 'relaxed',
-      };
-      const target = vrmMap[emotion];
-      if (target) manager.setValue(target, 0.85);
-      return;
-    }
-
-    // Procedural rig emotion modulation
+    // Procedural rig eyebrow emotion modulation
     if (this.leftEyebrow && this.rightEyebrow) {
       switch (emotion) {
         case 'HAPPY':
@@ -295,34 +313,87 @@ export class CompanionRig {
   }
 
   /**
-   * Sets real-time lip-sync mouth opening (0 = closed, 1 = open)
+   * Sets real-time lip-sync mouth opening (0 = closed, 1 = open).
+   * Driven through a single, calibrated, smooth channel.
    */
   public setViseme(mouthOpen: number): void {
-    this.currentViseme = Math.max(0, Math.min(1, mouthOpen));
+    this.targetViseme = Math.max(0, Math.min(1, mouthOpen));
 
-    if (this.isVrm && this.vrmInstance?.expressionManager) {
-      this.vrmInstance.expressionManager.setValue('aa', this.currentViseme * 0.9);
-      this.vrmInstance.expressionManager.setValue('oh', this.currentViseme * 0.4);
-      return;
-    }
-
-    if (this.mouthMesh) {
-      // Scale mouth vertically and slightly horizontally for natural phoneme opening
-      const scaleY = 1.0 + this.currentViseme * 3.5;
-      const scaleX = 1.0 + this.currentViseme * 0.4;
-      this.mouthMesh.scale.set(scaleX, scaleY, 1.0);
+    // Fast zero clamp when speech stops to guarantee no lingering open mouth
+    if (mouthOpen === 0 && this.displayedViseme < 0.08) {
+      this.displayedViseme = 0;
+      if (this.isVrm && this.vrmInstance?.expressionManager) {
+        this.vrmInstance.expressionManager.setValue('aa', 0);
+        this.vrmInstance.expressionManager.setValue('oh', 0);
+        this.vrmInstance.expressionManager.setValue('ih', 0);
+        this.vrmInstance.expressionManager.setValue('ou', 0);
+        this.vrmInstance.expressionManager.setValue('ee', 0);
+      }
     }
   }
 
   /**
-   * Updates idle breathing, eye blinking, and lookAt tracking every frame
+   * Updates idle breathing, eye blinking, lookAt tracking, and expressions every frame
    */
   public update(delta: number, elapsedTime: number, targetLookPos?: THREE.Vector3): void {
+    // 1. Smoothly interpolate displayed mouth viseme
+    this.displayedViseme = THREE.MathUtils.damp(this.displayedViseme, this.targetViseme, 22, delta);
+    if (this.targetViseme === 0 && this.displayedViseme < 0.005) {
+      this.displayedViseme = 0;
+    }
+
     if (this.isVrm && this.vrmInstance) {
       this.vrmInstance.update(delta);
-      const armSway = Math.sin(elapsedTime * 0.8) * 0.025;
-      if (this.leftUpperArm) this.leftUpperArm.rotation.z = this.leftArmRestZ - armSway;
-      if (this.rightUpperArm) this.rightUpperArm.rotation.z = this.rightArmRestZ + armSway;
+
+      if (this.vrmInstance.expressionManager) {
+        const manager = this.vrmInstance.expressionManager;
+
+        // Dedicated single-channel mouth speech (aa):
+        // Capped at 0.42 to ensure lips stay firmly attached and never tear or expose dark void
+        const safeMouthAperture = this.displayedViseme * 0.42;
+        manager.setValue('aa', safeMouthAperture);
+        manager.setValue('oh', 0);
+        manager.setValue('ih', 0);
+        manager.setValue('ou', 0);
+        manager.setValue('ee', 0);
+
+        // Emotion mouth decoupling:
+        // Whole-face emotion presets (happy, relaxed, surprised) contain built-in mouth smiles/curves.
+        // As the speech viseme opens, we smoothly attenuate the emotion weight on the mouth
+        // so mouth shapes NEVER compound additively or exceed the natural biological range.
+        const emotions = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
+        const speechSuppression = Math.max(0, 1.0 - this.displayedViseme * 0.85);
+        const targetEmotionWeight = 0.55 * speechSuppression;
+
+        for (const e of emotions) {
+          if (e === this.activeEmotionVrmPreset) {
+            manager.setValue(e, targetEmotionWeight);
+          } else {
+            manager.setValue(e, 0);
+          }
+        }
+      }
+
+      const spineNode = this.vrmInstance.humanoid?.getNormalizedBoneNode('spine');
+      const headNode = this.vrmInstance.humanoid?.getNormalizedBoneNode('head');
+      const breathOffset = Math.sin(elapsedTime * 1.6) * 0.015;
+
+      if (spineNode) {
+        spineNode.rotation.x = breathOffset;
+      }
+
+      if (headNode && targetLookPos) {
+        const lookDir = targetLookPos.clone().sub(this.root.position).normalize();
+        headNode.rotation.y = THREE.MathUtils.lerp(headNode.rotation.y, lookDir.x * 0.22, 0.04);
+        headNode.rotation.x = THREE.MathUtils.lerp(headNode.rotation.x, -lookDir.y * 0.12, 0.04);
+      }
+    }
+
+    // Procedural fallback mouth scaling
+    if (this.mouthMesh) {
+      const scaleY = 1.0 + this.displayedViseme * 1.5;
+      const scaleX = 1.0 + this.displayedViseme * 0.2;
+      this.mouthMesh.scale.set(scaleX, scaleY, 1.0);
     }
 
     // 1. Natural Sinusoidal Idle Breathing (Chest & Spine)
@@ -341,7 +412,7 @@ export class CompanionRig {
         this.headBone.rotation.y = 0.15;
       } else if (targetLookPos) {
         // Soft head track towards target
-        const lookDir = this.lookDirection.copy(targetLookPos).sub(this.root.position).normalize();
+        const lookDir = targetLookPos.clone().sub(this.root.position).normalize();
         this.headBone.rotation.y = THREE.MathUtils.lerp(this.headBone.rotation.y, lookDir.x * 0.25, 0.05);
         this.headBone.rotation.x = THREE.MathUtils.lerp(this.headBone.rotation.x, -lookDir.y * 0.15, 0.05);
       } else {

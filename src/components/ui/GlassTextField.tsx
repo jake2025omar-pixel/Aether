@@ -22,7 +22,7 @@ export const GlassTextField: React.FC<GlassTextFieldProps> = ({
       >
         {prefixElement && <div className="mr-2 text-white/50">{prefixElement}</div>}
         <input
-          className="w-full bg-transparent text-sm text-white placeholder-white/35 focus:outline-none disabled:opacity-40"
+          className="w-full bg-transparent text-base sm:text-sm text-white placeholder-white/35 focus:outline-none disabled:opacity-40"
           {...props}
         />
         {suffixElement && <div className="ml-2 text-white/50">{suffixElement}</div>}

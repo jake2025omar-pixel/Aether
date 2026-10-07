@@ -19,9 +19,12 @@ class CompanionVoiceService {
   private isListening = false;
   private visemeInterval: number | null = null;
   private currentUtterance: SpeechSynthesisUtterance | null = null;
+  private cachedVoices: SpeechSynthesisVoice[] = [];
+  private currentPlaybackHandlers: VoicePlaybackHandlers | null = null;
 
   constructor() {
     this.initSpeechRecognition();
+    this.initSpeechSynthesis();
   }
 
   private initSpeechRecognition() {
@@ -40,6 +43,14 @@ class CompanionVoiceService {
         console.warn('SpeechRecognition initialization error:', err);
       }
     }
+  }
+
+  private initSpeechSynthesis() {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    this.cachedVoices = window.speechSynthesis.getVoices();
+    window.speechSynthesis.onvoiceschanged = () => {
+      this.cachedVoices = window.speechSynthesis.getVoices();
+    };
   }
 
   public isSpeechRecognitionSupported(): boolean {
@@ -130,11 +141,13 @@ class CompanionVoiceService {
     utterance.pitch = 1.15; // Slightly warm, friendly pitch for companion
 
     // Select the best voice available
-    const voices = window.speechSynthesis.getVoices();
+    const voices = this.cachedVoices.length > 0 ? this.cachedVoices : window.speechSynthesis.getVoices();
     const matchingVoice = voices.find((v) => v.lang.startsWith(isArabic ? 'ar' : 'en'));
     if (matchingVoice) {
       utterance.voice = matchingVoice;
     }
+
+    this.currentPlaybackHandlers = handlers;
 
     // Viseme simulation clock
     let visemePhase = 0;
@@ -142,10 +155,13 @@ class CompanionVoiceService {
       if (this.visemeInterval) clearInterval(this.visemeInterval);
 
       this.visemeInterval = window.setInterval(() => {
-        visemePhase += 0.35;
-        // Natural speech mouth modulation curve (oscillating between 0.1 and 0.85)
-        const mouthOpen = 0.45 + 0.4 * Math.sin(visemePhase) * (0.8 + 0.2 * Math.cos(visemePhase * 2.3));
-        handlers.onViseme(Math.max(0, Math.min(1, mouthOpen)));
+        visemePhase += 0.28;
+        // Realistic natural phoneme opening (syllables oscillate between 0.05 and 0.65)
+        const syllableWave = Math.sin(visemePhase);
+        const subHarmonic = Math.cos(visemePhase * 1.8);
+        const rawAperture = 0.35 + 0.32 * syllableWave * (0.75 + 0.25 * subHarmonic);
+        const mouthOpen = Math.max(0, Math.min(1, rawAperture));
+        handlers.onViseme(mouthOpen);
       }, 50);
     };
 
@@ -166,19 +182,21 @@ class CompanionVoiceService {
       stopVisemeLoop();
       this.currentUtterance = null;
       handlers.onEnd();
+      this.currentPlaybackHandlers = null;
     };
 
     utterance.onerror = () => {
       stopVisemeLoop();
       this.currentUtterance = null;
       handlers.onEnd();
+      this.currentPlaybackHandlers = null;
     };
 
     window.speechSynthesis.speak(utterance);
   }
 
   /**
-   * Immediately stops any active companion speech
+   * Immediately stops any active companion speech and ensures mouth returns to resting pose
    */
   public stopSpeaking(): void {
     if (this.visemeInterval) {
@@ -190,6 +208,12 @@ class CompanionVoiceService {
       window.speechSynthesis.cancel();
     }
     this.currentUtterance = null;
+
+    if (this.currentPlaybackHandlers) {
+      this.currentPlaybackHandlers.onViseme(0);
+      this.currentPlaybackHandlers.onEnd();
+      this.currentPlaybackHandlers = null;
+    }
   }
 }
 

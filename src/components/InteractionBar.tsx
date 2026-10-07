@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Send, Mic, MicOff, Square, Loader2 } from 'lucide-react';
 
 interface InteractionBarProps {
@@ -23,17 +23,29 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
   voiceError = null,
 }) => {
   const [inputVal, setInputVal] = useState('');
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
 
-  useLayoutEffect(() => {
-    const input = inputRef.current;
-    if (!input) return;
+  // Smoothly adjust InteractionBar above mobile virtual keyboard without squashing the 3D scene
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return;
 
-    input.style.height = 'auto';
-    const maxHeight = 128;
-    input.style.height = `${Math.min(input.scrollHeight, maxHeight)}px`;
-    input.style.overflowY = input.scrollHeight > maxHeight ? 'auto' : 'hidden';
-  }, [inputVal]);
+    const handleViewportChange = () => {
+      const vv = window.visualViewport;
+      if (!vv) return;
+      // If visual viewport height is noticeably smaller than layout height, virtual keyboard is active
+      const diff = window.innerHeight - vv.height - (vv.offsetTop || 0);
+      setKeyboardOffset(diff > 80 ? diff : 0);
+    };
+
+    const vv = window.visualViewport;
+    vv.addEventListener('resize', handleViewportChange);
+    vv.addEventListener('scroll', handleViewportChange);
+
+    return () => {
+      vv.removeEventListener('resize', handleViewportChange);
+      vv.removeEventListener('scroll', handleViewportChange);
+    };
+  }, []);
 
   const handleSend = () => {
     if (!inputVal.trim() || loading || disabled) return;
@@ -41,15 +53,21 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
     setInputVal('');
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto px-4 flex flex-col items-center gap-1.5">
+    <div
+      style={{
+        transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : undefined,
+        transition: 'transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1)',
+      }}
+      className="w-full max-w-xl mx-auto px-4 flex flex-col items-center gap-1.5"
+    >
       {voiceError && (
         <div className="text-[11px] text-rose-300 font-medium px-3 py-1 rounded-full bg-rose-950/60 border border-rose-500/30 backdrop-blur-md animate-in fade-in duration-200">
           {voiceError}
@@ -57,7 +75,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
       )}
 
       <div
-        className={`w-full crystal-surface rounded-[1.75rem] p-1.5 sm:p-2 flex items-end gap-2 border transition-all duration-300 shadow-[0_12px_40px_-6px_rgba(0,0,0,0.65)] ${
+        className={`w-full crystal-surface rounded-full p-1.5 sm:p-2 flex items-center gap-2 border transition-all duration-300 shadow-[0_12px_40px_-6px_rgba(0,0,0,0.65)] ${
           isListening
             ? 'border-cyan-500/50 shadow-[0_0_25px_-2px_rgba(6,182,212,0.4)]'
             : isSpeaking
@@ -86,16 +104,15 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
         </button>
 
         {/* Minimal Text Input */}
-        <div className="relative min-w-0 flex-1 flex items-center">
-          <textarea
-            ref={inputRef}
+        <div className="relative flex-1 flex items-center">
+          <input
+            type="text"
+            dir="auto"
+            maxLength={2000}
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={disabled || loading}
-            rows={1}
-            dir="auto"
-            aria-label="Message Aether"
             placeholder={
               isListening
                 ? 'Listening to your voice...'
@@ -103,7 +120,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
                 ? 'Aether is speaking...'
                 : 'Speak or type to Aether...'
             }
-            className="block max-h-32 min-h-10 w-full resize-none overflow-x-hidden bg-transparent px-3 py-2 text-base leading-6 text-white placeholder-white/35 focus:outline-none disabled:cursor-not-allowed md:text-sm"
+            className="w-full bg-transparent px-3 py-2 text-base sm:text-sm text-white placeholder-white/35 focus:outline-none disabled:cursor-not-allowed"
           />
         </div>
 

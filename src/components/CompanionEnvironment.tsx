@@ -20,7 +20,7 @@ export const CompanionEnvironment: React.FC<CompanionEnvironmentProps> = ({
   onStartInteraction,
 }) => {
   return (
-    <div className="absolute inset-0 w-full h-full overflow-hidden select-none">
+    <div className="fixed inset-0 w-full h-full overflow-hidden select-none">
       {/* Full-screen 3D Room N & Companion Environment */}
       <RoomEnvironment3D
         companionState={companionState}

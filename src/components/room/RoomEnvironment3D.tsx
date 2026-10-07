@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CompanionRig } from './CompanionRig';
 import { CompanionState, CompanionEmotion } from '../../lib/companionPersonality';
-import { dispose3DResource, loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
+import { loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
 import { Mic, Volume2, Sparkles, Brain } from 'lucide-react';
 
 export interface RoomEnvironment3DProps {
@@ -13,6 +13,80 @@ export interface RoomEnvironment3DProps {
   roomModelUrl?: string | null;
   onCompanionClick?: () => void;
   className?: string;
+}
+
+/**
+ * Creates a smooth radial aura texture for the ethereal ground disc
+ * eliminating all harsh geometric boundaries.
+ */
+function createRadialGlowTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+    gradient.addColorStop(0, 'rgba(168, 85, 247, 0.40)'); // Amethyst core
+    gradient.addColorStop(0.28, 'rgba(147, 51, 234, 0.22)');
+    gradient.addColorStop(0.60, 'rgba(56, 189, 248, 0.08)'); // Subtle cyan aura
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)'); // Full soft falloff
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 512, 512);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.generateMipmaps = true;
+  return texture;
+}
+
+/**
+ * Creates soft circular particle sprites for ambient floating starlight motes.
+ */
+function createParticleTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+    grad.addColorStop(0.35, 'rgba(192, 132, 252, 0.45)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 64, 64);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  return texture;
+}
+
+/**
+ * Configures all VRM textures for ultra-crisp closeup rendering:
+ * activates trilinear mipmapping, max hardware anisotropy, and linear filtering.
+ */
+function enhanceVRMTextures(root: THREE.Object3D, maxAnisotropy: number): void {
+  root.traverse((obj) => {
+    if ((obj as THREE.Mesh).isMesh) {
+      const mesh = obj as THREE.Mesh;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mat of materials) {
+        if (!mat) continue;
+        const record = mat as unknown as Record<string, unknown>;
+        for (const key of Object.keys(record)) {
+          const val = record[key];
+          if (val && typeof val === 'object' && (val as THREE.Texture).isTexture) {
+            const tex = val as THREE.Texture;
+            tex.generateMipmaps = true;
+            tex.minFilter = THREE.LinearMipmapLinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            tex.anisotropy = Math.max(tex.anisotropy || 1, maxAnisotropy);
+            tex.needsUpdate = true;
+          }
+        }
+      }
+    }
+  });
 }
 
 export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
@@ -31,28 +105,22 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   const companionRigRef = useRef<CompanionRig | null>(null);
   const floorGlowRef = useRef<THREE.PointLight | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
-  const [characterLoading, setCharacterLoading] = useState(Boolean(companionModelUrl));
-  const [characterLoadFailed, setCharacterLoadFailed] = useState(false);
-  const emotionRef = useRef(companionEmotion);
-  const visemeRef = useRef(visemeMouthOpen);
   const targetLookPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.45, 3.4));
 
   // Sync Emotion & Visemes to 3D Companion Rig
   useEffect(() => {
-    emotionRef.current = companionEmotion;
     if (companionRigRef.current) {
       companionRigRef.current.setEmotion(companionEmotion);
     }
   }, [companionEmotion]);
 
   useEffect(() => {
-    visemeRef.current = visemeMouthOpen;
     if (companionRigRef.current) {
       companionRigRef.current.setViseme(visemeMouthOpen);
     }
   }, [visemeMouthOpen]);
 
-  // Main 3D Room N Scene Setup
+  // Main 3D Room & Companion Scene Setup
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -60,108 +128,123 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     const width = container.clientWidth || window.innerWidth;
     const height = container.clientHeight || window.innerHeight;
 
-    // 1. Scene setup
+    // 1. Scene setup: boundless deep obsidian void seamlessly faded with fog
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0x06030b);
-    scene.fog = new THREE.FogExp2(0x06030b, 0.07);
+    const BG_COLOR = 0x06030b;
+    scene.background = new THREE.Color(BG_COLOR);
+    scene.fog = new THREE.FogExp2(BG_COLOR, 0.05);
 
-    // 2. Camera setup - Natural human standing height (Y = 1.45m), framing full-body feet-to-head
+    // 2. Camera setup - initial full-body standing framing (Z = 3.4m, Y = 1.45m)
     const camera = new THREE.PerspectiveCamera(46, width / height, 0.1, 100);
     camera.position.set(0, 1.45, 3.4);
     camera.lookAt(0, 1.05, 0);
     cameraRef.current = camera;
     targetLookPosRef.current.copy(camera.position);
 
-    // 3. WebGL Renderer
-    const isMobile = width < 768;
+    // 3. WebGL Renderer with High-DPI support, ACES tone mapping, and sRGB color
     const renderer = new THREE.WebGLRenderer({
-      antialias: !isMobile,
+      antialias: true,
       powerPreference: 'high-performance',
       alpha: false,
     });
     rendererRef.current = renderer;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.25 : 1.75));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
     renderer.setSize(width, height);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    // Anchor canvas firmly to the full window viewport so it cannot be squashed or compressed
+    renderer.domElement.style.position = 'fixed';
+    renderer.domElement.style.top = '0';
+    renderer.domElement.style.left = '0';
+    renderer.domElement.style.width = '100vw';
+    renderer.domElement.style.height = '100vh';
+    renderer.domElement.style.display = 'block';
+    renderer.domElement.style.pointerEvents = 'auto';
 
     container.appendChild(renderer.domElement);
+    const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-    // 4. Lighting Rig (Room N Atmosphere - Deep Amethyst & Soft Warm Key)
-    const ambientLight = new THREE.AmbientLight(0x2d174d, 1.9);
+    // 4. Lighting Rig (Soft Amethyst Studio & Warm Key)
+    const ambientLight = new THREE.AmbientLight(0x281545, 2.0);
     scene.add(ambientLight);
 
-    const keyLight = new THREE.DirectionalLight(0xfff6ed, 2.2);
+    const keyLight = new THREE.DirectionalLight(0xfff5eb, 2.3);
     keyLight.position.set(1.8, 3.8, 3.0);
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0x38bdf8, 1.2);
+    const fillLight = new THREE.DirectionalLight(0x38bdf8, 1.25);
     fillLight.position.set(-2.8, 2.2, 2.0);
     scene.add(fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0xc084fc, 2.6);
-    rimLight.position.set(0, 3.0, -2.8);
+    const rimLight = new THREE.DirectionalLight(0xc084fc, 2.8);
+    rimLight.position.set(0, 3.2, -2.8);
     scene.add(rimLight);
 
-    const floorGlow = new THREE.PointLight(0xa855f7, 2.2, 7);
-    floorGlow.position.set(0, 0.25, 0);
+    const floorGlow = new THREE.PointLight(0xa855f7, 2.2, 8);
+    floorGlow.position.set(0, 0.35, 0);
     floorGlowRef.current = floorGlow;
     scene.add(floorGlow);
 
-    // 5. Room N Architectural Environment (Cyberpunk Reflective Floor & Neon Pillars)
+    // 5. Boundless, Immersive Room Environment (No box walls, no harsh lines or borders)
     const roomGroup = new THREE.Group();
 
-    // Floor (Dark reflective cyber tiles)
-    const floorGeo = new THREE.PlaneGeometry(14, 14);
+    // Large seamless floor: perfectly matches the fog color (0x06030b), disappearing into the horizon
+    const floorGeo = new THREE.PlaneGeometry(120, 120);
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x0c0717,
-      roughness: 0.22,
-      metalness: 0.88,
+      color: BG_COLOR,
+      roughness: 0.32,
+      metalness: 0.85,
     });
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = 0;
+    floor.receiveShadow = true;
     roomGroup.add(floor);
 
-    // Floor Cyber Grid
-    const grid = new THREE.GridHelper(14, 28, 0x9333ea, 0x1d1033);
-    grid.position.y = 0.005;
-    roomGroup.add(grid);
-
-    // Back Wall
-    const backWallGeo = new THREE.PlaneGeometry(14, 6.5);
-    const backWallMat = new THREE.MeshStandardMaterial({
-      color: 0x080412,
-      roughness: 0.65,
-      metalness: 0.3,
+    // Ethereal radial ground aura directly under the companion
+    const auraTexture = createRadialGlowTexture();
+    const auraGeo = new THREE.PlaneGeometry(5.2, 5.2);
+    const auraMat = new THREE.MeshBasicMaterial({
+      map: auraTexture,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
-    const backWall = new THREE.Mesh(backWallGeo, backWallMat);
-    backWall.position.set(0, 3.25, -3.8);
-    roomGroup.add(backWall);
+    const auraMesh = new THREE.Mesh(auraGeo, auraMat);
+    auraMesh.rotation.x = -Math.PI / 2;
+    auraMesh.position.set(0, 0.003, 0);
+    roomGroup.add(auraMesh);
 
-    // Neon Wall Trim Line
-    const neonLineGeo = new THREE.BoxGeometry(9.0, 0.035, 0.04);
-    const neonLineMat = new THREE.MeshBasicMaterial({ color: 0xc084fc });
-    const neonLine = new THREE.Mesh(neonLineGeo, neonLineMat);
-    neonLine.position.set(0, 2.4, -3.75);
-    roomGroup.add(neonLine);
-
-    // Cyber Room Pillars
-    const pillarGeo = new THREE.CylinderGeometry(0.07, 0.07, 5.5, 16);
-    const pillarMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-
-    const leftPillar = new THREE.Mesh(pillarGeo, pillarMat);
-    leftPillar.position.set(-3.2, 2.75, -2.2);
-    roomGroup.add(leftPillar);
-
-    const rightPillar = new THREE.Mesh(pillarGeo, pillarMat);
-    rightPillar.position.set(3.2, 2.75, -2.2);
-    roomGroup.add(rightPillar);
+    // Ambient floating starlight particles providing depth and spatial atmosphere
+    const particleCount = 65;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+    const particleSpeeds = new Float32Array(particleCount);
+    for (let i = 0; i < particleCount; i++) {
+      particlePositions[i * 3] = (Math.random() - 0.5) * 8.0;
+      particlePositions[i * 3 + 1] = 0.2 + Math.random() * 2.8;
+      particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 5.5 - 0.4;
+      particleSpeeds[i] = 0.3 + Math.random() * 0.7;
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    const particleTexture = createParticleTexture();
+    const particleMat = new THREE.PointsMaterial({
+      size: 0.075,
+      map: particleTexture,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      opacity: 0.65,
+    });
+    const particles = new THREE.Points(particleGeo, particleMat);
+    roomGroup.add(particles);
 
     scene.add(roomGroup);
 
-    // 6. Load the real room only when a converted GLB exists; retain the procedural room on failure.
+    // 6. Real room conversion fallback handler
     let isCancelled = false;
     if (roomModelUrl) {
       loadWeb3DAsset(roomModelUrl).then((res) => {
@@ -172,65 +255,133 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       });
     }
 
-    // 7. Mount Companion Rig with a procedural fallback if the VRM cannot load.
-    const fallbackRig = new CompanionRig(null);
-    companionRigRef.current = fallbackRig;
-    scene.add(fallbackRig.root);
-    fallbackRig.setEmotion(emotionRef.current);
-    fallbackRig.setViseme(visemeRef.current);
-    setCharacterLoading(Boolean(companionModelUrl));
-    setCharacterLoadFailed(false);
+    // 7. Mount Companion Rig & Enhance VRM Textures
+    const mountFallbackRig = () => {
+      if (isCancelled || companionRigRef.current) return;
+      const rig = new CompanionRig(null);
+      companionRigRef.current = rig;
+      scene.add(rig.root);
+      rig.setEmotion(companionEmotion);
+      rig.setViseme(visemeMouthOpen);
+    };
+
     if (companionModelUrl) {
       loadWeb3DAsset(companionModelUrl, true).then((res) => {
-        if (isCancelled) {
-          if (res.scene) dispose3DResource(res.scene);
-          return;
-        }
+        if (isCancelled) return;
         if (!res.success || !res.vrm) {
-          setCharacterLoadFailed(true);
-          setCharacterLoading(false);
+          console.warn('[Room3D] Companion load failed, using procedural rig:', res.error);
+          mountFallbackRig();
           return;
         }
-        companionRigRef.current?.dispose();
-        companionRigRef.current = null;
+
+        // Apply anisotropic filtering and trilinear mipmapping across all textures
+        enhanceVRMTextures(res.vrm.scene, maxAnisotropy);
+
         const rig = new CompanionRig(res.vrm);
         companionRigRef.current = rig;
         scene.add(rig.root);
-        rig.setEmotion(emotionRef.current);
-        rig.setViseme(visemeRef.current);
-        setCharacterLoading(false);
-      }).catch(() => {
-        if (!isCancelled) {
-          setCharacterLoadFailed(true);
-          setCharacterLoading(false);
-        }
+        rig.setEmotion(companionEmotion);
+        rig.setViseme(visemeMouthOpen);
+      }).catch((err) => {
+        console.warn('[Room3D] Companion model load exception:', err);
+        mountFallbackRig();
       });
     } else {
-      setCharacterLoading(false);
+      mountFallbackRig();
     }
 
-    // 7. Subtle interactive parallax on mouse / touch move
-    const handlePointerMove = (e: PointerEvent) => {
-      const normX = (e.clientX / window.innerWidth - 0.5) * 2;
-      const normY = (e.clientY / window.innerHeight - 0.5) * 2;
+    // 8. Interactive Camera Zoom & Parallax Physics
+    // Minimum distance: 1.15m (closeup on face and clothes)
+    // Maximum distance: 3.8m (full-body framing)
+    const MIN_DISTANCE = 1.15;
+    const MAX_DISTANCE = 3.8;
+    let currentCamDist = 3.4;
+    let targetCamDist = 3.4;
+    let parallaxX = 0;
+    let parallaxY = 0;
 
-      // Gentle camera position shift
-      camera.position.x = normX * 0.22;
-      camera.position.y = 1.45 - normY * 0.1;
-      camera.lookAt(0, 1.05, 0);
+    // Touch gesture tracking (1 finger = parallax, 2 fingers = smooth pinch-to-zoom)
+    let isPinching = false;
+    let initialPinchDist = 0;
+    let pinchStartCamDist = 3.4;
 
-      targetLookPosRef.current.set(camera.position.x, camera.position.y, camera.position.z);
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        isPinching = true;
+        initialPinchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        pinchStartCamDist = targetCamDist;
+      }
     };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && isPinching && initialPinchDist > 0) {
+        // Prevent default document scaling so 3D camera dollies in/out instead of stretching canvas bitmap
+        e.preventDefault();
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const scaleFactor = initialPinchDist / Math.max(dist, 10);
+        targetCamDist = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, pinchStartCamDist * scaleFactor));
+      } else if (e.touches.length === 1 && !isPinching) {
+        const t = e.touches[0];
+        parallaxX = ((t.clientX / window.innerWidth) - 0.5) * 2;
+        parallaxY = ((t.clientY / window.innerHeight) - 0.5) * 2;
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        isPinching = false;
+      }
+    };
+
+    // Desktop Mouse Wheel Zoom
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      targetCamDist = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, targetCamDist + e.deltaY * 0.003));
+    };
+
+    // Pointer Parallax
+    const handlePointerMove = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse') {
+        parallaxX = ((e.clientX / window.innerWidth) - 0.5) * 2;
+        parallaxY = ((e.clientY / window.innerHeight) - 0.5) * 2;
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
     window.addEventListener('pointermove', handlePointerMove);
 
-    // 8. Animation Loop
+    // 9. Animation Loop
     const clock = new THREE.Clock();
     const animate = () => {
       animFrameIdRef.current = requestAnimationFrame(animate);
       const delta = clock.getDelta();
       const elapsed = clock.getElapsedTime();
 
-      // Update Companion Rig (Breathing, Eye Blinks, Visemes)
+      // Smooth camera dolly physics
+      currentCamDist = THREE.MathUtils.lerp(currentCamDist, targetCamDist, 0.08);
+      const zoomProgress = (currentCamDist - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE);
+
+      // Focus target shifts from face/chest (Y=1.38m) at closeup to body center (Y=1.05m) at distance
+      const targetFocusY = THREE.MathUtils.lerp(1.38, 1.05, zoomProgress);
+      const camBaseY = THREE.MathUtils.lerp(1.40, 1.45, zoomProgress);
+
+      camera.position.x = parallaxX * 0.18;
+      camera.position.y = camBaseY - parallaxY * 0.08;
+      camera.position.z = currentCamDist;
+      camera.lookAt(0, targetFocusY, 0);
+
+      targetLookPosRef.current.copy(camera.position);
+
+      // Update Companion Rig (Idle Breathing, Blinking, Visemes, Look-At)
       if (companionRigRef.current) {
         companionRigRef.current.update(delta, elapsed, targetLookPosRef.current);
       }
@@ -240,40 +391,102 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         floorGlowRef.current.intensity = 2.0 + Math.sin(elapsed * 2.2) * 0.4;
       }
 
+      // Gentle floating particle drift
+      const positions = particleGeo.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < particleCount; i++) {
+        const py = positions.getY(i) + Math.sin(elapsed * particleSpeeds[i] + i) * 0.0012;
+        positions.setY(i, py);
+      }
+      positions.needsUpdate = true;
+
       renderer.render(scene, camera);
     };
     animate();
 
-    // 9. Resize Observer
+    // 10. Robust Resize Handling (Immune to Mobile, iPad, and PC Virtual Keyboard Squashing)
+    let prevWidth = width;
+    let prevHeight = height;
+
+    const handleResize = (w: number, h: number) => {
+      if (w <= 0 || h <= 0 || !cameraRef.current || !rendererRef.current) return;
+
+      // Detect if this resize is an on-screen keyboard opening/closing
+      // (On Mobile, iPad, or Laptop/PC touch keyboard):
+      // - Width remains virtually constant (|w - prevWidth| < 20).
+      // - Height drops significantly or restores while an input is focused or visualViewport is shrunk.
+      const isInputActive =
+        document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'TEXTAREA';
+      const isWidthConstant = Math.abs(w - prevWidth) < 20;
+      const isHeightDrop = h < prevHeight - 70;
+      const isHeightRestore = Math.abs(h - prevHeight) > 70 && !isHeightDrop;
+      const isVisualViewportReduced =
+        typeof window !== 'undefined' &&
+        Boolean(window.visualViewport && window.visualViewport.height < prevHeight * 0.88);
+
+      const isKeyboardEvent =
+        isWidthConstant &&
+        (isInputActive || isHeightDrop || isVisualViewportReduced || isHeightRestore);
+
+      if (isKeyboardEvent) {
+        // DO NOT RESIZE THE 3D CANVAS OR CAMERA!
+        // The 3D room and companion must remain 100% full-sized, pristine, and uncompressed.
+        return;
+      }
+
+      // Genuine window resize (desktop window resize or device orientation rotation)
+      prevWidth = w;
+      prevHeight = h;
+
+      cameraRef.current.aspect = w / h;
+      cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(w, h);
+    };
+
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width: w, height: h } = entry.contentRect;
-        if (w > 0 && h > 0 && cameraRef.current && rendererRef.current) {
-          cameraRef.current.aspect = w / h;
-          cameraRef.current.updateProjectionMatrix();
-              rendererRef.current.setPixelRatio(
-                Math.min(window.devicePixelRatio, w < 768 ? 1.25 : 1.75)
-              );
-              rendererRef.current.setSize(w, h);
-        }
+        handleResize(w, h);
       }
     });
     resizeObserver.observe(container);
 
+    const onWindowResize = () => {
+      handleResize(window.innerWidth, window.innerHeight);
+    };
+    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('orientationchange', onWindowResize);
+
     return () => {
       isCancelled = true;
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('resize', onWindowResize);
+      window.removeEventListener('orientationchange', onWindowResize);
+
       if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
       resizeObserver.disconnect();
 
       if (companionRigRef.current) {
-          companionRigRef.current.dispose();
-          companionRigRef.current = null;
+        companionRigRef.current.dispose();
       }
+
+      auraTexture.dispose();
+      particleTexture.dispose();
+      auraGeo.dispose();
+      auraMat.dispose();
+      particleGeo.dispose();
+      particleMat.dispose();
+      floorGeo.dispose();
+      floorMat.dispose();
 
       if (renderer.domElement && container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
+      scene.clear();
       renderer.dispose();
     };
   }, [companionModelUrl, roomModelUrl]);
@@ -299,22 +512,25 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       case 'THINKING':
         return 'text-purple-300 border-purple-500/40 bg-purple-950/40 shadow-[0_0_20px_rgba(168,85,247,0.35)]';
       case 'SPEAKING':
-        return 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40 shadow-[0_0_20px_rgba(16,185,129,0.35)]';
+        return 'text-emerald-300 border-emerald-500/40 bg-emerald-950/40 shadow-[0_0_20px_rgba(168,85,247,0.35)]';
       default:
         return 'text-white/80 border-purple-500/30 bg-black/40 shadow-[0_0_20px_-3px_rgba(168,85,247,0.25)]';
     }
   };
 
   return (
-    <div className={`relative w-full h-full overflow-hidden select-none ${className}`}>
+    <div
+      style={{ touchAction: 'none' }}
+      className={`fixed inset-0 w-full h-full overflow-hidden select-none pointer-events-auto ${className}`}
+    >
       {/* 3D WebGL Canvas */}
       <div
         ref={containerRef}
         onClick={onCompanionClick}
-        className="w-full h-full cursor-pointer"
+        className="fixed inset-0 w-full h-full cursor-pointer"
       />
 
-      {/* Subtle Companion Status Pill (Natural, Non-Intrusive) */}
+      {/* Subtle Companion Status Pill */}
       <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
         <div
           className={`glass-nav-pill px-4 py-1.5 rounded-full flex items-center gap-2 border backdrop-blur-md transition-all duration-300 ${getStatusColor()}`}
@@ -331,25 +547,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
               {companionEmotion}
             </span>
           )}
-        </div>
-      </div>
-
-      <div className="absolute top-24 left-4 sm:left-8 z-20 pointer-events-none max-w-[min(20rem,calc(100%-2rem))]">
-        <div className="rounded-2xl border border-white/10 bg-[#100b1b]/65 px-4 py-3 shadow-2xl shadow-purple-950/20 backdrop-blur-xl">
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-purple-200/75">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.8)]" />
-            Aether AI Companion
-          </div>
-          <p className="mt-1.5 text-sm font-medium text-white/90">
-            {characterLoadFailed ? 'Meet your companion' : 'A room that feels a little more alive.'}
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-white/50">
-            {characterLoading
-              ? 'Preparing your 3D companion… you can start chatting now.'
-              : characterLoadFailed
-                ? 'Your companion is here and ready to talk.'
-                : 'Speak or type. Aether listens, responds and shows how it feels.'}
-          </p>
         </div>
       </div>
     </div>

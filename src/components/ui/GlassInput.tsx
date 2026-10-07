@@ -36,7 +36,7 @@ export const GlassInput = React.forwardRef<HTMLInputElement, GlassInputProps>(
           <input
             ref={ref}
             disabled={disabled}
-            className={`w-full bg-transparent px-4 py-2.5 text-sm sm:text-base text-slate-100 placeholder-slate-400 focus:outline-none disabled:cursor-not-allowed ${className}`}
+            className={`w-full bg-transparent px-4 py-2.5 text-base sm:text-sm text-slate-100 placeholder-slate-400 focus:outline-none disabled:cursor-not-allowed ${className}`}
             {...props}
           />
 

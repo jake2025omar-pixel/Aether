@@ -86,16 +86,21 @@ export default function App() {
         text: m.text,
       }));
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
-          message: query,
+          message: query.slice(0, 2000),
           history: historyPayload,
           systemInstruction: AETHER_COMPANION_SYSTEM_PROMPT,
           stream: false,
         }),
       });
+      clearTimeout(timeoutId);
 
       let rawAnswer = '';
       if (!res.ok) {
@@ -138,9 +143,16 @@ export default function App() {
       });
     } catch (err: unknown) {
       console.error('Companion interaction error:', err);
+      companionVoice.stopSpeaking();
       setCompanionState('IDLE');
       setCompanionEmotion('CONFUSED');
-      setVoiceError('Connection issue. Please try again.');
+      setVisemeMouthOpen(0);
+      const isAbort = err instanceof Error && err.name === 'AbortError';
+      const isArabic = /[\u0600-\u06FF]/.test(query);
+      const errMsg = isAbort
+        ? (isArabic ? 'انتهت مهلة الاتصال بالخادم، يرجى المحاولة ثانية.' : 'Request timed out. Please try again.')
+        : (isArabic ? 'حدث خطأ في الاتصال، يرجى إعادة المحاولة.' : 'Connection issue. Please try again.');
+      setVoiceError(errMsg);
       setTimeout(() => setVoiceError(null), 4000);
     } finally {
       setLoading(false);
@@ -201,14 +213,22 @@ export default function App() {
     setCompanionState('IDLE');
     setVisemeMouthOpen(0);
   }, []);
-  const currentMessages = chats[currentChatId] || [];
-  const conversationEndRef = useRef<HTMLDivElement | null>(null);
-  React.useEffect(() => {
-    conversationEndRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
-  }, [currentMessages.length]);
 
   return (
-    <div className="aether-app-shell relative w-screen overflow-hidden bg-[#06030B] text-white flex flex-col font-sans select-none">
+    <div className="relative w-screen h-screen overflow-hidden bg-[#06030B] text-white flex flex-col font-sans select-none">
+      {/* 0. Full-Screen 3D Room & Companion Fixed Canvas Backdrop */}
+      {activeView === 'home' && (
+        <div className="fixed inset-0 z-0 pointer-events-auto">
+          <CompanionEnvironment
+            companionState={companionState}
+            companionEmotion={companionEmotion}
+            visemeMouthOpen={visemeMouthOpen}
+            onStartInteraction={handleToggleVoice}
+            companionModelUrl={primaryCharacterUrl}
+          />
+        </div>
+      )}
+
       {/* 1. TOP MINIMAL HUD BAR */}
       <header className="fixed top-0 inset-x-0 h-16 px-4 sm:px-8 z-30 flex items-center justify-between pointer-events-none">
         {/* Left: Quiet Brand Wordmark & Discrete Dev Trigger */}
@@ -245,64 +265,9 @@ export default function App() {
       </header>
 
       {/* 2. MAIN VIEWPORT AREA */}
-      <main className="flex-1 min-h-0 w-full relative overflow-hidden pt-16 pb-20 md:pb-6 flex flex-col z-10">
+      <main className="flex-1 w-full h-full relative overflow-hidden pt-16 pb-20 md:pb-6 flex flex-col z-10 pointer-events-none">
         {activeView === 'home' && (
-          <div className="relative w-full h-full flex flex-col justify-end overflow-hidden">
-            {/* Full-Screen 3D Room N & Companion Environment */}
-            <div className="absolute inset-0 z-0">
-              <CompanionEnvironment
-                companionState={companionState}
-                companionEmotion={companionEmotion}
-                visemeMouthOpen={visemeMouthOpen}
-                onStartInteraction={handleToggleVoice}
-                companionModelUrl={primaryCharacterUrl}
-              />
-            </div>
-
-            {currentMessages.length > 0 ? (
-              <div
-                aria-live="polite"
-                aria-label="Conversation with Aether"
-                className="relative z-20 mx-auto mb-3 flex max-h-[28vh] w-full max-w-2xl flex-col gap-2 overflow-y-auto px-4 [scrollbar-width:thin]"
-              >
-                {currentMessages.slice(-4).map((message) => (
-                  <div
-                    key={message.id}
-                    className={`max-w-[88%] rounded-2xl border px-4 py-2.5 text-sm leading-relaxed shadow-xl backdrop-blur-xl ${
-                      message.sender === 'user'
-                        ? 'self-end border-purple-300/15 bg-purple-950/65 text-white'
-                        : 'self-start border-white/10 bg-[#100b1b]/75 text-white/90'
-                    }`}
-                  >
-                    <span className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-purple-200/60">
-                      {message.sender === 'user' ? 'You' : 'Aether'}
-                    </span>
-                    <span className="whitespace-pre-wrap">{message.text}</span>
-                  </div>
-                ))}
-                <div ref={conversationEndRef} />
-              </div>
-            ) : (
-              <div className="relative z-20 mx-auto mb-3 flex w-full max-w-2xl flex-wrap justify-center gap-2 px-4">
-                <button
-                  type="button"
-                  onClick={() => handleCompanionInteraction('Introduce yourself and tell me what you can do.')}
-                  disabled={loading}
-                  className="rounded-full border border-white/10 bg-black/35 px-3.5 py-2 text-xs text-white/75 backdrop-blur-lg transition hover:border-purple-300/30 hover:bg-purple-950/50 hover:text-white disabled:opacity-50"
-                >
-                  Meet your companion
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleCompanionInteraction('How are you feeling today?')}
-                  disabled={loading}
-                  className="rounded-full border border-white/10 bg-black/35 px-3.5 py-2 text-xs text-white/75 backdrop-blur-lg transition hover:border-purple-300/30 hover:bg-purple-950/50 hover:text-white disabled:opacity-50"
-                >
-                  Ask how Aether feels
-                </button>
-              </div>
-            )}
-
+          <div className="relative w-full h-full flex flex-col justify-end overflow-hidden pointer-events-none">
             {/* Bottom Floating Interaction Bar (Microphone + Text + Send) */}
             <div className="relative w-full pb-4 sm:pb-8 z-20 pointer-events-auto">
               <InteractionBar

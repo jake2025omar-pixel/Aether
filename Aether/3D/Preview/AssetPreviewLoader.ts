@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { VRMLoaderPlugin, VRM } from '@pixiv/three-vrm';
+import { VRMLoaderPlugin, VRM, VRMUtils } from '@pixiv/three-vrm';
 
 export interface Load3DResult {
   success: boolean;
@@ -123,6 +123,9 @@ export async function loadWeb3DAsset(
     const onLoad = (gltf: any) => {
       try {
         const vrm: VRM | undefined = gltf.userData?.vrm;
+        if (vrm) {
+          VRMUtils.rotateVRM0(vrm);
+        }
         const scene: THREE.Object3D = vrm ? vrm.scene : gltf.scene;
 
         // Ensure shadow receiving and casting
