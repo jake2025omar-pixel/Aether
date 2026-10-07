@@ -4,9 +4,15 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import { AETHER_COMPANION_SYSTEM_PROMPT } from './src/lib/companionPersonality';
 
 dotenv.config();
-const PRIMARY_GEMINI_MODEL = 'gemini-flash-latest';
+const PRIMARY_GEMINI_MODEL = 'gemini-3.8-flash';
+const CANDIDATE_MODELS = [
+  PRIMARY_GEMINI_MODEL,
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+];
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,24 +72,16 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// Initialize GoogleGenAI client with standard aistudio-build telemetry
+// Initialize GoogleGenAI client from a server-only environment secret.
 const apiKey = process.env.GEMINI_API_KEY || '';
 const ai = apiKey
-  ? new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    })
+  ? new GoogleGenAI({ apiKey })
   : null;
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
-    hasApiKey: !!process.env.GEMINI_API_KEY,
     model: PRIMARY_GEMINI_MODEL,
   });
 });
@@ -98,7 +96,7 @@ app.post('/api/chat', async (req, res) => {
     });
   }
 
-  const { message, history = [], systemInstruction, stream = true } = req.body;
+  const { message, history = [], stream = false } = req.body;
 
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'Message is required and must be a string.' });
@@ -115,9 +113,9 @@ app.post('/api/chat', async (req, res) => {
 
   // Sanitize history payload
   const safeHistory = Array.isArray(history)
-    ? history.slice(-20).filter((item) => item && typeof item.text === 'string').map((item) => ({
+    ? history.slice(-12).filter((item) => item && typeof item.text === 'string').map((item) => ({
         role: item.role === 'model' || item.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: String(item.text).slice(0, 2000) }],
+        parts: [{ text: String(item.text).slice(0, 1200) }],
       }))
     : [];
 
@@ -134,20 +132,7 @@ app.post('/api/chat', async (req, res) => {
     }
   });
 
-  // Candidate models in priority order: start with fast, available flash models
-  const CANDIDATE_MODELS = [
-    PRIMARY_GEMINI_MODEL,
-    'gemini-3.1-flash-lite',
-    'gemini-3.8-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-flash',
-  ];
-
-  const defaultSystemInstruction =
-    systemInstruction ||
-    `You are Aether AI, a friendly, ultra-fast and helpful AI assistant powered by Gemini Flash.
-You communicate fluently in Arabic and English. If the user writes in Arabic, respond in clear, natural Arabic. If in English, respond in English.
-Provide concise, accurate, and practical answers. Use clean formatting and code blocks when appropriate.`;
+  const defaultSystemInstruction = AETHER_COMPANION_SYSTEM_PROMPT;
 
   const getLocalCompanionFallback = (userInput: string): string => {
     const isArabic = /[\u0600-\u06FF]/.test(userInput);
@@ -169,6 +154,7 @@ Provide concise, accurate, and practical answers. Use clean formatting and code 
   // The Gemini credential must come only from the server environment, never from a browser header.
   if (!apiKey || !ai) {
     if (stream) {
+      res.status(503);
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
@@ -199,6 +185,7 @@ Provide concise, accurate, and practical answers. Use clean formatting and code 
           config: {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
+            maxOutputTokens: 500,
             abortSignal: providerAbortController.signal,
           },
         });
@@ -237,6 +224,7 @@ Provide concise, accurate, and practical answers. Use clean formatting and code 
           config: {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
+            maxOutputTokens: 500,
             abortSignal: providerAbortController.signal,
           },
         });

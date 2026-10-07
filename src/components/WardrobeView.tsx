@@ -1,4 +1,5 @@
 import React from 'react';
+import { COMPANION_DISPLAY_NAME } from '../lib/companionPersonality';
 
 type WardrobeItem = {
   id: string;
@@ -13,7 +14,7 @@ type WardrobeItem = {
 const items: WardrobeItem[] = [
   {
     id: 'char_dark_ice_c3256ebd4d660b1f',
-    label: 'Dark ICE',
+    label: COMPANION_DISPLAY_NAME,
     type: 'Character · VRM 1.0',
     status: 'WEB_READY',
     image: '/assets/characters/dark_ice/dark_ice_thumb.png',

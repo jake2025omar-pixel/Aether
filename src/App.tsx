@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { WardrobeView } from './components/WardrobeView';
+import aetherCatalog from './data/aetherCatalog.json';
 
 type ChatMessage = { id: string; sender: 'user' | 'gemini'; text: string };
 import { CompanionEnvironment } from './components/CompanionEnvironment';
@@ -13,7 +14,6 @@ import { Terminal } from 'lucide-react';
 import {
   CompanionState,
   CompanionEmotion,
-  AETHER_COMPANION_SYSTEM_PROMPT,
   parseCompanionResponse,
 } from './lib/companionPersonality';
 import { companionVoice } from './lib/companionVoice';
@@ -21,6 +21,13 @@ import { companionVoice } from './lib/companionVoice';
 export default function App() {
   const [activeView, setActiveView] = useState<NavDestination>('home');
   const primaryCharacterUrl = '/assets/characters/dark_ice/dark_ice.vrm';
+  const defaultEnvironment = aetherCatalog.assets[
+    aetherCatalog.default_environment as keyof typeof aetherCatalog.assets
+  ];
+  const primaryEnvironmentUrl = defaultEnvironment?.status === 'WEB_READY'
+    && typeof defaultEnvironment.runtime_file === 'string'
+    ? defaultEnvironment.runtime_file
+    : null;
 
   // Companion 3D State & Expression
   const [companionState, setCompanionState] = useState<CompanionState>('IDLE');
@@ -89,27 +96,35 @@ export default function App() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 25000);
 
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          message: query.slice(0, 2000),
-          history: historyPayload,
-          systemInstruction: AETHER_COMPANION_SYSTEM_PROMPT,
-          stream: false,
-        }),
-      });
-      clearTimeout(timeoutId);
+      let res: Response;
+      try {
+        res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            message: query.slice(0, 2000),
+            history: historyPayload,
+            stream: false,
+          }),
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       let rawAnswer = '';
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
         console.warn('Chat endpoint returned non-OK status:', res.status, errJson);
         const isArabic = /[\u0600-\u06FF]/.test(query);
+        const isNotConfigured = res.status === 503;
         rawAnswer = isArabic
-          ? '[EMOTION: NEUTRAL] أهلاً بك! خوادم الذكاء الاصطناعي تشهد ضغطاً مؤقتاً، يرجى المحاولة بعد لحظات.'
-          : "[EMOTION: NEUTRAL] I'm listening, but the AI service is experiencing high demand. Please try again in a moment.";
+          ? isNotConfigured
+            ? '[EMOTION: NEUTRAL] خدمة المحادثة غير مهيأة على الخادم بعد.'
+            : '[EMOTION: NEUTRAL] خدمة المحادثة مشغولة الآن، جرّب مرة أخرى بعد قليل.'
+          : isNotConfigured
+            ? '[EMOTION: NEUTRAL] The chat service is not configured on the server yet.'
+            : "[EMOTION: NEUTRAL] The chat service is busy right now. Please try again in a moment.";
       } else {
         const data = await res.json();
         rawAnswer = data.text || '';
@@ -238,6 +253,7 @@ export default function App() {
             visemeMouthOpen={visemeMouthOpen}
             onStartInteraction={handleToggleVoice}
             companionModelUrl={primaryCharacterUrl}
+            roomModelUrl={primaryEnvironmentUrl}
           />
         </div>
       )}

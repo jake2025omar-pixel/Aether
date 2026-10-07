@@ -53,7 +53,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ onBack }) => {
             Support is entirely voluntary for those who wish to assist with project development and server maintenance.
           </p>
           <p lang="ar" dir="rtl" className="text-xs sm:text-sm text-white/60 font-light max-w-md mx-auto leading-relaxed">
-            من فضلكم ادعموا مشروع إيثر للمساعدة في تغطية تكاليف استضافة الخادم ومواصلة تطويره. الدعم اختياري.
+            من فضلكم ادعموا مشروع إيثر لتغطية تكاليف استضافة الخادم. دعمكم اختياري ويساعدنا على مواصلة تطوير Aether.
           </p>
         </div>
 

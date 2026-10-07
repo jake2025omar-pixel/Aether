@@ -1,0 +1,3 @@
+# Copy this file to .dev.vars for local Wrangler Pages Functions testing.
+# Put a newly rotated key only in the untracked .dev.vars file or Cloudflare's encrypted secret settings.
+GEMINI_API_KEY=

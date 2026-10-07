@@ -3,7 +3,7 @@
   "default_environment":"room_neon_world_3_59517a50",
   "default_character":"char_dark_ice_c3256ebd4d660b1f",
   "assets":{
-    "room_neon_world_3_59517a50":{"manifest":"/Aether/3D/Manifests/assets/room_neon_world_3_59517a50.json","runtime_file":null,"status":"CONVERSION_REQUIRED"},
+    "room_neon_world_3_59517a50":{"manifest":"/Aether/3D/Manifests/assets/room_neon_world_3_59517a50.json","runtime_file":"/assets/environments/neon_world_3/Neon_World_3.glb","status":"WEB_READY"},
     "char_dark_ice_c3256ebd4d660b1f":{"manifest":"/Aether/3D/Manifests/assets/char_dark_ice_c3256ebd4d660b1f.json","runtime_file":"/assets/characters/dark_ice/dark_ice.vrm","status":"WEB_READY"},
     "char_maya_unconfirmed":{"manifest":"/Aether/3D/Manifests/assets/char_maya_unconfirmed.json","runtime_file":null,"status":"UNCONFIRMED"},
     "outfit_milk_re165_b453c59c":{"manifest":"/Aether/3D/Manifests/assets/outfit_milk_re165_b453c59c.json","runtime_file":"/assets/outfits/milk_re165/milk%20RE165.fbx","status":"CONVERSION_REQUIRED"},

@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Send, Mic, MicOff, Square, Loader2 } from 'lucide-react';
+import { COMPANION_DISPLAY_NAME } from '../lib/companionPersonality';
 
 interface InteractionBarProps {
   onSendMessage: (query: string) => void;
@@ -143,13 +144,13 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
             onChange={(event) => setInputVal(event.target.value)}
             onKeyDown={handleKeyDown}
             disabled={disabled || loading}
-            aria-label="Message Aether"
+            aria-label={`Message ${COMPANION_DISPLAY_NAME}`}
             placeholder={
               isListening
                 ? 'Listening to your voice...'
                 : isSpeaking
-                  ? 'Aether is speaking...'
-                  : 'Speak or type to Aether...'
+                  ? `${COMPANION_DISPLAY_NAME} is speaking...`
+                  : `Speak or type to ${COMPANION_DISPLAY_NAME}...`
             }
             className="w-full max-h-[40svh] min-h-10 resize-none overflow-x-hidden overflow-y-hidden break-words bg-transparent px-3 py-2 text-base sm:text-sm leading-6 text-white placeholder-white/35 focus:outline-none disabled:cursor-not-allowed [overflow-wrap:anywhere]"
           />

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CompanionRig } from './CompanionRig';
-import { CompanionState, CompanionEmotion } from '../../lib/companionPersonality';
+import { CompanionState, CompanionEmotion, COMPANION_DISPLAY_NAME } from '../../lib/companionPersonality';
 import { dispose3DResource, loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
 import { Mic, Volume2, Sparkles, Brain } from 'lucide-react';
 
@@ -178,7 +178,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
     renderer.setSize(width, height);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.0;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     // Anchor canvas firmly to the full window viewport so it cannot be squashed or compressed
@@ -194,10 +194,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
     // 4. Lighting Rig (Soft Amethyst Studio & Warm Key)
-    const ambientLight = new THREE.AmbientLight(0x281545, 2.0);
+    const ambientLight = new THREE.AmbientLight(0x281545, 1.35);
     scene.add(ambientLight);
 
-    const keyLight = new THREE.DirectionalLight(0xfff5eb, 2.3);
+    const keyLight = new THREE.DirectionalLight(0xfff5eb, 1.9);
     keyLight.position.set(1.8, 3.8, 3.0);
     scene.add(keyLight);
 
@@ -205,7 +205,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     fillLight.position.set(-2.8, 2.2, 2.0);
     scene.add(fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0xc084fc, 2.8);
+    const rimLight = new THREE.DirectionalLight(0xc084fc, 2.2);
     rimLight.position.set(0, 3.2, -2.8);
     scene.add(rimLight);
 
@@ -282,11 +282,46 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           if (res.scene) dispose3DResource(res.scene);
           return;
         }
-        if (!res.success || !res.scene) return;
+        if (!res.success || !res.scene) {
+          console.warn('[Room3D] Neon room load failed, keeping procedural room:', res.error);
+          return;
+        }
+        res.scene.traverse((object) => {
+          if (!(object as THREE.Mesh).isMesh) return;
+          const mesh = object as THREE.Mesh;
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const material of materials) {
+            material.side = THREE.DoubleSide;
+            if (material.name.toLowerCase().includes('led') && material instanceof THREE.MeshStandardMaterial) {
+              material.emissive.set(0x22d3ee);
+              material.emissiveIntensity = Math.max(material.emissiveIntensity, 1.4);
+            }
+            material.needsUpdate = true;
+          }
+        });
         scene.remove(roomGroup);
         dispose3DResource(roomGroup);
         res.scene.name = 'NeonWorld3Runtime';
         scene.add(res.scene);
+
+        // Preserve the imported room's textures while restoring a subdued neon-night mood.
+        ambientLight.color.setHex(0x211941);
+        ambientLight.intensity = 0.95;
+        keyLight.intensity = 1.65;
+        fillLight.intensity = 1.35;
+        rimLight.intensity = 2.1;
+        floorGlow.color.setHex(0x8b5cf6);
+        renderer.toneMappingExposure = 1.0;
+
+        const cyanBounce = new THREE.PointLight(0x22d3ee, 2.6, 8, 2);
+        cyanBounce.position.set(-2.8, 1.65, -1.4);
+        const violetBounce = new THREE.PointLight(0xa855f7, 2.4, 8, 2);
+        violetBounce.position.set(2.8, 1.55, -1.2);
+        scene.add(cyanBounce, violetBounce);
+      }).catch((err: unknown) => {
+        if (!isCancelled) console.warn('[Room3D] Neon room load exception, keeping procedural room:', err);
       });
     }
 
@@ -436,7 +471,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       }
 
       // Keep atmospheric particles still for reduced-motion preferences.
-      if (motionEnabled || wasMotionEnabled) {
+      if (roomGroup.parent === scene && (motionEnabled || wasMotionEnabled)) {
         const positions = particleGeo.attributes.position as THREE.BufferAttribute;
         for (let i = 0; i < particleCount; i++) {
           const py = motionEnabled
@@ -587,7 +622,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         >
           {getStatusIcon()}
           <span className="text-xs font-medium tracking-wide">
-            Aether
+            {COMPANION_DISPLAY_NAME}
           </span>
           <span className="text-[10px] opacity-60 font-mono tracking-wider uppercase">
             • {companionState}
