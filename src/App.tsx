@@ -168,7 +168,6 @@ export default function App() {
       companionVoice.stopSpeaking();
       setCompanionState('IDLE');
       setVisemeMouthOpen(0);
-      return;
     }
 
     // If currently listening, stop
@@ -182,6 +181,9 @@ export default function App() {
     setCompanionState('LISTENING');
 
     const started = companionVoice.startListening('auto', {
+      onStart: () => {
+        setCompanionState('LISTENING');
+      },
       onResult: (transcript) => {
         if (transcript.trim()) {
           handleCompanionInteraction(transcript.trim());
@@ -191,10 +193,21 @@ export default function App() {
       },
       onError: (err) => {
         setCompanionState('IDLE');
-        if (err !== 'no-speech') {
-          setVoiceError('Microphone unavailable or permission denied.');
-          setTimeout(() => setVoiceError(null), 4000);
-        }
+        if (err === 'aborted') return;
+
+        const messages: Record<string, string> = {
+          'not-allowed': 'Allow microphone access for this site in your browser settings, then try again.',
+          'service-not-allowed': 'Speech recognition is blocked by the browser. Check microphone and speech permissions.',
+          'audio-capture': 'No microphone was found, or the microphone is already in use.',
+          network: 'Speech recognition could not connect. Check your internet connection.',
+          'no-speech': 'I did not hear anything. Tap the microphone and speak again.',
+          'insecure-context': 'Microphone access requires a secure HTTPS connection.',
+          'language-not-supported': 'This browser does not support speech recognition for the selected language.',
+          'start-failed': 'The browser could not start the microphone. Check its permission and try again.',
+        };
+
+        setVoiceError(messages[err] || 'Microphone input failed. Check browser support and microphone permission.');
+        setTimeout(() => setVoiceError(null), 5000);
       },
       onEnd: () => {
         setCompanionState((prev) => (prev === 'LISTENING' ? 'IDLE' : prev));
@@ -203,8 +216,8 @@ export default function App() {
 
     if (!started) {
       setCompanionState('IDLE');
-      setVoiceError('Speech recognition is not supported on this browser.');
-      setTimeout(() => setVoiceError(null), 4000);
+      setVoiceError('Speech recognition is not supported in this browser. Try a supported browser or type your message.');
+      setTimeout(() => setVoiceError(null), 5000);
     }
   }, [companionState, handleCompanionInteraction]);
 

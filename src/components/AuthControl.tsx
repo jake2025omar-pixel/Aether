@@ -147,7 +147,7 @@ export const AuthControl: React.FC<AuthControlProps> = () => {
   return (
     <div className="flex items-center gap-2">
       {authError && (
-        <div className="p-1.5 px-2.5 rounded-full bg-purple-900/30 border border-purple-500/30 text-purple-200 text-[11px] flex items-center gap-1.5">
+        <div role="alert" aria-live="polite" title={authError} className="p-1.5 px-2.5 rounded-full bg-purple-900/30 border border-purple-500/30 text-purple-200 text-[11px] flex items-center gap-1.5">
           <AlertCircle className="w-3 h-3 text-purple-400 flex-shrink-0" />
           <span className="max-w-[150px] truncate">{authError}</span>
           <button onClick={clearAuthError} className="p-0.5 hover:text-white cursor-pointer">

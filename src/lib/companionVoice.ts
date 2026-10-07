@@ -3,6 +3,7 @@
  */
 
 export interface SpeechRecognitionHandlers {
+  onStart?: () => void;
   onResult: (transcript: string) => void;
   onError: (error: string) => void;
   onEnd: () => void;
@@ -66,9 +67,12 @@ class CompanionVoiceService {
    * Starts listening for user voice input
    */
   public startListening(lang: 'ar' | 'en' | 'auto', handlers: SpeechRecognitionHandlers): boolean {
-    if (!this.recognition) {
-      handlers.onError('Speech recognition is not supported in this browser.');
-      return false;
+    if (!this.recognition) return false;
+
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      handlers.onError('insecure-context');
+      handlers.onEnd();
+      return true;
     }
 
     if (this.isListening) {
@@ -78,7 +82,16 @@ class CompanionVoiceService {
     // Stop companion speech if companion is talking when user speaks
     this.stopSpeaking();
 
-    this.recognition.lang = lang === 'ar' ? 'ar-SA' : lang === 'en' ? 'en-US' : navigator.language || 'ar-SA';
+    this.recognition.lang = lang === 'ar'
+      ? 'ar-SA'
+      : lang === 'en'
+        ? 'en-US'
+        : (typeof navigator !== 'undefined' ? navigator.language : 'ar-SA') || 'ar-SA';
+
+    this.recognition.onstart = () => {
+      this.isListening = true;
+      handlers.onStart?.();
+    };
 
     this.recognition.onresult = (event: any) => {
       const transcript = event.results?.[0]?.[0]?.transcript || '';
@@ -86,6 +99,7 @@ class CompanionVoiceService {
     };
 
     this.recognition.onerror = (event: any) => {
+      this.isListening = false;
       const err = event.error || 'Speech recognition error';
       handlers.onError(err);
     };
@@ -101,8 +115,14 @@ class CompanionVoiceService {
       return true;
     } catch (err) {
       this.isListening = false;
-      handlers.onError('Failed to access microphone.');
-      return false;
+      const errorName = (err as { name?: string } | null)?.name;
+      handlers.onError(errorName === 'NotAllowedError' || errorName === 'SecurityError'
+        ? 'not-allowed'
+        : errorName === 'NotFoundError'
+          ? 'audio-capture'
+          : 'start-failed');
+      handlers.onEnd();
+      return true;
     }
   }
 

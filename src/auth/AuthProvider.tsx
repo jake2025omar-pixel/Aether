@@ -1,10 +1,11 @@
 import React, { createContext, useEffect, useState, useRef, ReactNode } from 'react';
 import {
   User,
+  getRedirectResult,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
-  AuthError,
 } from 'firebase/auth';
 import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
 import { syncUserProfile, UserProfile } from '../lib/firestore';
@@ -25,6 +26,45 @@ export interface AuthContextType {
   clearProfileError: () => void;
 }
 
+const getGoogleSignInErrorMessage = (error: unknown): string | null => {
+  const code = (error as { code?: unknown } | null)?.code;
+  const errorCode = typeof code === 'string' ? code : '';
+
+  switch (errorCode) {
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return null;
+    case 'auth/unauthorized-domain':
+      return 'This website domain is not authorized in Firebase Authentication. Add it to Authorized domains.';
+    case 'auth/operation-not-allowed':
+      return 'Google sign-in is disabled in Firebase Authentication. Enable the Google provider.';
+    case 'auth/network-request-failed':
+      return 'A network error interrupted Google sign-in. Check your connection and try again.';
+    case 'auth/invalid-api-key':
+    case 'auth/api-key-not-valid':
+    case 'auth/missing-api-key':
+      return 'Firebase configuration is missing or invalid. Check the VITE_FIREBASE_* settings.';
+    case 'auth/popup-blocked':
+      return 'The sign-in popup was blocked. Allow popups for this site or try again.';
+    default:
+      return errorCode
+        ? `Google sign-in failed (${errorCode}). Check Firebase settings and try again.`
+        : 'Google sign-in failed. Check Firebase settings and try again.';
+  }
+};
+
+const shouldUseRedirectSignIn = (): boolean => {
+  if (typeof window === 'undefined') return false;
+
+  const currentNavigator = window.navigator as Navigator & { standalone?: boolean };
+  const isIOS = /iPad|iPhone|iPod/i.test(currentNavigator.userAgent)
+    || (currentNavigator.platform === 'MacIntel' && currentNavigator.maxTouchPoints > 1);
+  const isStandalone = currentNavigator.standalone === true
+    || window.matchMedia?.('(display-mode: standalone)').matches === true;
+
+  return isIOS || isStandalone;
+};
+
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -43,6 +83,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setLoading(false);
       return;
     }
+
+    void getRedirectResult(auth).catch((error: unknown) => {
+      const message = getGoogleSignInErrorMessage(error);
+      if (message) setAuthError(message);
+    });
 
     const unsubscribe = onAuthStateChanged(
       auth,
@@ -103,34 +148,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     if (!isFirebaseConfigured || !auth || !googleProvider) {
-      setAuthError('Google Sign-In is not configured.');
+      setAuthError(
+        'Firebase configuration is incomplete. Set VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, and VITE_FIREBASE_PROJECT_ID.'
+      );
       return;
     }
 
     isSigningInRef.current = true;
     setSigningIn(true);
     try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (err) {
-      const error = err as AuthError & { message?: string };
-      // User closed popup or Firebase SDK internal popup promise assertion race
-      if (
-        error.code === 'auth/popup-closed-by-user' ||
-        error.code === 'auth/cancelled-popup-request' ||
-        error.message?.includes('Pending promise was never set') ||
-        error.message?.includes('INTERNAL ASSERTION FAILED')
-      ) {
+      if (shouldUseRedirectSignIn()) {
+        await signInWithRedirect(auth, googleProvider);
         return;
       }
 
-      if (error.code === 'auth/network-request-failed') {
-        setAuthError('Network error connecting to authentication service.');
-      } else if (error.code === 'auth/unauthorized-domain') {
-        setAuthError('This domain is not authorized in Firebase Authentication.');
-      } else if (error.code === 'auth/popup-blocked') {
-        setAuthError('Sign-in popup was blocked by browser. Please allow popups.');
+      await signInWithPopup(auth, googleProvider);
+    } catch (error: unknown) {
+      const errorCode = (error as { code?: unknown } | null)?.code;
+      const errorMessage = (error as { message?: unknown } | null)?.message;
+      const hasPopupAssertionError = typeof errorMessage === 'string'
+        && (errorMessage.includes('Pending promise was never set')
+          || errorMessage.includes('INTERNAL ASSERTION FAILED'));
+
+      if (errorCode === 'auth/popup-blocked' || hasPopupAssertionError) {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectError: unknown) {
+          const message = getGoogleSignInErrorMessage(redirectError);
+          if (message) setAuthError(message);
+        }
       } else {
-        setAuthError('Failed to sign in with Google. Please try again.');
+        const message = getGoogleSignInErrorMessage(error);
+        if (message) setAuthError(message);
       }
     } finally {
       isSigningInRef.current = false;

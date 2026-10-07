@@ -103,7 +103,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
       className="w-full max-w-xl mx-auto px-4 flex flex-col items-center gap-1.5"
     >
       {voiceError && (
-        <div className="text-[11px] text-rose-300 font-medium px-3 py-1 rounded-full bg-rose-950/60 border border-rose-500/30 backdrop-blur-md animate-in fade-in duration-200">
+        <div role="alert" aria-live="polite" className="text-[11px] text-rose-300 font-medium px-3 py-1 rounded-full bg-rose-950/60 border border-rose-500/30 backdrop-blur-md animate-in fade-in duration-200">
           {voiceError}
         </div>
       )}
@@ -122,6 +122,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
           onClick={onToggleVoice}
           disabled={disabled || loading}
           aria-label={isListening ? 'Stop listening' : 'Start speaking'}
+          aria-pressed={isListening}
           className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 cursor-pointer active:scale-95 ${
             isListening
               ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-pulse'
