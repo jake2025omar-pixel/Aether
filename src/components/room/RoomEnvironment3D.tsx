@@ -161,10 +161,12 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     scene.background = new THREE.Color(BG_COLOR);
     scene.fog = new THREE.FogExp2(BG_COLOR, 0.05);
 
-    // 2. Camera setup - initial full-body standing framing (Z = 3.4m, Y = 1.45m)
+    // 2. Camera setup - room-scale framing. The imported Neon room is about
+    // 7.5m wide x 9.4m deep, so a 3.4m portrait distance only showed a tiny
+    // corner. Keep the asset at its authored scale and frame the room instead.
     const camera = new THREE.PerspectiveCamera(46, width / height, 0.1, 100);
     camera.position.set(0, 1.45, 3.4);
-    camera.lookAt(0, 1.05, 0);
+    camera.lookAt(0, 1.7, 0);
     cameraRef.current = camera;
     targetLookPosRef.current.copy(camera.position);
 
@@ -316,6 +318,20 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           if (pillowRoot) pillowRoot.position.set(x, y, z);
         }
         res.scene.updateMatrixWorld(true);
+        // Fit the complete imported room, not just the companion. This prevents
+        // the GLB from appearing as a floor fragment in one distant corner.
+        const roomBounds = new THREE.Box3().setFromObject(res.scene);
+        const roomSize = roomBounds.getSize(new THREE.Vector3());
+        const roomCenter = roomBounds.getCenter(new THREE.Vector3());
+        const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+        // Stay inside the authored room. Fitting its exterior bounds would put
+        // the camera outside the front wall, hiding the companion and furniture.
+        const fitDistance = (Math.max(roomSize.x, roomSize.y, roomSize.z) * 0.15) / Math.tan(verticalFov / 2);
+        targetCamDist = THREE.MathUtils.clamp(fitDistance, 3.2, 3.8);
+        currentCamDist = targetCamDist;
+        // Keep the companion at eye/chest level; the room's geometric center is
+        // higher because it includes the ceiling and would aim above her head.
+        targetRoomFocus.copy(new THREE.Vector3(0, 1.08, 0));
         scene.add(res.scene);
 
         // Preserve the imported room's textures while restoring a subdued neon-night mood.
@@ -379,17 +395,22 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       mountFallbackRig();
     }
 
-    // 8. Interactive Camera Zoom & Parallax Physics
-    // Minimum distance: 1.15m (closeup on face and clothes)
-    // Maximum distance: 3.8m (full-body framing)
-    const MIN_DISTANCE = 1.15;
-    const MAX_DISTANCE = 3.8;
+    // 8. Interactive 360° room camera. Drag horizontally to orbit around the
+    // room; drag vertically to tilt. Pinch and wheel remain zoom controls.
+    const MIN_DISTANCE = 2.2;
+    const MAX_DISTANCE = 6.0;
     let currentCamDist = 3.4;
     let targetCamDist = 3.4;
-    let parallaxX = 0;
-    let parallaxY = 0;
+    let orbitYaw = 0.18;
+    let orbitPitch = 0.10;
+    let targetRoomFocus = new THREE.Vector3(0, 1.7, 0);
+    let isOrbiting = false;
+    let lastPointerX = 0;
+    let lastPointerY = 0;
+    let lastTouchX = 0;
+    let lastTouchY = 0;
 
-    // Touch gesture tracking (1 finger = parallax, 2 fingers = smooth pinch-to-zoom)
+    // Touch gesture tracking (1 finger = orbit, 2 fingers = smooth pinch-to-zoom)
     let isPinching = false;
     let initialPinchDist = 0;
     let pinchStartCamDist = 3.4;
@@ -402,6 +423,9 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           e.touches[0].clientY - e.touches[1].clientY
         );
         pinchStartCamDist = targetCamDist;
+      } else if (e.touches.length === 1) {
+        lastTouchX = e.touches[0].clientX;
+        lastTouchY = e.touches[0].clientY;
       }
     };
 
@@ -416,9 +440,12 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         const scaleFactor = initialPinchDist / Math.max(dist, 10);
         targetCamDist = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, pinchStartCamDist * scaleFactor));
       } else if (e.touches.length === 1 && !isPinching) {
+        e.preventDefault();
         const t = e.touches[0];
-        parallaxX = ((t.clientX / window.innerWidth) - 0.5) * 2;
-        parallaxY = ((t.clientY / window.innerHeight) - 0.5) * 2;
+        orbitYaw -= (t.clientX - lastTouchX) * 0.008;
+        orbitPitch = THREE.MathUtils.clamp(orbitPitch + (t.clientY - lastTouchY) * 0.005, -0.45, 0.45);
+        lastTouchX = t.clientX;
+        lastTouchY = t.clientY;
       }
     };
 
@@ -434,19 +461,31 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       targetCamDist = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, targetCamDist + e.deltaY * 0.003));
     };
 
-    // Pointer Parallax
+    const handlePointerDown = (e: PointerEvent) => {
+      isOrbiting = true;
+      lastPointerX = e.clientX;
+      lastPointerY = e.clientY;
+      container.setPointerCapture?.(e.pointerId);
+    };
     const handlePointerMove = (e: PointerEvent) => {
-      if (e.pointerType === 'mouse') {
-        parallaxX = ((e.clientX / window.innerWidth) - 0.5) * 2;
-        parallaxY = ((e.clientY / window.innerHeight) - 0.5) * 2;
-      }
+      if (!isOrbiting || e.pointerType === 'touch') return;
+      orbitYaw -= (e.clientX - lastPointerX) * 0.008;
+      orbitPitch = THREE.MathUtils.clamp(orbitPitch + (e.clientY - lastPointerY) * 0.005, -0.45, 0.45);
+      lastPointerX = e.clientX;
+      lastPointerY = e.clientY;
+    };
+    const handlePointerUp = () => {
+      isOrbiting = false;
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
     container.addEventListener('touchend', handleTouchEnd, { passive: true });
-    window.addEventListener('pointermove', handlePointerMove);
+    container.addEventListener('pointerdown', handlePointerDown);
+    container.addEventListener('pointermove', handlePointerMove);
+    container.addEventListener('pointerup', handlePointerUp);
+    container.addEventListener('pointercancel', handlePointerUp);
 
     // 9. Animation Loop
     const clock = new THREE.Clock();
@@ -456,18 +495,12 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       const delta = clock.getDelta();
       const elapsed = clock.getElapsedTime();
 
-      // Smooth camera dolly physics
+      // Smooth room-scale orbit and dolly physics
       currentCamDist = THREE.MathUtils.lerp(currentCamDist, targetCamDist, 0.08);
-      const zoomProgress = (currentCamDist - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE);
-
-      // Focus target shifts from face/chest (Y=1.38m) at closeup to body center (Y=1.05m) at distance
-      const targetFocusY = THREE.MathUtils.lerp(1.38, 1.05, zoomProgress);
-      const camBaseY = THREE.MathUtils.lerp(1.40, 1.45, zoomProgress);
-
-      camera.position.x = parallaxX * 0.18;
-      camera.position.y = camBaseY - parallaxY * 0.08;
-      camera.position.z = currentCamDist;
-      camera.lookAt(0, targetFocusY, 0);
+      camera.position.x = targetRoomFocus.x + Math.sin(orbitYaw) * currentCamDist;
+      camera.position.y = targetRoomFocus.y + Math.sin(orbitPitch) * currentCamDist;
+      camera.position.z = targetRoomFocus.z + Math.cos(orbitYaw) * currentCamDist;
+      camera.lookAt(targetRoomFocus);
 
       targetLookPosRef.current.copy(camera.position);
 
@@ -561,7 +594,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
-      window.removeEventListener('pointermove', handlePointerMove);
+      container.removeEventListener('pointerdown', handlePointerDown);
+      container.removeEventListener('pointermove', handlePointerMove);
+      container.removeEventListener('pointerup', handlePointerUp);
+      container.removeEventListener('pointercancel', handlePointerUp);
       window.removeEventListener('resize', onWindowResize);
       window.removeEventListener('orientationchange', onWindowResize);
 
