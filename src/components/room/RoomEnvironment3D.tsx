@@ -16,6 +16,29 @@ export interface RoomEnvironment3DProps {
 }
 
 /**
+ * Creates a smooth radial aura texture for the ethereal ground disc
+ * eliminating all harsh geometric boundaries.
+ */
+function createRadialGlowTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+    gradient.addColorStop(0, 'rgba(168, 85, 247, 0.40)'); // Amethyst core
+    gradient.addColorStop(0.28, 'rgba(147, 51, 234, 0.22)');
+    gradient.addColorStop(0.60, 'rgba(56, 189, 248, 0.08)'); // Subtle cyan aura
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)'); // Full soft falloff
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 512, 512);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.generateMipmaps = true;
+  return texture;
+}
+
+/**
  * Creates soft circular particle sprites for ambient floating starlight motes.
  */
 function createParticleTexture(): THREE.CanvasTexture {
@@ -80,6 +103,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const companionRigRef = useRef<CompanionRig | null>(null);
+  const floorGlowRef = useRef<THREE.PointLight | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
   const stateRef = useRef(companionState);
   const emotionRef = useRef(companionEmotion);
@@ -169,8 +193,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     container.appendChild(renderer.domElement);
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-    // 4. Lighting Rig: neutral key light with restrained cyan room accents.
-    const ambientLight = new THREE.AmbientLight(0x344054, 1.15);
+    // 4. Lighting Rig (Soft Amethyst Studio & Warm Key)
+    const ambientLight = new THREE.AmbientLight(0x281545, 1.35);
     scene.add(ambientLight);
 
     const keyLight = new THREE.DirectionalLight(0xfff5eb, 1.9);
@@ -181,9 +205,14 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     fillLight.position.set(-2.8, 2.2, 2.0);
     scene.add(fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0x9fb8d8, 1.1);
+    const rimLight = new THREE.DirectionalLight(0xc084fc, 2.2);
     rimLight.position.set(0, 3.2, -2.8);
     scene.add(rimLight);
+
+    const floorGlow = new THREE.PointLight(0xa855f7, 2.2, 8);
+    floorGlow.position.set(0, 0.35, 0);
+    floorGlowRef.current = floorGlow;
+    scene.add(floorGlow);
 
     // 5. Boundless, Immersive Room Environment (No box walls, no harsh lines or borders)
     const roomGroup = new THREE.Group();
@@ -200,6 +229,20 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     floor.position.y = 0;
     floor.receiveShadow = true;
     roomGroup.add(floor);
+
+    // Ethereal radial ground aura directly under the companion
+    const auraTexture = createRadialGlowTexture();
+    const auraGeo = new THREE.PlaneGeometry(5.2, 5.2);
+    const auraMat = new THREE.MeshBasicMaterial({
+      map: auraTexture,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const auraMesh = new THREE.Mesh(auraGeo, auraMat);
+    auraMesh.rotation.x = -Math.PI / 2;
+    auraMesh.position.set(0, 0.003, 0);
+    roomGroup.add(auraMesh);
 
     // Ambient floating starlight particles providing depth and spatial atmosphere
     const particleCount = 65;
@@ -261,12 +304,9 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         scene.remove(roomGroup);
         dispose3DResource(roomGroup);
         res.scene.name = 'NeonWorld3Runtime';
-        // The exported Unity room was authored from the opposite viewing direction.
-        // Turn the complete room around its centered origin so the bed, screen and
-        // curtain sit behind the companion instead of behind the camera.
+        // Keep the exported room aligned with the camera without changing its original lighting or props.
         res.scene.rotation.y = Math.PI;
-        // The two pillow prefabs retained their original Unity-side offsets during
-        // export. Keep them on the supplied bed base, at a human-scale height.
+        // Correct only the exported pillow offsets so they rest on the supplied bed base.
         const pillowPlacements: Array<[string, number, number, number]> = [
           ['SimplePillow1_Root', -1.25, 1.16, 4.2],
           ['SimplePillow2_Root', -0.25, 1.16, 4.2],
@@ -284,11 +324,14 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         keyLight.intensity = 1.65;
         fillLight.intensity = 1.35;
         rimLight.intensity = 2.1;
+        floorGlow.color.setHex(0x8b5cf6);
         renderer.toneMappingExposure = 1.0;
 
-        const cyanBounce = new THREE.PointLight(0x22d3ee, 2.2, 8, 2);
+        const cyanBounce = new THREE.PointLight(0x22d3ee, 2.6, 8, 2);
         cyanBounce.position.set(-2.8, 1.65, -1.4);
-        scene.add(cyanBounce);
+        const violetBounce = new THREE.PointLight(0xa855f7, 2.4, 8, 2);
+        violetBounce.position.set(2.8, 1.55, -1.2);
+        scene.add(cyanBounce, violetBounce);
       }).catch((err: unknown) => {
         if (!isCancelled) console.warn('[Room3D] Neon room load exception, keeping procedural room:', err);
       });
@@ -433,7 +476,11 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         companionRigRef.current.update(delta, elapsed, targetLookPosRef.current);
       }
 
+      // Atmospheric floor light pulse
       const motionEnabled = motionEnabledRef.current;
+      if (floorGlowRef.current) {
+        floorGlowRef.current.intensity = motionEnabled ? 2.0 + Math.sin(elapsed * 2.2) * 0.4 : 2.0;
+      }
 
       // Keep atmospheric particles still for reduced-motion preferences.
       if (roomGroup.parent === scene && (motionEnabled || wasMotionEnabled)) {
@@ -536,6 +583,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       rendererRef.current = null;
       sceneRef.current = null;
       cameraRef.current = null;
+      floorGlowRef.current = null;
       animFrameIdRef.current = null;
     };
   }, [companionModelUrl, roomModelUrl]);
