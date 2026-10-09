@@ -42,6 +42,7 @@ export default function App() {
   });
   const [loading, setLoading] = useState(false);
   const [isDevModalOpen, setIsDevModalOpen] = useState(false);
+  const recoveryTimerRef = useRef<number | null>(null);
 
   // Global Developer Mode shortcut: Shift + D
   React.useEffect(() => {
@@ -67,6 +68,11 @@ export default function App() {
    */
   const handleCompanionInteraction = useCallback(async (query: string) => {
     if (!query.trim() || loading) return;
+
+    if (recoveryTimerRef.current !== null) {
+      window.clearTimeout(recoveryTimerRef.current);
+      recoveryTimerRef.current = null;
+    }
 
     // Interrupt any ongoing speech
     companionVoice.stopSpeaking();
@@ -168,10 +174,13 @@ export default function App() {
         ? (isArabic ? 'انتهت مهلة الاتصال بالخادم، يرجى المحاولة ثانية.' : 'Request timed out. Please try again.')
         : (isArabic ? 'حدث خطأ في الاتصال، يرجى إعادة المحاولة.' : 'Connection issue. Please try again.');
       setVoiceError(errMsg);
-      setTimeout(() => {
+      recoveryTimerRef.current = window.setTimeout(() => {
         setVoiceError(null);
         setCompanionState('RECOVERING');
-        window.setTimeout(() => setCompanionState('IDLE'), 850);
+        recoveryTimerRef.current = window.setTimeout(() => {
+          recoveryTimerRef.current = null;
+          setCompanionState('IDLE');
+        }, 850);
       }, 4000);
     } finally {
       setLoading(false);
