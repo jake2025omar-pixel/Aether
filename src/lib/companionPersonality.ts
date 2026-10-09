@@ -9,7 +9,9 @@ export type CompanionState =
   | 'LISTENING'
   | 'THINKING'
   | 'SPEAKING'
-  | 'SLEEPING';
+  | 'SLEEPING'
+  | 'TECHNICAL_ERROR'
+  | 'RECOVERING';
 
 export type CompanionEmotion =
   | 'NEUTRAL'

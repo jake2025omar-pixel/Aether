@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { VRM } from '@pixiv/three-vrm';
 import { CompanionEmotion, CompanionState } from '../../lib/companionPersonality';
 import { dispose3DResource } from '@/Aether/3D/Preview/AssetPreviewLoader';
+import { AnimationEvent, AnimationOrchestrator, SemanticAnimationFrame } from '../../lib/animationOrchestrator';
 
 export class CompanionRig {
   public root: THREE.Group;
@@ -52,6 +53,8 @@ export class CompanionRig {
   private nextBlinkTime: number = 3.5;
   private isBlinking: boolean = false;
   private blinkProgress: number = 0;
+  private readonly animationOrchestrator = new AnimationOrchestrator();
+  private animationFrame: SemanticAnimationFrame = this.animationOrchestrator.update(0, 0);
 
   constructor(vrm?: VRM | null) {
     this.root = new THREE.Group();
@@ -295,6 +298,7 @@ export class CompanionRig {
    */
   public setEmotion(emotion: CompanionEmotion): void {
     this.currentEmotion = emotion;
+    this.animationOrchestrator.setEmotion(emotion, 0.62);
 
     const vrmMap: Record<CompanionEmotion, string> = {
       NEUTRAL: 'relaxed',
@@ -360,13 +364,15 @@ export class CompanionRig {
   }
 
   public setState(state: CompanionState): void {
-    if (state === this.currentState) return;
+    if (state === this.currentState && this.animationOrchestrator.getSnapshot().state !== 'INITIALIZING') return;
     this.currentState = state;
+    this.animationOrchestrator.setConversationState(state);
     this.gestureTime = state === 'SPEAKING' || state === 'LISTENING' ? 0 : 1;
   }
 
   public setMotionEnabled(enabled: boolean): void {
     this.motionEnabled = enabled;
+    this.animationOrchestrator.setMotionEnabled(enabled);
     if (!enabled) {
       this.gestureTime = 1;
       this.blinkTimer = 0;
@@ -399,13 +405,19 @@ export class CompanionRig {
     }
   }
 
+  /** Forwards validated conversation/network events without exposing rig details. */
+  public notifyAnimationEvent(event: AnimationEvent): void {
+    this.animationOrchestrator.notify(event);
+  }
+
   /**
    * Updates idle breathing, eye blinking, lookAt tracking, and expressions every frame
   */
   public update(delta: number, elapsedTime: number, targetLookPos?: THREE.Vector3): void {
     const frameDelta = Math.min(Math.max(delta, 0), 0.05);
     const motion = this.motionEnabled ? 1 : 0;
-    const breath = Math.sin(elapsedTime * 1.6) * 0.012 * motion;
+    this.animationFrame = this.animationOrchestrator.update(frameDelta, elapsedTime);
+    const breath = Math.sin(elapsedTime * 1.6) * 0.012 * motion * this.animationFrame.breathing;
 
     this.displayedViseme = THREE.MathUtils.damp(this.displayedViseme, this.targetViseme, 18, frameDelta);
     if (this.targetViseme === 0 && this.displayedViseme < 0.005) this.displayedViseme = 0;
@@ -425,7 +437,7 @@ export class CompanionRig {
       ? (lookDir ? THREE.MathUtils.clamp(lookDir.x * 0.16, -0.12, 0.12) : Math.sin(elapsedTime * 0.55) * 0.025)
       : 0;
     const lookPitch = motion && lookDir ? THREE.MathUtils.clamp(-lookDir.y * 0.08, -0.08, 0.08) : 0;
-    const stateTilt = this.currentState === 'LISTENING' ? 0.045 : 0;
+    const stateTilt = (this.currentState === 'LISTENING' ? 0.045 : 0) + this.animationFrame.head.z;
     const emotionTilt = this.currentEmotion === 'CURIOUS' || this.currentEmotion === 'CONFUSED'
       ? -0.055
       : this.currentEmotion === 'SAD' || this.currentEmotion === 'EMPATHETIC'
@@ -452,8 +464,8 @@ export class CompanionRig {
         manager.setValue('ee', 0);
 
         const speechSuppression = Math.max(0.42, 1 - this.displayedViseme * 0.9);
-        const emotionBase = this.currentEmotion === 'NEUTRAL' ? 0.18
-          : this.currentEmotion === 'GENTLY_ANNOYED' ? 0.2 : 0.34;
+        const emotionBase = (this.currentEmotion === 'NEUTRAL' ? 0.18
+          : this.currentEmotion === 'GENTLY_ANNOYED' ? 0.2 : 0.34) * this.animationFrame.facialIntensity;
         for (const preset of Object.keys(this.emotionWeights)) {
           const targetWeight = preset === this.activeEmotionVrmPreset ? emotionBase * speechSuppression : 0;
           const weight = THREE.MathUtils.damp(this.emotionWeights[preset], targetWeight, 5.5, frameDelta);
@@ -466,7 +478,7 @@ export class CompanionRig {
         const lean = this.currentState === 'LISTENING' ? 0.018 : 0;
         this.vrmSpineBone.rotation.x = THREE.MathUtils.damp(
           this.vrmSpineBone.rotation.x,
-          this.vrmSpineRest.x + breath + lean * motion,
+          this.vrmSpineRest.x + breath + lean * motion + this.animationFrame.torso.lean,
           3.5,
           frameDelta
         );
@@ -476,13 +488,13 @@ export class CompanionRig {
         const thinkingTilt = this.currentEmotion === 'THINKING' ? -0.07 : 0;
         this.vrmHeadBone.rotation.x = THREE.MathUtils.damp(
           this.vrmHeadBone.rotation.x,
-          this.vrmHeadRest.x + lookPitch + thinkingTilt * motion + gesturePulse * 0.035,
+          this.vrmHeadRest.x + lookPitch + this.animationFrame.gaze.y + thinkingTilt * motion + gesturePulse * 0.035 + this.animationFrame.head.x,
           4.5,
           frameDelta
         );
         this.vrmHeadBone.rotation.y = THREE.MathUtils.damp(
           this.vrmHeadBone.rotation.y,
-          this.vrmHeadRest.y + lookYaw + (this.currentEmotion === 'THINKING' ? 0.08 * motion : 0),
+          this.vrmHeadRest.y + lookYaw + (this.currentEmotion === 'THINKING' ? 0.08 * motion : 0) + this.animationFrame.head.y + this.animationFrame.gaze.x,
           4,
           frameDelta
         );
@@ -497,11 +509,11 @@ export class CompanionRig {
       const armGesture = gesturePulse * (this.currentState === 'SPEAKING' ? 0.065 : 0.035);
       if (this.vrmRightUpperArm) {
         this.vrmRightUpperArm.rotation.copy(this.rightArmRest);
-        this.vrmRightUpperArm.rotation.x += armGesture;
+        this.vrmRightUpperArm.rotation.x += armGesture + this.animationFrame.arms.right;
       }
       if (this.vrmLeftUpperArm) {
         this.vrmLeftUpperArm.rotation.copy(this.leftArmRest);
-        this.vrmLeftUpperArm.rotation.x -= armGesture * 0.35;
+        this.vrmLeftUpperArm.rotation.x -= armGesture * 0.35 + this.animationFrame.arms.left;
       }
     }
 
@@ -509,17 +521,17 @@ export class CompanionRig {
       this.mouthMesh.scale.set(1 + this.displayedViseme * 0.2, 1 + this.displayedViseme * 1.2, 1);
     }
     if (this.chestBone) {
-      this.chestBone.position.y = 0.22 + breath;
-      this.chestBone.rotation.x = breath * 0.8;
+      this.chestBone.position.y = 0.22 + breath + this.animationFrame.torso.shoulderLift * 0.12;
+      this.chestBone.rotation.x = breath * 0.8 + this.animationFrame.torso.lean;
     }
     if (this.headBone) {
       this.headBone.rotation.x = THREE.MathUtils.damp(
         this.headBone.rotation.x,
-        lookPitch + (this.currentEmotion === 'THINKING' ? -0.07 * motion : 0) + gesturePulse * 0.035,
+        lookPitch + this.animationFrame.gaze.y + (this.currentEmotion === 'THINKING' ? -0.07 * motion : 0) + gesturePulse * 0.035 + this.animationFrame.head.x,
         4.5,
         frameDelta
       );
-      this.headBone.rotation.y = THREE.MathUtils.damp(this.headBone.rotation.y, lookYaw, 4, frameDelta);
+      this.headBone.rotation.y = THREE.MathUtils.damp(this.headBone.rotation.y, lookYaw + this.animationFrame.head.y + this.animationFrame.gaze.x, 4, frameDelta);
       this.headBone.rotation.z = THREE.MathUtils.damp(
         this.headBone.rotation.z,
         (stateTilt + emotionTilt) * motion,
@@ -535,8 +547,8 @@ export class CompanionRig {
     }
     if (!this.isVrm) {
       const armGesture = gesturePulse * (this.currentState === 'SPEAKING' ? 0.08 : 0.04);
-      if (this.proceduralRightArm) this.proceduralRightArm.rotation.z = this.rightArmRest.z + armGesture;
-      if (this.proceduralLeftArm) this.proceduralLeftArm.rotation.z = this.leftArmRest.z - armGesture * 0.35;
+      if (this.proceduralRightArm) this.proceduralRightArm.rotation.z = this.rightArmRest.z + armGesture + this.animationFrame.arms.right;
+      if (this.proceduralLeftArm) this.proceduralLeftArm.rotation.z = this.leftArmRest.z - armGesture * 0.35 - this.animationFrame.arms.left;
     }
 
     if (this.crystalCore) {

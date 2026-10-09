@@ -159,7 +159,7 @@ export default function App() {
     } catch (err: unknown) {
       console.error('Companion interaction error:', err);
       companionVoice.stopSpeaking();
-      setCompanionState('IDLE');
+      setCompanionState('TECHNICAL_ERROR');
       setCompanionEmotion('CONFUSED');
       setVisemeMouthOpen(0);
       const isAbort = err instanceof Error && err.name === 'AbortError';
@@ -168,7 +168,11 @@ export default function App() {
         ? (isArabic ? 'انتهت مهلة الاتصال بالخادم، يرجى المحاولة ثانية.' : 'Request timed out. Please try again.')
         : (isArabic ? 'حدث خطأ في الاتصال، يرجى إعادة المحاولة.' : 'Connection issue. Please try again.');
       setVoiceError(errMsg);
-      setTimeout(() => setVoiceError(null), 4000);
+      setTimeout(() => {
+        setVoiceError(null);
+        setCompanionState('RECOVERING');
+        window.setTimeout(() => setCompanionState('IDLE'), 850);
+      }, 4000);
     } finally {
       setLoading(false);
     }
