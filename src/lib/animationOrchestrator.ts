@@ -201,7 +201,7 @@ export class AnimationOrchestrator {
   private actionElapsed = 0;
   private blendElapsed = 0;
   private idleElapsed = 0;
-  private idleCooldown = 4.5;
+  private idleCooldown = 1.8;
   private idleSeed = 17;
   private pending: AnimationEvent[] = [];
   private interruptedAction: string | null = null;
@@ -344,7 +344,12 @@ export class AnimationOrchestrator {
       if (this.blendElapsed >= this.activeProfile.transitionOut) {
         this.lifecycle = 'FINISHED';
         this.interruptedAction = null;
-        this.startProfile(this.profileForState(this.state), this.state);
+        // Finish on the neutral/base pose. Do not restart the same waiting
+        // profile forever; this allows the idle scheduler to choose a new
+        // glance or head-tilt action on its next cooldown.
+        this.activeProfile = this.profiles.neutral || DEFAULT_MOTION_PROFILES.neutral;
+        this.actionElapsed = 0;
+        this.blendElapsed = 0;
       }
     }
   }
