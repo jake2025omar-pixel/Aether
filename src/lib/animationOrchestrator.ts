@@ -239,7 +239,15 @@ export class AnimationOrchestrator {
       INITIALIZING: 'INITIALIZING', TECHNICAL_ERROR: 'TECHNICAL_ERROR', RECOVERING: 'RECOVERING',
     };
     const next = map[state] || 'WAITING_FOR_USER';
-    const event: AnimationEvent = next === 'LISTENING' ? { type: 'VOICE_INPUT' } : next === 'THINKING' ? { type: 'REQUEST_PENDING' } : next === 'SPEAKING' ? { type: 'SPEECH_STARTED' } : { type: 'RESPONSE_RECEIVED' };
+    const event: AnimationEvent = next === 'LISTENING'
+      ? { type: 'VOICE_INPUT' }
+      : next === 'THINKING'
+        ? { type: 'REQUEST_PENDING' }
+        : next === 'SPEAKING'
+          ? { type: 'SPEECH_STARTED' }
+          : next === 'WAITING_FOR_USER'
+            ? { type: 'SPEECH_ENDED' }
+            : { type: 'RESPONSE_RECEIVED' };
     this.state = next;
     this.enqueue(event);
   }
