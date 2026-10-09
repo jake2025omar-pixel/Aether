@@ -22,10 +22,12 @@ export class CompanionRig {
   private proceduralRightArm: THREE.Mesh | null = null;
   private vrmHeadBone: THREE.Object3D | null = null;
   private vrmSpineBone: THREE.Object3D | null = null;
+  private vrmHipsBone: THREE.Object3D | null = null;
   private vrmLeftUpperArm: THREE.Object3D | null = null;
   private vrmRightUpperArm: THREE.Object3D | null = null;
   private readonly vrmHeadRest = new THREE.Euler();
   private readonly vrmSpineRest = new THREE.Euler();
+  private readonly vrmHipsRest = new THREE.Euler();
   private readonly leftArmRest = new THREE.Euler();
   private readonly rightArmRest = new THREE.Euler();
   private readonly lookDirection = new THREE.Vector3();
@@ -65,8 +67,10 @@ export class CompanionRig {
       this.root.add(vrm.scene);
       this.vrmHeadBone = vrm.humanoid?.getNormalizedBoneNode('head') || null;
       this.vrmSpineBone = vrm.humanoid?.getNormalizedBoneNode('spine') || null;
+      this.vrmHipsBone = vrm.humanoid?.getNormalizedBoneNode('hips') || null;
       if (this.vrmHeadBone) this.vrmHeadRest.copy(this.vrmHeadBone.rotation);
       if (this.vrmSpineBone) this.vrmSpineRest.copy(this.vrmSpineBone.rotation);
+      if (this.vrmHipsBone) this.vrmHipsRest.copy(this.vrmHipsBone.rotation);
       this.applyNaturalVrmRestPose(vrm);
     } else {
       this.buildProceduralHumanoidRig();
@@ -417,7 +421,10 @@ export class CompanionRig {
     const frameDelta = Math.min(Math.max(delta, 0), 0.05);
     const motion = this.motionEnabled ? 1 : 0;
     this.animationFrame = this.animationOrchestrator.update(frameDelta, elapsedTime);
-    const breath = Math.sin(elapsedTime * 1.6) * 0.012 * motion * this.animationFrame.breathing;
+    const breath = Math.sin(elapsedTime * 1.6) * 0.018 * motion * this.animationFrame.breathing;
+    // Continuous micro-movement keeps the avatar alive between discrete gestures.
+    const idleSway = motion * Math.sin(elapsedTime * 0.72) * 0.032;
+    const idleShoulder = motion * Math.sin(elapsedTime * 0.9 + 0.8) * 0.018;
 
     this.displayedViseme = THREE.MathUtils.damp(this.displayedViseme, this.targetViseme, 18, frameDelta);
     if (this.targetViseme === 0 && this.displayedViseme < 0.005) this.displayedViseme = 0;
@@ -482,6 +489,21 @@ export class CompanionRig {
           3.5,
           frameDelta
         );
+        this.vrmSpineBone.rotation.z = THREE.MathUtils.damp(
+          this.vrmSpineBone.rotation.z,
+          this.vrmSpineRest.z + idleSway + this.animationFrame.torso.lean * 0.5,
+          3.2,
+          frameDelta
+        );
+      }
+
+      if (this.vrmHipsBone) {
+        this.vrmHipsBone.rotation.z = THREE.MathUtils.damp(
+          this.vrmHipsBone.rotation.z,
+          this.vrmHipsRest.z - idleSway * 0.45,
+          2.8,
+          frameDelta
+        );
       }
 
       if (this.vrmHeadBone) {
@@ -510,10 +532,12 @@ export class CompanionRig {
       if (this.vrmRightUpperArm) {
         this.vrmRightUpperArm.rotation.copy(this.rightArmRest);
         this.vrmRightUpperArm.rotation.x += armGesture + this.animationFrame.arms.right;
+        this.vrmRightUpperArm.rotation.z += idleShoulder;
       }
       if (this.vrmLeftUpperArm) {
         this.vrmLeftUpperArm.rotation.copy(this.leftArmRest);
         this.vrmLeftUpperArm.rotation.x -= armGesture * 0.35 + this.animationFrame.arms.left;
+        this.vrmLeftUpperArm.rotation.z -= idleShoulder;
       }
     }
 
@@ -523,6 +547,7 @@ export class CompanionRig {
     if (this.chestBone) {
       this.chestBone.position.y = 0.22 + breath + this.animationFrame.torso.shoulderLift * 0.12;
       this.chestBone.rotation.x = breath * 0.8 + this.animationFrame.torso.lean;
+      this.chestBone.rotation.z = idleSway * 0.55;
     }
     if (this.headBone) {
       this.headBone.rotation.x = THREE.MathUtils.damp(
@@ -547,8 +572,8 @@ export class CompanionRig {
     }
     if (!this.isVrm) {
       const armGesture = gesturePulse * (this.currentState === 'SPEAKING' ? 0.08 : 0.04);
-      if (this.proceduralRightArm) this.proceduralRightArm.rotation.z = this.rightArmRest.z + armGesture + this.animationFrame.arms.right;
-      if (this.proceduralLeftArm) this.proceduralLeftArm.rotation.z = this.leftArmRest.z - armGesture * 0.35 - this.animationFrame.arms.left;
+      if (this.proceduralRightArm) this.proceduralRightArm.rotation.z = this.rightArmRest.z + armGesture + this.animationFrame.arms.right + idleShoulder;
+      if (this.proceduralLeftArm) this.proceduralLeftArm.rotation.z = this.leftArmRest.z - armGesture * 0.35 - this.animationFrame.arms.left - idleShoulder;
     }
 
     if (this.crystalCore) {
