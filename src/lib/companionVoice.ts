@@ -4,6 +4,7 @@
 
 export interface SpeechRecognitionHandlers {
   onStart?: () => void;
+  onInterim?: (transcript: string) => void;
   onResult: (transcript: string) => void;
   onError: (error: string) => void;
   onEnd: () => void;
@@ -56,7 +57,10 @@ class CompanionVoiceService {
   }
 
   public isSpeechRecognitionSupported(): boolean {
-    return Boolean(this.recognition);
+    if (typeof window === 'undefined') return false;
+    return Boolean(
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    );
   }
 
   public isSpeechSynthesisSupported(): boolean {
@@ -67,60 +71,118 @@ class CompanionVoiceService {
    * Starts listening for user voice input
    */
   public startListening(lang: 'ar' | 'en' | 'auto', handlers: SpeechRecognitionHandlers): boolean {
-    if (!this.recognition) return false;
+    if (typeof window === 'undefined') return false;
 
-    if (typeof window !== 'undefined' && !window.isSecureContext) {
+    const SpeechRecognitionClass =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionClass) return false;
+
+    if (!window.isSecureContext) {
       handlers.onError('insecure-context');
       handlers.onEnd();
       return true;
     }
 
-    if (this.isListening) {
-      this.stopListening();
-    }
-
     // Stop companion speech if companion is talking when user speaks
     this.stopSpeaking();
 
-    this.recognition.lang = lang === 'ar'
-      ? 'ar-SA'
-      : lang === 'en'
-        ? 'en-US'
-        : (typeof navigator !== 'undefined' ? navigator.language : 'ar-SA') || 'ar-SA';
-
-    this.recognition.onstart = () => {
-      this.isListening = true;
-      handlers.onStart?.();
-    };
-
-    this.recognition.onresult = (event: any) => {
-      const transcript = event.results?.[0]?.[0]?.transcript || '';
-      handlers.onResult(transcript);
-    };
-
-    this.recognition.onerror = (event: any) => {
+    // Clean up any prior recognition session
+    if (this.recognition) {
+      try {
+        this.recognition.onstart = null;
+        this.recognition.onresult = null;
+        this.recognition.onerror = null;
+        this.recognition.onend = null;
+        this.recognition.abort();
+      } catch {
+        // Ignore abort error
+      }
+      this.recognition = null;
       this.isListening = false;
-      const err = event.error || 'Speech recognition error';
-      handlers.onError(err);
-    };
-
-    this.recognition.onend = () => {
-      this.isListening = false;
-      handlers.onEnd();
-    };
+    }
 
     try {
-      this.recognition.start();
+      const recognition = new SpeechRecognitionClass();
+      this.recognition = recognition;
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      // Prioritize Arabic for natural regional interaction unless explicitly specified
+      recognition.lang = lang === 'en'
+        ? 'en-US'
+        : 'ar-SA';
+
+      let receivedFinalTranscript = false;
+      let lastSpokenText = '';
+
+      recognition.onstart = () => {
+        this.isListening = true;
+        handlers.onStart?.();
+      };
+
+      recognition.onresult = (event: any) => {
+        let interimText = '';
+        let finalText = '';
+        if (event.results) {
+          for (let i = 0; i < event.results.length; i++) {
+            const res = event.results[i];
+            if (res && res[0]?.transcript) {
+              if (res.isFinal) {
+                finalText += res[0].transcript;
+              } else {
+                interimText += res[0].transcript;
+              }
+            }
+          }
+        }
+        if (interimText.trim()) {
+          handlers.onInterim?.(interimText.trim());
+        }
+        const candidate = (finalText || interimText).trim();
+        if (candidate) {
+          lastSpokenText = candidate;
+        }
+        if (finalText.trim()) {
+          receivedFinalTranscript = true;
+          handlers.onResult(finalText.trim());
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        this.isListening = false;
+        const err = event.error || 'Speech recognition error';
+        if (err !== 'aborted' && err !== 'no-speech') {
+          console.warn('[CompanionVoice] Speech recognition error:', err);
+        }
+        handlers.onError(err);
+      };
+
+      recognition.onend = () => {
+        this.isListening = false;
+        // If final event wasn't sent but we caught spoken text, deliver it
+        if (!receivedFinalTranscript && lastSpokenText.trim()) {
+          receivedFinalTranscript = true;
+          handlers.onResult(lastSpokenText.trim());
+        }
+        handlers.onEnd();
+      };
+
+      recognition.start();
       this.isListening = true;
       return true;
-    } catch (err) {
+    } catch (err: unknown) {
       this.isListening = false;
+      this.recognition = null;
       const errorName = (err as { name?: string } | null)?.name;
-      handlers.onError(errorName === 'NotAllowedError' || errorName === 'SecurityError'
-        ? 'not-allowed'
-        : errorName === 'NotFoundError'
-          ? 'audio-capture'
-          : 'start-failed');
+      handlers.onError(
+        errorName === 'NotAllowedError' || errorName === 'SecurityError'
+          ? 'not-allowed'
+          : errorName === 'NotFoundError'
+            ? 'audio-capture'
+            : 'start-failed'
+      );
       handlers.onEnd();
       return true;
     }
@@ -130,7 +192,7 @@ class CompanionVoiceService {
    * Stops listening
    */
   public stopListening(): void {
-    if (this.recognition && this.isListening) {
+    if (this.recognition) {
       try {
         this.recognition.stop();
       } catch {

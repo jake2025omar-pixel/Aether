@@ -11,6 +11,8 @@ interface InteractionBarProps {
   loading?: boolean;
   disabled?: boolean;
   voiceError?: string | null;
+  interimTranscript?: string | null;
+  onFocusChange?: (focused: boolean) => void;
 }
 
 export const InteractionBar: React.FC<InteractionBarProps> = ({
@@ -22,64 +24,105 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
   loading = false,
   disabled = false,
   voiceError = null,
+  interimTranscript = null,
+  onFocusChange,
 }) => {
   const [inputVal, setInputVal] = useState('');
   const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const viewportBaselineRef = useRef(0);
+  const activeOffsetRef = useRef(0);
+
+  const updateKeyboardOffset = React.useCallback(() => {
+    const isFocused = document.activeElement === textareaRef.current;
+    if (!isFocused) {
+      if (activeOffsetRef.current !== 0) {
+        activeOffsetRef.current = 0;
+        setKeyboardOffset(0);
+      }
+      return;
+    }
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      if (activeOffsetRef.current !== 0) {
+        activeOffsetRef.current = 0;
+        setKeyboardOffset(0);
+      }
+      return;
+    }
+
+    // Current visible viewport bottom in client coordinates
+    const visualBottom = viewport.height + (viewport.offsetTop || 0);
+
+    // Calculate natural (untransformed) bottom of the input container
+    const currentRect = container.getBoundingClientRect();
+    const naturalBottom = currentRect.bottom + activeOffsetRef.current;
+
+    // If the virtual keyboard covers the container, lift it just above the keyboard with a subtle 4px clearance
+    const overlap = naturalBottom - visualBottom;
+    const newOffset = overlap > 2 ? Math.round(overlap + 4) : 0;
+
+    if (activeOffsetRef.current !== newOffset) {
+      activeOffsetRef.current = newOffset;
+      setKeyboardOffset(newOffset);
+    }
+  }, []);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = 'auto';
-    const maxHeight = Number.parseFloat(window.getComputedStyle(textarea).maxHeight) || 144;
+    const maxHeight = Number.parseFloat(window.getComputedStyle(textarea).maxHeight) || 128;
     textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
-  }, [inputVal]);
+
+    if (document.activeElement === textarea) {
+      requestAnimationFrame(updateKeyboardOffset);
+    }
+  }, [inputVal, updateKeyboardOffset]);
 
   React.useEffect(() => {
     const viewport = window.visualViewport;
-    if (!viewport) return;
-
-    const visibleHeight = () => viewport.height + (viewport.offsetTop || 0);
-    const readLayoutHeight = () => visibleHeight();
-    viewportBaselineRef.current = readLayoutHeight();
-
-    const isComposerFocused = () => document.activeElement === textareaRef.current;
     const handleViewportChange = () => {
-      if (!isComposerFocused()) {
-        viewportBaselineRef.current = readLayoutHeight();
-        setKeyboardOffset(0);
-        return;
-      }
-
-      const baseline = viewportBaselineRef.current || readLayoutHeight();
-      const offset = Math.max(0, baseline - visibleHeight());
-      setKeyboardOffset(offset > 80 ? offset : 0);
+      requestAnimationFrame(updateKeyboardOffset);
     };
 
-    const handleFocus = () => {
-      // Capture the pre-keyboard size before the visual viewport begins shrinking.
-      viewportBaselineRef.current = readLayoutHeight();
-      requestAnimationFrame(handleViewportChange);
-    };
-    const handleBlur = () => window.setTimeout(handleViewportChange, 120);
-
-    viewport.addEventListener('resize', handleViewportChange);
-    viewport.addEventListener('scroll', handleViewportChange);
+    if (viewport) {
+      viewport.addEventListener('resize', handleViewportChange);
+      viewport.addEventListener('scroll', handleViewportChange);
+    }
     window.addEventListener('resize', handleViewportChange);
-    const textarea = textareaRef.current;
-    textarea?.addEventListener('focus', handleFocus);
-    textarea?.addEventListener('blur', handleBlur);
 
     return () => {
-      viewport.removeEventListener('resize', handleViewportChange);
-      viewport.removeEventListener('scroll', handleViewportChange);
+      if (viewport) {
+        viewport.removeEventListener('resize', handleViewportChange);
+        viewport.removeEventListener('scroll', handleViewportChange);
+      }
       window.removeEventListener('resize', handleViewportChange);
-      textarea?.removeEventListener('focus', handleFocus);
-      textarea?.removeEventListener('blur', handleBlur);
     };
-  }, []);
+  }, [updateKeyboardOffset]);
+
+  const handleFocus = () => {
+    onFocusChange?.(true);
+    requestAnimationFrame(updateKeyboardOffset);
+    setTimeout(updateKeyboardOffset, 60);
+    setTimeout(updateKeyboardOffset, 180);
+    setTimeout(updateKeyboardOffset, 360);
+  };
+
+  const handleBlur = () => {
+    onFocusChange?.(false);
+    setTimeout(() => {
+      if (document.activeElement !== textareaRef.current) {
+        activeOffsetRef.current = 0;
+        setKeyboardOffset(0);
+      }
+    }, 60);
+  };
 
   const handleSend = () => {
     const message = inputVal.trim();
@@ -97,11 +140,12 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
 
   return (
     <div
+      ref={containerRef}
       style={{
         transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : undefined,
-        transition: 'transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1)',
+        transition: 'transform 0.16s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
-      className="w-full max-w-xl mx-auto px-4 flex flex-col items-center gap-1.5"
+      className="w-full max-w-xl mx-auto px-3 sm:px-4 flex flex-col items-center gap-1.5"
     >
       {voiceError && (
         <div role="alert" aria-live="polite" className="text-[11px] text-rose-300 font-medium px-3 py-1 rounded-full bg-rose-950/60 border border-rose-500/30 backdrop-blur-md animate-in fade-in duration-200">
@@ -122,16 +166,19 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
           type="button"
           onClick={onToggleVoice}
           disabled={disabled || loading}
-          aria-label={isListening ? 'Stop listening' : 'Start speaking'}
+          aria-label={isListening ? 'إيقاف الاستماع' : 'بدء التحدث بالمايك'}
           aria-pressed={isListening}
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 cursor-pointer active:scale-95 ${
+          className={`relative w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 flex-shrink-0 cursor-pointer active:scale-95 ${
             isListening
-              ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-pulse'
-              : 'text-white/60 hover:text-purple-300 hover:bg-white/[0.08]'
+              ? 'bg-cyan-400 text-slate-950 shadow-[0_0_24px_rgba(6,182,212,0.9)] ring-2 ring-cyan-300'
+              : 'text-white/70 hover:text-cyan-300 hover:bg-white/[0.08]'
           }`}
-          title={isListening ? 'Listening... click to stop' : 'Tap to speak'}
+          title={isListening ? 'جاري الاستماع... انقر للإيقاف' : 'تحدث بالمايك'}
         >
-          {isListening ? <MicOff className="w-4 h-4 text-black" /> : <Mic className="w-4 h-4" />}
+          {isListening && (
+            <span className="absolute inset-0 rounded-full bg-cyan-400/40 animate-ping pointer-events-none" />
+          )}
+          {isListening ? <MicOff className="w-4 h-4 text-slate-950" /> : <Mic className="w-4 h-4" />}
         </button>
 
         <div className="relative flex-1 min-w-0 flex items-end">
@@ -143,16 +190,18 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
             value={inputVal}
             onChange={(event) => setInputVal(event.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
             disabled={disabled || loading}
             aria-label={`Message ${COMPANION_DISPLAY_NAME}`}
             placeholder={
               isListening
-                ? 'Listening to your voice...'
+                ? (interimTranscript ? `🎙️ "${interimTranscript}"` : '🎙️ أستمع إليك الآن... تفضل بالتحدث')
                 : isSpeaking
-                  ? `${COMPANION_DISPLAY_NAME} is speaking...`
-                  : `Speak or type to ${COMPANION_DISPLAY_NAME}...`
+                  ? `${COMPANION_DISPLAY_NAME} تتحدث...`
+                  : `تحدث بالمايك أو اكتب رسالتك إلى ${COMPANION_DISPLAY_NAME}...`
             }
-            className="w-full max-h-[40svh] min-h-10 resize-none overflow-x-hidden overflow-y-hidden break-words bg-transparent px-3 py-2 text-base sm:text-sm leading-6 text-white placeholder-white/35 focus:outline-none disabled:cursor-not-allowed [overflow-wrap:anywhere]"
+            className="w-full max-h-[40svh] min-h-10 resize-none overflow-x-hidden overflow-y-hidden break-words bg-transparent px-3 py-2 text-base sm:text-sm leading-6 text-white placeholder-white/45 focus:outline-none disabled:cursor-not-allowed [overflow-wrap:anywhere]"
           />
         </div>
 

@@ -18,8 +18,44 @@ import {
 } from './lib/companionPersonality';
 import { companionVoice } from './lib/companionVoice';
 
+const pathToView = (path: string): NavDestination => {
+  const clean = path.replace(/\/$/, '') || '/';
+  if (clean === '/wardrobe') return 'wardrobe';
+  if (clean === '/about') return 'about';
+  if (clean === '/support') return 'support';
+  return 'home';
+};
+
+const viewToPath = (view: NavDestination): string => {
+  return view === 'home' ? '/' : `/${view}`;
+};
+
 export default function App() {
-  const [activeView, setActiveView] = useState<NavDestination>('home');
+  const [activeView, setActiveView] = useState<NavDestination>(() => {
+    if (typeof window !== 'undefined') {
+      return pathToView(window.location.pathname);
+    }
+    return 'home';
+  });
+
+  const navigateTo = useCallback((view: NavDestination) => {
+    setActiveView(view);
+    if (typeof window !== 'undefined') {
+      const targetPath = viewToPath(view);
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({ view }, '', targetPath);
+      }
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const handlePopState = () => {
+      setActiveView(pathToView(window.location.pathname));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const primaryCharacterUrl = '/assets/characters/dark_ice/dark_ice.vrm';
   const defaultEnvironment = aetherCatalog.assets[
     aetherCatalog.default_environment as keyof typeof aetherCatalog.assets
@@ -33,7 +69,10 @@ export default function App() {
   const [companionState, setCompanionState] = useState<CompanionState>('IDLE');
   const [companionEmotion, setCompanionEmotion] = useState<CompanionEmotion>('NEUTRAL');
   const [visemeMouthOpen, setVisemeMouthOpen] = useState<number>(0);
+  const [currentSpeechText, setCurrentSpeechText] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [interimTranscript, setInterimTranscript] = useState<string | null>(null);
+  const [isComposerFocused, setIsComposerFocused] = useState(false);
 
   // Manage chat sessions
   const [currentChatId, setCurrentChatId] = useState<string>('default-session');
@@ -100,7 +139,7 @@ export default function App() {
       }));
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const timeoutId = setTimeout(() => controller.abort(), 35000);
 
       let res: Response;
       try {
@@ -127,7 +166,7 @@ export default function App() {
         rawAnswer = isArabic
           ? isNotConfigured
             ? '[EMOTION: NEUTRAL] خدمة المحادثة غير مهيأة على الخادم بعد.'
-            : '[EMOTION: NEUTRAL] خدمة المحادثة مشغولة الآن، جرّب مرة أخرى بعد قليل.'
+            : '[EMOTION: NEUTRAL] خوادم الذكاء الاصطناعي تشهد ضغطاً مؤقتاً، يرجى المحاولة بعد قليل.'
           : isNotConfigured
             ? '[EMOTION: NEUTRAL] The chat service is not configured on the server yet.'
             : "[EMOTION: NEUTRAL] The chat service is busy right now. Please try again in a moment.";
@@ -150,6 +189,7 @@ export default function App() {
       }));
 
       // Speak response through TTS with live lip sync visemes
+      setCurrentSpeechText(cleanText);
       companionVoice.speak(cleanText, {
         onStart: () => {
           setCompanionState('SPEAKING');
@@ -160,19 +200,21 @@ export default function App() {
         onEnd: () => {
           setCompanionState('IDLE');
           setVisemeMouthOpen(0);
+          setCurrentSpeechText(null);
         },
       });
     } catch (err: unknown) {
       console.error('Companion interaction error:', err);
       companionVoice.stopSpeaking();
+      setCurrentSpeechText(null);
       setCompanionState('TECHNICAL_ERROR');
       setCompanionEmotion('CONFUSED');
       setVisemeMouthOpen(0);
       const isAbort = err instanceof Error && err.name === 'AbortError';
       const isArabic = /[\u0600-\u06FF]/.test(query);
       const errMsg = isAbort
-        ? (isArabic ? 'انتهت مهلة الاتصال بالخادم، يرجى المحاولة ثانية.' : 'Request timed out. Please try again.')
-        : (isArabic ? 'حدث خطأ في الاتصال، يرجى إعادة المحاولة.' : 'Connection issue. Please try again.');
+        ? (isArabic ? 'استغرقت الاستجابة وقتاً أطول من المعتاد، يرجى إعادة المحاولة.' : 'Request timed out. Please try again.')
+        : (isArabic ? 'حدث تأخير في الاتصال، يرجى المحاولة ثانية.' : 'Connection issue. Please try again.');
       setVoiceError(errMsg);
       recoveryTimerRef.current = window.setTimeout(() => {
         setVoiceError(null);
@@ -181,7 +223,7 @@ export default function App() {
           recoveryTimerRef.current = null;
           setCompanionState('IDLE');
         }, 850);
-      }, 4000);
+      }, 3500);
     } finally {
       setLoading(false);
     }
@@ -194,6 +236,7 @@ export default function App() {
     // If companion is speaking, stop speaking immediately
     if (companionState === 'SPEAKING') {
       companionVoice.stopSpeaking();
+      setCurrentSpeechText(null);
       setCompanionState('IDLE');
       setVisemeMouthOpen(0);
     }
@@ -202,17 +245,24 @@ export default function App() {
     if (companionState === 'LISTENING') {
       companionVoice.stopListening();
       setCompanionState('IDLE');
+      setInterimTranscript(null);
       return;
     }
 
     setVoiceError(null);
+    setInterimTranscript(null);
     setCompanionState('LISTENING');
 
-    const started = companionVoice.startListening('auto', {
+    const started = companionVoice.startListening('ar', {
       onStart: () => {
         setCompanionState('LISTENING');
+        setInterimTranscript(null);
+      },
+      onInterim: (text) => {
+        setInterimTranscript(text);
       },
       onResult: (transcript) => {
+        setInterimTranscript(null);
         if (transcript.trim()) {
           handleCompanionInteraction(transcript.trim());
         } else {
@@ -221,36 +271,39 @@ export default function App() {
       },
       onError: (err) => {
         setCompanionState('IDLE');
+        setInterimTranscript(null);
         if (err === 'aborted') return;
 
-        const messages: Record<string, string> = {
-          'not-allowed': 'Allow microphone access for this site in your browser settings, then try again.',
-          'service-not-allowed': 'Speech recognition is blocked by the browser. Check microphone and speech permissions.',
-          'audio-capture': 'No microphone was found, or the microphone is already in use.',
-          network: 'Speech recognition could not connect. Check your internet connection.',
-          'no-speech': 'I did not hear anything. Tap the microphone and speak again.',
-          'insecure-context': 'Microphone access requires a secure HTTPS connection.',
-          'language-not-supported': 'This browser does not support speech recognition for the selected language.',
-          'start-failed': 'The browser could not start the microphone. Check its permission and try again.',
+        const messagesAr: Record<string, string> = {
+          'not-allowed': 'يرجى السماح بالوصول إلى الميكروفون من إعدادات المتصفح ثم المحاولة مرة أخرى.',
+          'service-not-allowed': 'التعرف على الصوت محظور في هذا المتصفح. تحقق من صلاحيات الميكروفون.',
+          'audio-capture': 'لم يتم العثور على ميكروفون، أو أنه قيد الاستخدام في برنامج آخر.',
+          network: 'تعذر الاتصال بخدمة التعرف على الصوت. تحقق من اتصال الإنترنت.',
+          'no-speech': 'لم يتم التقاط صوت واضح. اضغط على زر المايك وتحدث مجدداً.',
+          'insecure-context': 'يتطلب استخدام الميكروفون اتصالاً آمناً (HTTPS).',
+          'language-not-supported': 'المتصفح لا يدعم التعرف على الصوت بهذه اللغة.',
+          'start-failed': 'تعذر تشغيل الميكروفون. تحقق من الصلاحيات وحاول ثانية.',
         };
 
-        setVoiceError(messages[err] || 'Microphone input failed. Check browser support and microphone permission.');
+        setVoiceError(messagesAr[err] || 'تعذر تشغيل الميكروفون. يمكنك كتابة رسالتك في الحقل أدناه.');
         setTimeout(() => setVoiceError(null), 5000);
       },
       onEnd: () => {
+        setInterimTranscript(null);
         setCompanionState((prev) => (prev === 'LISTENING' ? 'IDLE' : prev));
       },
     });
 
     if (!started) {
       setCompanionState('IDLE');
-      setVoiceError('Speech recognition is not supported in this browser. Try a supported browser or type your message.');
+      setVoiceError('التعرف الصوتي المباشر غير مدعوم في هذا المتصفح. يمكنك كتابة رسالتك مباشرة.');
       setTimeout(() => setVoiceError(null), 5000);
     }
   }, [companionState, handleCompanionInteraction]);
 
   const handleStopSpeaking = useCallback(() => {
     companionVoice.stopSpeaking();
+    setCurrentSpeechText(null);
     setCompanionState('IDLE');
     setVisemeMouthOpen(0);
   }, []);
@@ -267,6 +320,7 @@ export default function App() {
             onStartInteraction={handleToggleVoice}
             companionModelUrl={primaryCharacterUrl}
             roomModelUrl={primaryEnvironmentUrl}
+            currentSpeechText={currentSpeechText}
           />
         </div>
       )}
@@ -276,7 +330,7 @@ export default function App() {
         {/* Left: Quiet Brand Wordmark & Discrete Dev Trigger */}
         <div className="pointer-events-auto flex items-center gap-1.5">
           <button
-            onClick={() => setActiveView('home')}
+            onClick={() => navigateTo('home')}
             className="flex items-center gap-2 p-1.5 text-xs font-mono tracking-[4px] text-white/50 hover:text-white transition-colors cursor-pointer uppercase"
             title="Home"
           >
@@ -296,7 +350,7 @@ export default function App() {
         <div className="hidden md:flex items-center pointer-events-auto">
           <Navigation
             currentView={activeView}
-            onSelectView={setActiveView}
+            onSelectView={navigateTo}
           />
         </div>
 
@@ -307,11 +361,11 @@ export default function App() {
       </header>
 
       {/* 2. MAIN VIEWPORT AREA */}
-      <main className="flex-1 w-full h-full relative overflow-hidden pt-16 pb-20 md:pb-6 flex flex-col z-10 pointer-events-none">
+      <main className="flex-1 w-full h-full relative overflow-hidden pt-16 pb-3 sm:pb-6 flex flex-col z-10 pointer-events-none">
         {activeView === 'home' && (
           <div className="relative w-full h-full flex flex-col justify-end overflow-hidden pointer-events-none">
             {/* Bottom Floating Interaction Bar (Microphone + Text + Send) */}
-            <div className="relative w-full pb-4 sm:pb-8 z-20 pointer-events-auto">
+            <div className="relative w-full pb-1 sm:pb-3 z-20 pointer-events-auto">
               <InteractionBar
                 onSendMessage={handleCompanionInteraction}
                 onToggleVoice={handleToggleVoice}
@@ -320,6 +374,8 @@ export default function App() {
                 onStopSpeaking={handleStopSpeaking}
                 loading={loading || companionState === 'THINKING'}
                 voiceError={voiceError}
+                interimTranscript={interimTranscript}
+                onFocusChange={setIsComposerFocused}
               />
             </div>
           </div>
@@ -327,27 +383,31 @@ export default function App() {
 
         {/* Wardrobe is intentionally separate from the room; chat remains voice-first and has no duplicate page. */}
         {activeView === 'wardrobe' && (
-          <WardrobeView onBack={() => setActiveView('home')} />
+          <WardrobeView onBack={() => navigateTo('home')} />
         )}
 
         {activeView === 'about' && (
           <div className="flex-1 overflow-y-auto">
-            <AboutView onBack={() => setActiveView('home')} />
+            <AboutView onBack={() => navigateTo('home')} />
           </div>
         )}
 
         {activeView === 'support' && (
           <div className="flex-1 overflow-y-auto">
-            <SupportView onBack={() => setActiveView('home')} />
+            <SupportView onBack={() => navigateTo('home')} />
           </div>
         )}
       </main>
 
       {/* 3. MOBILE FLOATING NAVIGATION HUD (Docked at bottom on mobile) */}
-      <div className="fixed bottom-4 inset-x-0 flex justify-center z-30 pointer-events-none md:hidden px-4">
+      <div
+        className={`fixed bottom-4 inset-x-0 flex justify-center z-30 pointer-events-none md:hidden px-4 transition-all duration-200 ${
+          isComposerFocused ? 'opacity-0 translate-y-6 pointer-events-none' : 'opacity-100 translate-y-0'
+        }`}
+      >
         <Navigation
           currentView={activeView}
-          onSelectView={setActiveView}
+          onSelectView={navigateTo}
         />
       </div>
 

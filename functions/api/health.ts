@@ -1,4 +1,4 @@
-const GEMINI_MODEL = 'gemini-3.8-flash';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 export const onRequestGet = (): Response => new Response(
   JSON.stringify({ status: 'ok', model: GEMINI_MODEL }),

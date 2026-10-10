@@ -11,7 +11,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "inspector": "tsx Aether/3D/tools/inspector.ts",
-    "test:animation": "tsx src/lib/animationOrchestrator.test.ts"
+    "test:animation": "tsx src/lib/animationOrchestrator.test.ts",
+    "test:behavior": "tsx src/lib/behavior/humanBehavior.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

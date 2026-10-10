@@ -9,6 +9,7 @@ interface CompanionEnvironmentProps {
   companionModelUrl?: string | null;
   roomModelUrl?: string | null;
   onStartInteraction?: () => void;
+  currentSpeechText?: string | null;
 }
 
 export const CompanionEnvironment: React.FC<CompanionEnvironmentProps> = ({
@@ -18,6 +19,7 @@ export const CompanionEnvironment: React.FC<CompanionEnvironmentProps> = ({
   companionModelUrl,
   roomModelUrl,
   onStartInteraction,
+  currentSpeechText = null,
 }) => {
   return (
     <div className="fixed inset-0 w-full h-full overflow-hidden select-none">
@@ -29,6 +31,7 @@ export const CompanionEnvironment: React.FC<CompanionEnvironmentProps> = ({
         companionModelUrl={companionModelUrl}
         roomModelUrl={roomModelUrl}
         onCompanionClick={onStartInteraction}
+        currentSpeechText={currentSpeechText}
         className="w-full h-full"
       />
     </div>

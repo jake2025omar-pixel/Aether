@@ -7,11 +7,11 @@ import { GoogleGenAI } from '@google/genai';
 import { AETHER_COMPANION_SYSTEM_PROMPT } from './src/lib/companionPersonality';
 
 dotenv.config();
-const PRIMARY_GEMINI_MODEL = 'gemini-3.8-flash';
+const PRIMARY_GEMINI_MODEL = 'gemini-2.5-flash-lite';
 const CANDIDATE_MODELS = [
-  PRIMARY_GEMINI_MODEL,
-  'gemini-3.5-flash-lite',
-  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-3.8-flash',
 ];
 
 const __filename = fileURLToPath(import.meta.url);
@@ -137,9 +137,9 @@ app.post('/api/chat', async (req, res) => {
   const getLocalCompanionFallback = (userInput: string): string => {
     const isArabic = /[\u0600-\u06FF]/.test(userInput);
     if (isArabic) {
-      return '[EMOTION: NEUTRAL] أهلاً بك! خوادم الذكاء الاصطناعي تشهد ضغطاً مؤقتاً في هذه اللحظة، يرجى إعادة المحاولة بعد ثوانٍ قليلة.';
+      return '[EMOTION: AFFECTIONATE] أنا معك هنا واستمع إليك بكل حب، كان هناك ضغط لحظي في الخادم، تفضل وحدثني بما في خاطرك.';
     }
-    return "[EMOTION: NEUTRAL] I'm listening, but the AI service is experiencing high demand right now. Please try asking again in a moment.";
+    return "[EMOTION: AFFECTIONATE] I'm right here with you listening closely with love. There was a tiny network hiccup, tell me what is on your mind.";
   };
 
   // Format contents for @google/genai
@@ -217,6 +217,8 @@ app.post('/api/chat', async (req, res) => {
   } else {
     for (const model of CANDIDATE_MODELS) {
       if (isClientDisconnected) break;
+      const attemptController = new AbortController();
+      const attemptTimeout = setTimeout(() => attemptController.abort(), 28000);
       try {
         const response = await clientAi.models.generateContent({
           model,
@@ -225,12 +227,13 @@ app.post('/api/chat', async (req, res) => {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
             maxOutputTokens: 500,
-            abortSignal: providerAbortController.signal,
+            abortSignal: attemptController.signal,
           },
         });
 
         const generatedText = response.text || '';
         if (generatedText) {
+          clearTimeout(attemptTimeout);
           return res.json({
             text: generatedText,
             model,
@@ -238,11 +241,13 @@ app.post('/api/chat', async (req, res) => {
         }
       } catch (err: unknown) {
         console.warn(`Model ${model} generate attempt failed:`, err instanceof Error ? err.message : err);
+      } finally {
+        clearTimeout(attemptTimeout);
       }
     }
 
     // Graceful fallback response if all models are temporarily busy
-    const fallbackText = getLocalCompanionFallback(message);
+    const fallbackText = getLocalCompanionFallback(trimmedMessage);
     return res.json({
       text: fallbackText,
       model: 'local-fallback',

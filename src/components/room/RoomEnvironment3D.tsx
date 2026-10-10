@@ -13,6 +13,7 @@ export interface RoomEnvironment3DProps {
   roomModelUrl?: string | null;
   onCompanionClick?: () => void;
   className?: string;
+  currentSpeechText?: string | null;
 }
 
 /**
@@ -97,6 +98,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   roomModelUrl,
   onCompanionClick,
   className = '',
+  currentSpeechText = null,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -133,6 +135,16 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       companionRigRef.current.setState(companionState);
     }
   }, [companionState]);
+
+  useEffect(() => {
+    if (companionRigRef.current) {
+      if (currentSpeechText) {
+        companionRigRef.current.onSpeechStart(currentSpeechText);
+      } else {
+        companionRigRef.current.onSpeechEnd();
+      }
+    }
+  }, [currentSpeechText]);
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -191,6 +203,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     renderer.domElement.style.height = '100svh';
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.pointerEvents = 'auto';
+    renderer.domElement.style.touchAction = 'none';
+    container.style.touchAction = 'none';
 
     container.appendChild(renderer.domElement);
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -395,20 +409,29 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       mountFallbackRig();
     }
 
-    // 8. Interactive 360° room camera. Drag horizontally to orbit around the
-    // room; drag vertically to tilt. Pinch and wheel remain zoom controls.
-    const MIN_DISTANCE = 2.2;
+    // 8. Interactive 360° room camera with ultra-smooth cinematic physics.
+    // Drag horizontally to orbit around the room; drag vertically to tilt.
+    // Pinch and wheel remain zoom controls with silky smooth damping.
+    const MIN_DISTANCE = 2.0;
     const MAX_DISTANCE = 6.0;
     let currentCamDist = 3.4;
     let targetCamDist = 3.4;
-    let orbitYaw = 0.18;
-    let orbitPitch = 0.10;
-    let targetRoomFocus = new THREE.Vector3(0, 1.7, 0);
+    let currentYaw = 0.18;
+    let targetYaw = 0.18;
+    let currentPitch = 0.10;
+    let targetPitch = 0.10;
+    let yawVelocity = 0;
+    let pitchVelocity = 0;
+    let lastMoveTime = performance.now();
     let isOrbiting = false;
     let lastPointerX = 0;
     let lastPointerY = 0;
     let lastTouchX = 0;
     let lastTouchY = 0;
+    const targetRoomFocus = new THREE.Vector3(0, 1.7, 0);
+
+    const ROTATION_SENSITIVITY_MOUSE = 0.0032;
+    const ROTATION_SENSITIVITY_TOUCH = 0.0038;
 
     // Touch gesture tracking (1 finger = orbit, 2 fingers = smooth pinch-to-zoom)
     let isPinching = false;
@@ -423,27 +446,44 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           e.touches[0].clientY - e.touches[1].clientY
         );
         pinchStartCamDist = targetCamDist;
+        yawVelocity = 0;
+        pitchVelocity = 0;
       } else if (e.touches.length === 1) {
+        isOrbiting = true;
         lastTouchX = e.touches[0].clientX;
         lastTouchY = e.touches[0].clientY;
+        lastMoveTime = performance.now();
+        yawVelocity = 0;
+        pitchVelocity = 0;
       }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2 && isPinching && initialPinchDist > 0) {
-        // Prevent default document scaling so 3D camera dollies in/out instead of stretching canvas bitmap
         e.preventDefault();
         const dist = Math.hypot(
           e.touches[0].clientX - e.touches[1].clientX,
           e.touches[0].clientY - e.touches[1].clientY
         );
         const scaleFactor = initialPinchDist / Math.max(dist, 10);
-        targetCamDist = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, pinchStartCamDist * scaleFactor));
+        targetCamDist = THREE.MathUtils.clamp(pinchStartCamDist * scaleFactor, MIN_DISTANCE, MAX_DISTANCE);
       } else if (e.touches.length === 1 && !isPinching) {
         e.preventDefault();
+        const now = performance.now();
+        const dt = Math.max((now - lastMoveTime) / 1000, 0.008);
+        lastMoveTime = now;
         const t = e.touches[0];
-        orbitYaw -= (t.clientX - lastTouchX) * 0.008;
-        orbitPitch = THREE.MathUtils.clamp(orbitPitch + (t.clientY - lastTouchY) * 0.005, -0.45, 0.45);
+        const dx = (t.clientX - lastTouchX) * ROTATION_SENSITIVITY_TOUCH;
+        const dy = (t.clientY - lastTouchY) * ROTATION_SENSITIVITY_TOUCH;
+        targetYaw -= dx;
+        targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.42, 0.42);
+
+        // Filtered velocity for fluid release inertia
+        const instYawVel = -dx / dt;
+        const instPitchVel = dy / dt;
+        yawVelocity = yawVelocity * 0.35 + instYawVel * 0.65;
+        pitchVelocity = pitchVelocity * 0.35 + instPitchVel * 0.65;
+
         lastTouchX = t.clientX;
         lastTouchY = t.clientY;
       }
@@ -453,29 +493,55 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       if (e.touches.length < 2) {
         isPinching = false;
       }
+      if (e.touches.length === 0) {
+        isOrbiting = false;
+        yawVelocity = THREE.MathUtils.clamp(yawVelocity, -3.5, 3.5);
+        pitchVelocity = THREE.MathUtils.clamp(pitchVelocity, -2.2, 2.2);
+      }
     };
 
-    // Desktop Mouse Wheel Zoom
+    // Desktop Mouse Wheel Zoom with ultra-smooth delta
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      targetCamDist = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, targetCamDist + e.deltaY * 0.003));
+      const zoomStep = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY) * 0.002, 0.32);
+      targetCamDist = THREE.MathUtils.clamp(targetCamDist + zoomStep, MIN_DISTANCE, MAX_DISTANCE);
     };
 
     const handlePointerDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
       isOrbiting = true;
       lastPointerX = e.clientX;
       lastPointerY = e.clientY;
+      lastMoveTime = performance.now();
+      yawVelocity = 0;
+      pitchVelocity = 0;
       container.setPointerCapture?.(e.pointerId);
     };
+
     const handlePointerMove = (e: PointerEvent) => {
       if (!isOrbiting || e.pointerType === 'touch') return;
-      orbitYaw -= (e.clientX - lastPointerX) * 0.008;
-      orbitPitch = THREE.MathUtils.clamp(orbitPitch + (e.clientY - lastPointerY) * 0.005, -0.45, 0.45);
+      const now = performance.now();
+      const dt = Math.max((now - lastMoveTime) / 1000, 0.008);
+      lastMoveTime = now;
+
+      const dx = (e.clientX - lastPointerX) * ROTATION_SENSITIVITY_MOUSE;
+      const dy = (e.clientY - lastPointerY) * ROTATION_SENSITIVITY_MOUSE;
+      targetYaw -= dx;
+      targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.42, 0.42);
+
+      const instYawVel = -dx / dt;
+      const instPitchVel = dy / dt;
+      yawVelocity = yawVelocity * 0.35 + instYawVel * 0.65;
+      pitchVelocity = pitchVelocity * 0.35 + instPitchVel * 0.65;
+
       lastPointerX = e.clientX;
       lastPointerY = e.clientY;
     };
+
     const handlePointerUp = () => {
       isOrbiting = false;
+      yawVelocity = THREE.MathUtils.clamp(yawVelocity, -3.5, 3.5);
+      pitchVelocity = THREE.MathUtils.clamp(pitchVelocity, -2.2, 2.2);
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
@@ -492,14 +558,43 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     let wasMotionEnabled = true;
     const animate = () => {
       animFrameIdRef.current = requestAnimationFrame(animate);
-      const delta = clock.getDelta();
+      const delta = Math.min(clock.getDelta(), 0.1);
       const elapsed = clock.getElapsedTime();
+      const motionEnabled = motionEnabledRef.current;
 
-      // Smooth room-scale orbit and dolly physics
-      currentCamDist = THREE.MathUtils.lerp(currentCamDist, targetCamDist, 0.08);
-      camera.position.x = targetRoomFocus.x + Math.sin(orbitYaw) * currentCamDist;
-      camera.position.y = targetRoomFocus.y + Math.sin(orbitPitch) * currentCamDist;
-      camera.position.z = targetRoomFocus.z + Math.cos(orbitYaw) * currentCamDist;
+      // Ultra-smooth inertia gliding on release
+      if (!isOrbiting) {
+        if (Math.abs(yawVelocity) > 0.0001) {
+          targetYaw += yawVelocity * delta;
+          yawVelocity *= Math.pow(0.91, delta * 60);
+        } else {
+          yawVelocity = 0;
+        }
+
+        if (Math.abs(pitchVelocity) > 0.0001) {
+          targetPitch = THREE.MathUtils.clamp(targetPitch + pitchVelocity * delta, -0.42, 0.42);
+          pitchVelocity *= Math.pow(0.91, delta * 60);
+        } else {
+          pitchVelocity = 0;
+        }
+      }
+
+      // Infinitesimal organic idle breathing sway when camera is resting
+      const idleSway = motionEnabled && !isOrbiting && Math.abs(yawVelocity) < 0.02
+        ? Math.sin(elapsed * 0.4) * 0.006
+        : 0;
+
+      // Silky frame-rate independent exponential dampening for yaw, pitch and distance
+      currentYaw = THREE.MathUtils.damp(currentYaw, targetYaw + idleSway, 9.0, delta);
+      currentPitch = THREE.MathUtils.damp(currentPitch, targetPitch, 9.0, delta);
+      currentCamDist = THREE.MathUtils.damp(currentCamDist, targetCamDist, 7.5, delta);
+
+      // True spherical projection without trigonometric distortion
+      const cosPitch = Math.cos(currentPitch);
+      const sinPitch = Math.sin(currentPitch);
+      camera.position.x = targetRoomFocus.x + Math.sin(currentYaw) * cosPitch * currentCamDist;
+      camera.position.y = targetRoomFocus.y + sinPitch * currentCamDist;
+      camera.position.z = targetRoomFocus.z + Math.cos(currentYaw) * cosPitch * currentCamDist;
       camera.lookAt(targetRoomFocus);
 
       targetLookPosRef.current.copy(camera.position);
@@ -510,7 +605,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       }
 
       // Atmospheric floor light pulse
-      const motionEnabled = motionEnabledRef.current;
       if (floorGlowRef.current) {
         floorGlowRef.current.intensity = motionEnabled ? 2.0 + Math.sin(elapsed * 2.2) * 0.4 : 2.0;
       }

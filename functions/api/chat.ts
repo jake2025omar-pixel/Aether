@@ -11,7 +11,7 @@ interface FunctionContext {
 
 type FunctionHandler = (context: FunctionContext) => Response | Promise<Response>;
 
-const GEMINI_MODEL = 'gemini-3.8-flash';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 const MAX_BODY_BYTES = 64 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 35;
