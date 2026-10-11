@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { CompanionRig } from './CompanionRig';
 import { CompanionState, CompanionEmotion, COMPANION_DISPLAY_NAME } from '../../lib/companionPersonality';
 import { dispose3DResource, loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
+import { FurnitureLayoutEngine } from '../../lib/environment/FurnitureLayoutEngine';
 import { Mic, Volume2, Sparkles, Brain } from 'lucide-react';
 
 export interface RoomEnvironment3DProps {
@@ -111,7 +112,9 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   const emotionRef = useRef(companionEmotion);
   const visemeRef = useRef(visemeMouthOpen);
   const motionEnabledRef = useRef(true);
-  const targetLookPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.45, 3.4));
+  const targetLookPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.25, 2.7));
+
+
 
   stateRef.current = companionState;
   emotionRef.current = companionEmotion;
@@ -158,6 +161,46 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     return () => preference.removeEventListener('change', syncMotionPreference);
   }, []);
 
+  // Performance Director External Triggers (Developer Mode & Interaction Bus)
+  useEffect(() => {
+    const handleAction = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.action && companionRigRef.current) {
+        companionRigRef.current.triggerAction(detail.action, true);
+      }
+    };
+    const handleFacial = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.style && companionRigRef.current) {
+        companionRigRef.current.triggerFacialStyle(detail.style, detail.duration || 3.5);
+      }
+    };
+    const handleNav = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.position && companionRigRef.current) {
+        companionRigRef.current.navigateTo(detail.position, detail.faceYaw);
+      }
+    };
+    const handleToggleRoam = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail?.enabled === 'boolean' && companionRigRef.current) {
+        companionRigRef.current.setAutonomousNavigation(detail.enabled);
+      }
+    };
+
+    window.addEventListener('aether:trigger-action', handleAction);
+    window.addEventListener('aether:trigger-facial', handleFacial);
+    window.addEventListener('aether:trigger-nav', handleNav);
+    window.addEventListener('aether:toggle-roam', handleToggleRoam);
+
+    return () => {
+      window.removeEventListener('aether:trigger-action', handleAction);
+      window.removeEventListener('aether:trigger-facial', handleFacial);
+      window.removeEventListener('aether:trigger-nav', handleNav);
+      window.removeEventListener('aether:toggle-roam', handleToggleRoam);
+    };
+  }, []);
+
   // Main 3D Room & Companion Scene Setup
   useEffect(() => {
     const container = containerRef.current;
@@ -173,12 +216,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     scene.background = new THREE.Color(BG_COLOR);
     scene.fog = new THREE.FogExp2(BG_COLOR, 0.05);
 
-    // 2. Camera setup - room-scale framing. The imported Neon room is about
-    // 7.5m wide x 9.4m deep, so a 3.4m portrait distance only showed a tiny
-    // corner. Keep the asset at its authored scale and frame the room instead.
+    // 2. Camera setup - centered directly on companion at eye/chest level
     const camera = new THREE.PerspectiveCamera(46, width / height, 0.1, 100);
-    camera.position.set(0, 1.45, 3.4);
-    camera.lookAt(0, 1.7, 0);
+    camera.position.set(0, 1.25, 2.7);
+    camera.lookAt(0, 1.25, 0);
     cameraRef.current = camera;
     targetLookPosRef.current.copy(camera.position);
 
@@ -288,10 +329,15 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     scene.add(roomGroup);
 
-    // 6. Real room conversion fallback handler
+    // 6. Architectural Furniture Extraction & Spatial Layout Engine
+    // Extracts authentic furniture and decorative assets from Neon World 3 (Noeo_world_3),
+    // organizing them within the boundless AetherAI room with millimeter floor contact,
+    // intentional architectural zoning, and active obstacle colliders for companion locomotion.
     let isCancelled = false;
     const roomLoadController = new AbortController();
     const companionLoadController = new AbortController();
+    const furnitureColliders: THREE.Box3[] = [];
+
     if (roomModelUrl) {
       loadWeb3DAsset(roomModelUrl, false, roomLoadController.signal).then((res) => {
         if (isCancelled) {
@@ -302,66 +348,34 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           console.warn('[Room3D] Neon room load failed, keeping procedural room:', res.error);
           return;
         }
-        res.scene.traverse((object) => {
-          if (!(object as THREE.Mesh).isMesh) return;
-          const mesh = object as THREE.Mesh;
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          for (const material of materials) {
-            material.side = THREE.DoubleSide;
-            if (material.name.toLowerCase().includes('led') && material instanceof THREE.MeshStandardMaterial) {
-              material.emissive.set(0x22d3ee);
-              material.emissiveIntensity = Math.max(material.emissiveIntensity, 1.4);
-            }
-            material.needsUpdate = true;
-          }
-        });
-        scene.remove(roomGroup);
-        dispose3DResource(roomGroup);
-        res.scene.name = 'NeonWorld3Runtime';
-        // Keep the exported room aligned with the camera without changing its original lighting or props.
-        res.scene.rotation.y = Math.PI;
-        // Correct only the exported pillow offsets so they rest on the supplied bed base.
-        const pillowPlacements: Array<[string, number, number, number]> = [
-          ['SimplePillow1_Root', -1.25, 1.16, 4.2],
-          ['SimplePillow2_Root', -0.25, 1.16, 4.2],
-        ];
-        for (const [name, x, y, z] of pillowPlacements) {
-          const pillowRoot = res.scene.getObjectByName(name);
-          if (pillowRoot) pillowRoot.position.set(x, y, z);
-        }
-        res.scene.updateMatrixWorld(true);
-        // Fit the complete imported room, not just the companion. This prevents
-        // the GLB from appearing as a floor fragment in one distant corner.
-        const roomBounds = new THREE.Box3().setFromObject(res.scene);
-        const roomSize = roomBounds.getSize(new THREE.Vector3());
-        const roomCenter = roomBounds.getCenter(new THREE.Vector3());
-        const verticalFov = THREE.MathUtils.degToRad(camera.fov);
-        // Stay inside the authored room. Fitting its exterior bounds would put
-        // the camera outside the front wall, hiding the companion and furniture.
-        const fitDistance = (Math.max(roomSize.x, roomSize.y, roomSize.z) * 0.15) / Math.tan(verticalFov / 2);
-        targetCamDist = THREE.MathUtils.clamp(fitDistance, 3.2, 3.8);
-        currentCamDist = targetCamDist;
-        // Keep the companion at eye/chest level; the room's geometric center is
-        // higher because it includes the ceiling and would aim above her head.
-        targetRoomFocus.copy(new THREE.Vector3(0, 1.08, 0));
-        scene.add(res.scene);
 
-        // Preserve the imported room's textures while restoring a subdued neon-night mood.
-        ambientLight.color.setHex(0x211941);
-        ambientLight.intensity = 0.95;
-        keyLight.intensity = 1.65;
+        // Run Furniture Layout Engine
+        const layoutResult = FurnitureLayoutEngine.extractAndOrganize(res.scene, {
+          companionCenter: new THREE.Vector3(0, 0, 0),
+          companionSafeRadius: 0.85,
+          carpetElevation: 0.002,
+        });
+
+        // Add extracted furniture into room
+        scene.add(layoutResult.furnitureGroup);
+        furnitureColliders.push(...layoutResult.colliders);
+
+        // Feed collision barriers to companion rig if already mounted
+        if (companionRigRef.current) {
+          companionRigRef.current.setFurnitureColliders(furnitureColliders);
+        }
+
+        // Clean up raw unused room shell geometry to prevent camera occlusion and GPU memory overhead
+        dispose3DResource(res.scene);
+
+        // Adjust studio ambiance for authentic high-end penthouse interior
+        ambientLight.color.setHex(0x1a122e);
+        ambientLight.intensity = 1.3;
+        keyLight.intensity = 1.85;
         fillLight.intensity = 1.35;
         rimLight.intensity = 2.1;
-        floorGlow.color.setHex(0x8b5cf6);
-        renderer.toneMappingExposure = 1.0;
-
-        const cyanBounce = new THREE.PointLight(0x22d3ee, 2.6, 8, 2);
-        cyanBounce.position.set(-2.8, 1.65, -1.4);
-        const violetBounce = new THREE.PointLight(0xa855f7, 2.4, 8, 2);
-        violetBounce.position.set(2.8, 1.55, -1.2);
-        scene.add(cyanBounce, violetBounce);
+        floorGlow.color.setHex(0xa855f7);
+        renderer.toneMappingExposure = 1.05;
       }).catch((err: unknown) => {
         if (!isCancelled) console.warn('[Room3D] Neon room load exception, keeping procedural room:', err);
       });
@@ -372,12 +386,16 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       if (isCancelled || companionRigRef.current) return;
       const rig = new CompanionRig(null);
       companionRigRef.current = rig;
+      rig.root.position.set(0, 0, 0);
+      if (furnitureColliders.length > 0) {
+        rig.setFurnitureColliders(furnitureColliders);
+      }
       scene.add(rig.root);
       rig.setEmotion(emotionRef.current);
       rig.setViseme(visemeRef.current);
       rig.setState(stateRef.current);
       rig.setMotionEnabled(motionEnabledRef.current);
-    }
+    };
 
     if (companionModelUrl) {
       loadWeb3DAsset(companionModelUrl, true, companionLoadController.signal).then((res) => {
@@ -396,6 +414,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
         const rig = new CompanionRig(res.vrm);
         companionRigRef.current = rig;
+        rig.root.position.set(0, 0, 0);
+        if (furnitureColliders.length > 0) {
+          rig.setFurnitureColliders(furnitureColliders);
+        }
         scene.add(rig.root);
         rig.setEmotion(emotionRef.current);
         rig.setViseme(visemeRef.current);
@@ -409,17 +431,18 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       mountFallbackRig();
     }
 
-    // 8. Interactive 360° room camera with ultra-smooth cinematic physics.
-    // Drag horizontally to orbit around the room; drag vertically to tilt.
-    // Pinch and wheel remain zoom controls with silky smooth damping.
-    const MIN_DISTANCE = 2.0;
-    const MAX_DISTANCE = 6.0;
-    let currentCamDist = 3.4;
-    let targetCamDist = 3.4;
-    let currentYaw = 0.18;
-    let targetYaw = 0.18;
-    let currentPitch = 0.10;
-    let targetPitch = 0.10;
+    // 8. Interactive 360° companion camera with ultra-smooth cinematic physics.
+    // Centered directly on the companion at (0, 1.25, 0).
+    // Drag horizontally to orbit around companion; drag vertically to tilt.
+    // Pinch and mouse wheel zoom smoothly.
+    const MIN_DISTANCE = 1.1;
+    const MAX_DISTANCE = 5.2;
+    let currentCamDist = 2.7;
+    let targetCamDist = 2.7;
+    let currentYaw = 0.0;
+    let targetYaw = 0.0;
+    let currentPitch = 0.0;
+    let targetPitch = 0.0;
     let yawVelocity = 0;
     let pitchVelocity = 0;
     let lastMoveTime = performance.now();
@@ -428,7 +451,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     let lastPointerY = 0;
     let lastTouchX = 0;
     let lastTouchY = 0;
-    const targetRoomFocus = new THREE.Vector3(0, 1.7, 0);
+    const currentRoomFocus = new THREE.Vector3(0.0, 1.25, 0.0);
+    const targetRoomFocus = new THREE.Vector3(0.0, 1.25, 0.0);
 
     const ROTATION_SENSITIVITY_MOUSE = 0.0032;
     const ROTATION_SENSITIVITY_TOUCH = 0.0038;
@@ -436,7 +460,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     // Touch gesture tracking (1 finger = orbit, 2 fingers = smooth pinch-to-zoom)
     let isPinching = false;
     let initialPinchDist = 0;
-    let pinchStartCamDist = 3.4;
+    let pinchStartCamDist = 2.7;
 
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
@@ -476,7 +500,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         const dx = (t.clientX - lastTouchX) * ROTATION_SENSITIVITY_TOUCH;
         const dy = (t.clientY - lastTouchY) * ROTATION_SENSITIVITY_TOUCH;
         targetYaw -= dx;
-        targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.42, 0.42);
+        targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.42, 0.45);
 
         // Filtered velocity for fluid release inertia
         const instYawVel = -dx / dt;
@@ -527,7 +551,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       const dx = (e.clientX - lastPointerX) * ROTATION_SENSITIVITY_MOUSE;
       const dy = (e.clientY - lastPointerY) * ROTATION_SENSITIVITY_MOUSE;
       targetYaw -= dx;
-      targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.42, 0.42);
+      targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.42, 0.45);
 
       const instYawVel = -dx / dt;
       const instPitchVel = dy / dt;
@@ -572,7 +596,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         }
 
         if (Math.abs(pitchVelocity) > 0.0001) {
-          targetPitch = THREE.MathUtils.clamp(targetPitch + pitchVelocity * delta, -0.42, 0.42);
+          targetPitch = THREE.MathUtils.clamp(targetPitch + pitchVelocity * delta, -0.42, 0.45);
           pitchVelocity *= Math.pow(0.91, delta * 60);
         } else {
           pitchVelocity = 0;
@@ -584,7 +608,11 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         ? Math.sin(elapsed * 0.4) * 0.006
         : 0;
 
-      // Silky frame-rate independent exponential dampening for yaw, pitch and distance
+      // Silky frame-rate independent exponential dampening for focus target, yaw, pitch and distance
+      currentRoomFocus.x = THREE.MathUtils.damp(currentRoomFocus.x, targetRoomFocus.x, 7.0, delta);
+      currentRoomFocus.y = THREE.MathUtils.damp(currentRoomFocus.y, targetRoomFocus.y, 7.0, delta);
+      currentRoomFocus.z = THREE.MathUtils.damp(currentRoomFocus.z, targetRoomFocus.z, 7.0, delta);
+
       currentYaw = THREE.MathUtils.damp(currentYaw, targetYaw + idleSway, 9.0, delta);
       currentPitch = THREE.MathUtils.damp(currentPitch, targetPitch, 9.0, delta);
       currentCamDist = THREE.MathUtils.damp(currentCamDist, targetCamDist, 7.5, delta);
@@ -592,16 +620,19 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       // True spherical projection without trigonometric distortion
       const cosPitch = Math.cos(currentPitch);
       const sinPitch = Math.sin(currentPitch);
-      camera.position.x = targetRoomFocus.x + Math.sin(currentYaw) * cosPitch * currentCamDist;
-      camera.position.y = targetRoomFocus.y + sinPitch * currentCamDist;
-      camera.position.z = targetRoomFocus.z + Math.cos(currentYaw) * cosPitch * currentCamDist;
-      camera.lookAt(targetRoomFocus);
+      camera.position.x = currentRoomFocus.x + Math.sin(currentYaw) * cosPitch * currentCamDist;
+      camera.position.y = currentRoomFocus.y + sinPitch * currentCamDist;
+      camera.position.z = currentRoomFocus.z + Math.cos(currentYaw) * cosPitch * currentCamDist;
+      camera.lookAt(currentRoomFocus);
 
       targetLookPosRef.current.copy(camera.position);
 
-      // Update Companion Rig (Idle Breathing, Blinking, Visemes, Look-At)
+      // Update Companion Rig (Idle Breathing, Blinking, Visemes, Look-At, Locomotion)
       if (companionRigRef.current) {
         companionRigRef.current.update(delta, elapsed, targetLookPosRef.current);
+        targetRoomFocus.x = companionRigRef.current.root.position.x;
+        targetRoomFocus.z = companionRigRef.current.root.position.z;
+        targetRoomFocus.y = 1.25;
       }
 
       // Atmospheric floor light pulse

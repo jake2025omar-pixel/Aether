@@ -7,3 +7,8 @@ export * from './SpeechAnimationController';
 export * from './MicroMovementController';
 export * from './EmotionController';
 export * from './HumanBehaviorController';
+export * from './FingerHandController';
+export * from './LocomotionController';
+export * from './FacialPerformanceEngine';
+export * from './FullBodyActionDirector';
+export * from './CharacterPerformanceDirector';

@@ -3,14 +3,36 @@ import { VRM } from '@pixiv/three-vrm';
 import { CompanionEmotion, CompanionState } from '../../lib/companionPersonality';
 import { dispose3DResource } from '@/Aether/3D/Preview/AssetPreviewLoader';
 import { AnimationEvent, AnimationOrchestrator, SemanticAnimationFrame } from '../../lib/animationOrchestrator';
-import { HumanBehaviorController } from '../../lib/behavior/HumanBehaviorController';
+import {
+  CharacterPerformanceDirector,
+  FullBodyActionType,
+  AnimeExpressionStyle,
+} from '../../lib/behavior';
+
+const FINGER_BONE_NAMES = [
+  'thumbMetacarpal',
+  'thumbProximal',
+  'thumbDistal',
+  'indexProximal',
+  'indexIntermediate',
+  'indexDistal',
+  'middleProximal',
+  'middleIntermediate',
+  'middleDistal',
+  'ringProximal',
+  'ringIntermediate',
+  'ringDistal',
+  'littleProximal',
+  'littleIntermediate',
+  'littleDistal',
+] as const;
 
 export class CompanionRig {
   public root: THREE.Group;
   private vrmInstance: VRM | null = null;
   private isVrm: boolean = false;
 
-  // VRM Humanoid Bones
+  // VRM Humanoid Bones - Upper Body
   private vrmHeadBone: THREE.Object3D | null = null;
   private vrmNeckBone: THREE.Object3D | null = null;
   private vrmChestBone: THREE.Object3D | null = null;
@@ -26,7 +48,25 @@ export class CompanionRig {
   private vrmLeftHand: THREE.Object3D | null = null;
   private vrmRightHand: THREE.Object3D | null = null;
 
-  // Stored Rest Rotations
+  // VRM Humanoid Bones - Lower Body & Locomotion
+  private vrmLeftUpperLeg: THREE.Object3D | null = null;
+  private vrmLeftLowerLeg: THREE.Object3D | null = null;
+  private vrmLeftFoot: THREE.Object3D | null = null;
+  private vrmLeftToes: THREE.Object3D | null = null;
+  private vrmRightUpperLeg: THREE.Object3D | null = null;
+  private vrmRightLowerLeg: THREE.Object3D | null = null;
+  private vrmRightFoot: THREE.Object3D | null = null;
+  private vrmRightToes: THREE.Object3D | null = null;
+
+  // VRM Humanoid Bones - 30 Finger Bones
+  private vrmLeftFingers: Record<string, THREE.Object3D | null> = {};
+  private vrmRightFingers: Record<string, THREE.Object3D | null> = {};
+
+  // Face Mesh for Direct Morph Targets (57 blendshapes)
+  private vrmFaceMesh: THREE.Mesh | null = null;
+
+  // Stored Rest Rotations & Positions
+  private readonly vrmHipsRestPosition = new THREE.Vector3(0, 0.9100833, 0);
   private readonly vrmHeadRest = new THREE.Euler();
   private readonly vrmNeckRest = new THREE.Euler();
   private readonly vrmChestRest = new THREE.Euler();
@@ -42,7 +82,14 @@ export class CompanionRig {
   private readonly leftHandRest = new THREE.Euler();
   private readonly rightHandRest = new THREE.Euler();
 
-  // Procedural rig references
+  private readonly leftUpperLegRest = new THREE.Euler();
+  private readonly leftLowerLegRest = new THREE.Euler();
+  private readonly leftFootRest = new THREE.Euler();
+  private readonly rightUpperLegRest = new THREE.Euler();
+  private readonly rightLowerLegRest = new THREE.Euler();
+  private readonly rightFootRest = new THREE.Euler();
+
+  // Procedural fallback rig references
   private headBone: THREE.Group | null = null;
   private chestBone: THREE.Group | null = null;
   private leftEye: THREE.Mesh | null = null;
@@ -58,8 +105,8 @@ export class CompanionRig {
   private targetLeftBrowHeight = 0.05;
   private targetRightBrowHeight = 0.05;
 
-  // Animation & Behavior Controllers
-  private readonly humanBehavior = new HumanBehaviorController();
+  // Unified Character Performance Director
+  public readonly performanceDirector = new CharacterPerformanceDirector();
   private readonly animationOrchestrator = new AnimationOrchestrator();
   private animationFrame: SemanticAnimationFrame = this.animationOrchestrator.update(0, 0);
 
@@ -67,16 +114,8 @@ export class CompanionRig {
   private currentEmotion: CompanionEmotion = 'NEUTRAL';
   private currentState: CompanionState = 'IDLE';
   private motionEnabled = true;
-  private targetViseme: number = 0; // 0 (closed) to 1 (open)
-  private displayedViseme: number = 0; // Smoothly damped mouth aperture
-  private activeEmotionVrmPreset: string = 'relaxed';
-  private readonly emotionWeights: Record<string, number> = {
-    happy: 0,
-    angry: 0,
-    sad: 0,
-    relaxed: 0,
-    surprised: 0,
-  };
+  private targetViseme: number = 0; // 0 to 1
+  private displayedViseme: number = 0;
 
   constructor(vrm?: VRM | null) {
     this.root = new THREE.Group();
@@ -86,30 +125,72 @@ export class CompanionRig {
       this.isVrm = true;
       this.root.add(vrm.scene);
 
-      // Acquire complete normalized upper body skeleton
-      this.vrmHeadBone = vrm.humanoid?.getNormalizedBoneNode('head') || null;
-      this.vrmNeckBone = vrm.humanoid?.getNormalizedBoneNode('neck') || null;
-      this.vrmChestBone = vrm.humanoid?.getNormalizedBoneNode('chest') || null;
-      this.vrmUpperChestBone = vrm.humanoid?.getNormalizedBoneNode('upperChest') || null;
-      this.vrmSpineBone = vrm.humanoid?.getNormalizedBoneNode('spine') || null;
-      this.vrmHipsBone = vrm.humanoid?.getNormalizedBoneNode('hips') || null;
-      this.vrmLeftShoulderBone = vrm.humanoid?.getNormalizedBoneNode('leftShoulder') || null;
-      this.vrmRightShoulderBone = vrm.humanoid?.getNormalizedBoneNode('rightShoulder') || null;
-      this.vrmLeftUpperArm = vrm.humanoid?.getNormalizedBoneNode('leftUpperArm') || null;
-      this.vrmRightUpperArm = vrm.humanoid?.getNormalizedBoneNode('rightUpperArm') || null;
-      this.vrmLeftLowerArm = vrm.humanoid?.getNormalizedBoneNode('leftLowerArm') || null;
-      this.vrmRightLowerArm = vrm.humanoid?.getNormalizedBoneNode('rightLowerArm') || null;
-      this.vrmLeftHand = vrm.humanoid?.getNormalizedBoneNode('leftHand') || null;
-      this.vrmRightHand = vrm.humanoid?.getNormalizedBoneNode('rightHand') || null;
+      const humanoid = vrm.humanoid;
 
+      // 1. Acquire upper body skeleton
+      this.vrmHeadBone = humanoid?.getNormalizedBoneNode('head') || null;
+      this.vrmNeckBone = humanoid?.getNormalizedBoneNode('neck') || null;
+      this.vrmChestBone = humanoid?.getNormalizedBoneNode('chest') || null;
+      this.vrmUpperChestBone = humanoid?.getNormalizedBoneNode('upperChest') || null;
+      this.vrmSpineBone = humanoid?.getNormalizedBoneNode('spine') || null;
+      this.vrmHipsBone = humanoid?.getNormalizedBoneNode('hips') || null;
+      this.vrmLeftShoulderBone = humanoid?.getNormalizedBoneNode('leftShoulder') || null;
+      this.vrmRightShoulderBone = humanoid?.getNormalizedBoneNode('rightShoulder') || null;
+      this.vrmLeftUpperArm = humanoid?.getNormalizedBoneNode('leftUpperArm') || null;
+      this.vrmRightUpperArm = humanoid?.getNormalizedBoneNode('rightUpperArm') || null;
+      this.vrmLeftLowerArm = humanoid?.getNormalizedBoneNode('leftLowerArm') || null;
+      this.vrmRightLowerArm = humanoid?.getNormalizedBoneNode('rightLowerArm') || null;
+      this.vrmLeftHand = humanoid?.getNormalizedBoneNode('leftHand') || null;
+      this.vrmRightHand = humanoid?.getNormalizedBoneNode('rightHand') || null;
+
+      // 2. Acquire lower body locomotion skeleton
+      this.vrmLeftUpperLeg = humanoid?.getNormalizedBoneNode('leftUpperLeg') || null;
+      this.vrmLeftLowerLeg = humanoid?.getNormalizedBoneNode('leftLowerLeg') || null;
+      this.vrmLeftFoot = humanoid?.getNormalizedBoneNode('leftFoot') || null;
+      this.vrmLeftToes = humanoid?.getNormalizedBoneNode('leftToes') || null;
+
+      this.vrmRightUpperLeg = humanoid?.getNormalizedBoneNode('rightUpperLeg') || null;
+      this.vrmRightLowerLeg = humanoid?.getNormalizedBoneNode('rightLowerLeg') || null;
+      this.vrmRightFoot = humanoid?.getNormalizedBoneNode('rightFoot') || null;
+      this.vrmRightToes = humanoid?.getNormalizedBoneNode('rightToes') || null;
+
+      // 3. Acquire complete 30-bone finger hierarchy
+      for (const joint of FINGER_BONE_NAMES) {
+        const leftBoneName = `left${joint.charAt(0).toUpperCase() + joint.slice(1)}` as any;
+        const rightBoneName = `right${joint.charAt(0).toUpperCase() + joint.slice(1)}` as any;
+        this.vrmLeftFingers[joint] = humanoid?.getNormalizedBoneNode(leftBoneName) || null;
+        this.vrmRightFingers[joint] = humanoid?.getNormalizedBoneNode(rightBoneName) || null;
+      }
+
+      // 4. Find Face Mesh for Direct Morph Targets (57 blendshapes)
+      vrm.scene.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const mesh = obj as THREE.Mesh;
+          if (mesh.morphTargetDictionary && (mesh.name === 'Face' || 'Fcl_BRW_Joy' in mesh.morphTargetDictionary)) {
+            this.vrmFaceMesh = mesh;
+          }
+        }
+      });
+
+      // 5. Store Rest Rotations
       if (this.vrmHeadBone) this.vrmHeadRest.copy(this.vrmHeadBone.rotation);
       if (this.vrmNeckBone) this.vrmNeckRest.copy(this.vrmNeckBone.rotation);
       if (this.vrmChestBone) this.vrmChestRest.copy(this.vrmChestBone.rotation);
       if (this.vrmUpperChestBone) this.vrmUpperChestRest.copy(this.vrmUpperChestBone.rotation);
       if (this.vrmSpineBone) this.vrmSpineRest.copy(this.vrmSpineBone.rotation);
-      if (this.vrmHipsBone) this.vrmHipsRest.copy(this.vrmHipsBone.rotation);
+      if (this.vrmHipsBone) {
+        this.vrmHipsRest.copy(this.vrmHipsBone.rotation);
+        this.vrmHipsRestPosition.copy(this.vrmHipsBone.position);
+      }
       if (this.vrmLeftShoulderBone) this.vrmLeftShoulderRest.copy(this.vrmLeftShoulderBone.rotation);
       if (this.vrmRightShoulderBone) this.vrmRightShoulderRest.copy(this.vrmRightShoulderBone.rotation);
+
+      if (this.vrmLeftUpperLeg) this.leftUpperLegRest.copy(this.vrmLeftUpperLeg.rotation);
+      if (this.vrmLeftLowerLeg) this.leftLowerLegRest.copy(this.vrmLeftLowerLeg.rotation);
+      if (this.vrmLeftFoot) this.leftFootRest.copy(this.vrmLeftFoot.rotation);
+      if (this.vrmRightUpperLeg) this.rightUpperLegRest.copy(this.vrmRightUpperLeg.rotation);
+      if (this.vrmRightLowerLeg) this.rightLowerLegRest.copy(this.vrmRightLowerLeg.rotation);
+      if (this.vrmRightFoot) this.rightFootRest.copy(this.vrmRightFoot.rotation);
 
       this.applyNaturalVrmRestPose(vrm);
     } else {
@@ -117,9 +198,6 @@ export class CompanionRig {
     }
   }
 
-  /**
-   * Poses VRM humanoid arms and shoulders into a relaxed, natural standing posture.
-   */
   private applyNaturalVrmRestPose(vrm: VRM): void {
     if (!vrm.humanoid) return;
     const leftUpperArm = this.vrmLeftUpperArm;
@@ -129,7 +207,6 @@ export class CompanionRig {
     const leftHand = this.vrmLeftHand;
     const rightHand = this.vrmRightHand;
 
-    // Natural companion idle stance: arms relaxed along body sides
     if (leftUpperArm) {
       leftUpperArm.rotation.set(0.12, 0.05, -1.25);
       this.leftArmRest.copy(leftUpperArm.rotation);
@@ -156,51 +233,28 @@ export class CompanionRig {
     }
   }
 
-  /**
-   * Builds an articulate stylized 3D humanoid companion (Height: 1.62m)
-   * with responsive eyes, eyebrows, mouth visemes, and crystalline outfit.
-   */
   private buildProceduralHumanoidRig(): void {
-    // 1. Materials with Aether dark crystal aesthetic
     const skinMat = new THREE.MeshStandardMaterial({
-      color: 0xfce7f3, // Soft porcelain complexion
+      color: 0xfce7f3,
       roughness: 0.45,
       metalness: 0.1,
     });
-
     const hairMat = new THREE.MeshStandardMaterial({
-      color: 0x1e1035, // Deep obsidian violet
+      color: 0x1e1035,
       roughness: 0.35,
       metalness: 0.4,
     });
-
     const outfitMat = new THREE.MeshStandardMaterial({
-      color: 0x2e1065, // Royal amethyst
+      color: 0x2e1065,
       roughness: 0.25,
       metalness: 0.75,
     });
+    const crystalMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const eyebrowMat = new THREE.MeshBasicMaterial({ color: 0x581c87 });
+    const mouthMat = new THREE.MeshBasicMaterial({ color: 0xe879f9 });
 
-    const crystalMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8, // Cyan crystal core
-    });
-
-    const eyeMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8, // Luminous cyan irises
-    });
-
-    const eyeWhiteMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-    });
-
-    const eyebrowMat = new THREE.MeshBasicMaterial({
-      color: 0x581c87,
-    });
-
-    const mouthMat = new THREE.MeshBasicMaterial({
-      color: 0xe879f9, // Fuchsia lip tone
-    });
-
-    // 2. Base Skeleton Hierarchy
     const hips = new THREE.Group();
     hips.position.y = 0.9;
     this.root.add(hips);
@@ -223,20 +277,17 @@ export class CompanionRig {
     neck.add(head);
     this.headBone = head;
 
-    // 3. Head & Face Meshes
     const headGeo = new THREE.SphereGeometry(0.125, 32, 32);
     headGeo.scale(0.95, 1.15, 1.0);
     const headMesh = new THREE.Mesh(headGeo, skinMat);
     head.add(headMesh);
 
-    // Hair Top & Back
     const hairTopGeo = new THREE.SphereGeometry(0.138, 24, 24);
     hairTopGeo.scale(1.02, 1.15, 1.05);
     const hairTop = new THREE.Mesh(hairTopGeo, hairMat);
     hairTop.position.set(0, 0.03, -0.015);
     head.add(hairTop);
 
-    // Hair Twin Tails / Side Bangs (Stylized anime companion aesthetic)
     const bangLeftGeo = new THREE.ConeGeometry(0.04, 0.42, 12);
     bangLeftGeo.rotateZ(0.2);
     const bangLeft = new THREE.Mesh(bangLeftGeo, hairMat);
@@ -249,11 +300,9 @@ export class CompanionRig {
     bangRight.position.set(0.14, -0.15, 0.02);
     head.add(bangRight);
 
-    // Eyes (Left & Right)
     const eyeWhiteGeo = new THREE.SphereGeometry(0.022, 16, 16);
     const eyeIrisGeo = new THREE.CircleGeometry(0.014, 16);
 
-    // Left Eye Socket
     const leftEyeGroup = new THREE.Group();
     leftEyeGroup.position.set(-0.045, 0.015, 0.118);
     const leftEyeWhite = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
@@ -264,7 +313,6 @@ export class CompanionRig {
     head.add(leftEyeGroup);
     this.leftEye = leftEyeWhite;
 
-    // Right Eye Socket
     const rightEyeGroup = new THREE.Group();
     rightEyeGroup.position.set(0.045, 0.015, 0.118);
     const rightEyeWhite = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
@@ -275,154 +323,97 @@ export class CompanionRig {
     head.add(rightEyeGroup);
     this.rightEye = rightEyeWhite;
 
-    // Eyebrows
     const eyebrowGeo = new THREE.BoxGeometry(0.035, 0.005, 0.005);
+    const leftEyebrowMesh = new THREE.Mesh(eyebrowGeo, eyebrowMat);
+    leftEyebrowMesh.position.set(-0.045, 0.05, 0.125);
+    head.add(leftEyebrowMesh);
+    this.leftEyebrow = leftEyebrowMesh;
 
-    const leftBrow = new THREE.Mesh(eyebrowGeo, eyebrowMat);
-    leftBrow.position.set(-0.045, 0.05, 0.125);
-    head.add(leftBrow);
-    this.leftEyebrow = leftBrow;
+    const rightEyebrowMesh = new THREE.Mesh(eyebrowGeo, eyebrowMat);
+    rightEyebrowMesh.position.set(0.045, 0.05, 0.125);
+    head.add(rightEyebrowMesh);
+    this.rightEyebrow = rightEyebrowMesh;
 
-    const rightBrow = new THREE.Mesh(eyebrowGeo, eyebrowMat);
-    rightBrow.position.set(0.045, 0.05, 0.125);
-    head.add(rightBrow);
-    this.rightEyebrow = rightBrow;
+    const mouthGeo = new THREE.BoxGeometry(0.028, 0.006, 0.005);
+    const mouthMesh = new THREE.Mesh(mouthGeo, mouthMat);
+    mouthMesh.position.set(0, -0.052, 0.122);
+    head.add(mouthMesh);
+    this.mouthMesh = mouthMesh;
 
-    // Mouth Viseme Mesh (Can scale vertically for speech lip-sync!)
-    const mouthGeo = new THREE.BoxGeometry(0.03, 0.008, 0.005);
-    const mouth = new THREE.Mesh(mouthGeo, mouthMat);
-    mouth.position.set(0, -0.055, 0.122);
-    head.add(mouth);
-    this.mouthMesh = mouth;
+    const torsoGeo = new THREE.CylinderGeometry(0.11, 0.09, 0.32, 16);
+    const torsoMesh = new THREE.Mesh(torsoGeo, outfitMat);
+    chest.add(torsoMesh);
 
-    // 4. Torso & Outfit
-    const torsoGeo = new THREE.CylinderGeometry(0.12, 0.14, 0.45, 20);
-    const torso = new THREE.Mesh(torsoGeo, outfitMat);
-    torso.position.y = 0.1;
-    chest.add(torso);
+    const coreGeo = new THREE.OctahedronGeometry(0.032, 0);
+    const crystalCore = new THREE.Mesh(coreGeo, crystalMat);
+    crystalCore.position.set(0, 0.04, 0.10);
+    chest.add(crystalCore);
+    this.crystalCore = crystalCore;
 
-    // Crystal Heart Core
-    const crystalGeo = new THREE.OctahedronGeometry(0.04, 0);
-    const crystal = new THREE.Mesh(crystalGeo, crystalMat);
-    crystal.position.set(0, 0.12, 0.135);
-    chest.add(crystal);
-    this.crystalCore = crystal;
+    const armGeo = new THREE.CylinderGeometry(0.03, 0.025, 0.52, 12);
+    armGeo.translate(0, -0.26, 0);
 
-    // Dress / Robe Skirt (Feet-to-waist coverage)
-    const skirtGeo = new THREE.ConeGeometry(0.34, 0.9, 24, 1, true);
-    const skirt = new THREE.Mesh(skirtGeo, outfitMat);
-    skirt.position.y = -0.42;
-    hips.add(skirt);
-
-    // Arms & Hands (Left & Right)
-    const armGeo = new THREE.CylinderGeometry(0.035, 0.03, 0.35, 12);
     const leftArm = new THREE.Mesh(armGeo, outfitMat);
-    leftArm.position.set(-0.19, 0.05, 0);
-    leftArm.rotation.z = -0.15;
+    leftArm.position.set(-0.16, 0.08, 0);
+    leftArm.rotation.z = 0.18;
     chest.add(leftArm);
     this.proceduralLeftArm = leftArm;
     this.leftArmRest.copy(leftArm.rotation);
 
     const rightArm = new THREE.Mesh(armGeo, outfitMat);
-    rightArm.position.set(0.19, 0.05, 0);
-    rightArm.rotation.z = 0.15;
+    rightArm.position.set(0.16, 0.08, 0);
+    rightArm.rotation.z = -0.18;
     chest.add(rightArm);
     this.proceduralRightArm = rightArm;
     this.rightArmRest.copy(rightArm.rotation);
 
-    // Floor Pedestal Ring (Ground Anchor at Y = 0)
-    const pedestalGeo = new THREE.RingGeometry(0.42, 0.45, 32);
-    const pedestalMat = new THREE.MeshBasicMaterial({ color: 0xa855f7, side: THREE.DoubleSide });
-    const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
-    pedestal.rotation.x = -Math.PI / 2;
-    pedestal.position.y = 0.005;
-    this.root.add(pedestal);
+    const legGeo = new THREE.CylinderGeometry(0.045, 0.035, 0.88, 12);
+    legGeo.translate(0, -0.44, 0);
+
+    const leftLeg = new THREE.Mesh(legGeo, outfitMat);
+    leftLeg.position.set(-0.075, 0, 0);
+    hips.add(leftLeg);
+
+    const rightLeg = new THREE.Mesh(legGeo, outfitMat);
+    rightLeg.position.set(0.075, 0, 0);
+    hips.add(rightLeg);
   }
 
-  /**
-   * Sets emotional state and adjusts facial expressions
-   */
-  public setEmotion(emotion: CompanionEmotion): void {
+  // High-Level Public Control APIs
+  public setEmotion(emotion: CompanionEmotion, intensity = 0.7): void {
     this.currentEmotion = emotion;
-    this.animationOrchestrator.setEmotion(emotion, 0.62);
-    this.humanBehavior.setEmotion(emotion, 0.75);
-
-    const vrmMap: Record<CompanionEmotion, string> = {
-      NEUTRAL: 'relaxed',
-      HAPPY: 'happy',
-      SAD: 'sad',
-      ANGRY: 'angry',
-      SURPRISED: 'surprised',
-      CONFUSED: 'surprised',
-      THINKING: 'relaxed',
-      CURIOUS: 'surprised',
-      EMPATHETIC: 'sad',
-      AFFECTIONATE: 'happy',
-      GENTLY_ANNOYED: 'angry',
-    };
-    this.activeEmotionVrmPreset = vrmMap[emotion] || 'relaxed';
-
-    // Procedural rig eyebrow emotion modulation
-    if (this.leftEyebrow && this.rightEyebrow) {
-      switch (emotion) {
-        case 'HAPPY':
-        case 'AFFECTIONATE':
-          this.targetLeftBrowRotation = -0.15;
-          this.targetRightBrowRotation = 0.15;
-          this.targetLeftBrowHeight = 0.055;
-          this.targetRightBrowHeight = 0.055;
-          break;
-        case 'SAD':
-        case 'EMPATHETIC':
-          this.targetLeftBrowRotation = 0.2;
-          this.targetRightBrowRotation = -0.2;
-          this.targetLeftBrowHeight = 0.045;
-          this.targetRightBrowHeight = 0.045;
-          break;
-        case 'SURPRISED':
-        case 'CURIOUS':
-          this.targetLeftBrowRotation = 0;
-          this.targetRightBrowRotation = 0;
-          this.targetLeftBrowHeight = 0.065;
-          this.targetRightBrowHeight = 0.065;
-          break;
-        case 'ANGRY':
-        case 'GENTLY_ANNOYED':
-          this.targetLeftBrowRotation = 0.25;
-          this.targetRightBrowRotation = -0.25;
-          this.targetLeftBrowHeight = 0.042;
-          this.targetRightBrowHeight = 0.042;
-          break;
-        case 'CONFUSED':
-        case 'THINKING':
-          this.targetLeftBrowRotation = -0.25;
-          this.targetRightBrowRotation = 0.05;
-          this.targetLeftBrowHeight = 0.05;
-          this.targetRightBrowHeight = 0.05;
-          break;
-        default:
-          this.targetLeftBrowRotation = 0;
-          this.targetRightBrowRotation = 0;
-          this.targetLeftBrowHeight = 0.05;
-          this.targetRightBrowHeight = 0.05;
-          break;
-      }
-    }
+    this.performanceDirector.setEmotion(emotion, intensity);
   }
 
   public setState(state: CompanionState): void {
-    if (state === this.currentState && this.animationOrchestrator.getSnapshot().state !== 'INITIALIZING') return;
+    if (state === this.currentState) return;
     this.currentState = state;
     this.animationOrchestrator.setConversationState(state);
-    this.humanBehavior.setState(state);
+    this.performanceDirector.setState(state);
   }
 
   public onSpeechStart(text: string): void {
-    this.humanBehavior.onSpeechStart(text);
+    this.performanceDirector.onSpeechStart(text);
   }
 
   public onSpeechEnd(): void {
-    this.humanBehavior.onSpeechEnd();
+    this.performanceDirector.onSpeechEnd();
+  }
+
+  public triggerAction(type: FullBodyActionType, force = true): boolean {
+    return this.performanceDirector.triggerAction(type, force);
+  }
+
+  public triggerFacialStyle(style: AnimeExpressionStyle, duration = 3.5): void {
+    this.performanceDirector.triggerFacialStyle(style, duration);
+  }
+
+  public navigateTo(target: THREE.Vector3, faceYaw?: number): void {
+    this.performanceDirector.navigateTo(target, faceYaw);
+  }
+
+  public setAutonomousNavigation(enabled: boolean): void {
+    this.performanceDirector.setAutonomousNavigation(enabled);
   }
 
   public setMotionEnabled(enabled: boolean): void {
@@ -437,14 +428,8 @@ export class CompanionRig {
     }
   }
 
-  /**
-   * Sets real-time lip-sync mouth opening (0 = closed, 1 = open).
-   * Driven through a single, calibrated, smooth channel.
-   */
   public setViseme(mouthOpen: number): void {
     this.targetViseme = Math.max(0, Math.min(1, mouthOpen));
-
-    // Fast zero clamp when speech stops to guarantee no lingering open mouth
     if (mouthOpen === 0 && this.displayedViseme < 0.08) {
       this.displayedViseme = 0;
       if (this.isVrm && this.vrmInstance?.expressionManager) {
@@ -457,29 +442,31 @@ export class CompanionRig {
     }
   }
 
-  /** Forwards validated conversation/network events without exposing rig details. */
   public notifyAnimationEvent(event: AnimationEvent): void {
     this.animationOrchestrator.notify(event);
   }
 
+  public setFurnitureColliders(colliders: THREE.Box3[]): void {
+    this.performanceDirector.locomotion.setColliders(colliders);
+  }
+
   /**
-   * Updates realistic human behavior, continuous respiration, contrapposto posture,
-   * speech gestures, micro-saccades, and expressions every frame.
+   * Main Performance Frame Update Loop
    */
   public update(delta: number, elapsedTime: number, targetLookPos?: THREE.Vector3): void {
     const frameDelta = Math.min(Math.max(delta, 0), 0.05);
     const motion = this.motionEnabled ? 1 : 0;
 
-    // 1. Advance high-level semantic orchestrator
+    // 1. Semantic Orchestrator
     this.animationFrame = this.animationOrchestrator.update(frameDelta, elapsedTime);
 
-    // 2. Smooth mouth viseme damping
+    // 2. Viseme Smoothing
     this.displayedViseme = THREE.MathUtils.damp(this.displayedViseme, this.targetViseme, 18, frameDelta);
     if (this.targetViseme === 0 && this.displayedViseme < 0.005) this.displayedViseme = 0;
 
-    // 3. Compute continuous Human Behavior Frame
+    // 3. Central Character Performance Director Frame
     const cameraTarget = targetLookPos || new THREE.Vector3(0, 1.45, 3.4);
-    const behavior = this.humanBehavior.update(
+    const frame = this.performanceDirector.update(
       frameDelta,
       elapsedTime,
       cameraTarget,
@@ -487,7 +474,7 @@ export class CompanionRig {
       this.displayedViseme
     );
 
-    // 4. VRM Character Kinematics & Expressions
+    // 4. VRM Character Kinematics & Full-Body Performance
     if (this.isVrm && this.vrmInstance) {
       if (this.motionEnabled) {
         this.vrmInstance.update(frameDelta);
@@ -495,93 +482,100 @@ export class CompanionRig {
         this.vrmInstance.expressionManager?.update();
       }
 
-      // Feed synthesized look-at target to VRM look-at plugin if available
+      // Root World Placement - Anchored squarely at (0, 0, 0) on open floor
+      this.root.position.set(0, 0, 0);
+      this.root.rotation.y = 0;
+
+      // Look-At Target
       if (this.vrmInstance.lookAt && this.motionEnabled) {
-        this.vrmInstance.lookAt.lookAt(behavior.lookAtTarget);
+        this.vrmInstance.lookAt.lookAt(frame.lookAtTarget);
       }
 
+      // Expression Manager (VRM 1.0 Presets)
       const manager = this.vrmInstance.expressionManager;
       if (manager) {
-        // Safe single-channel lip sync (Dark ICE: aa = Fcl_MTH_A)
-        manager.setValue('aa', Math.min(0.18, this.displayedViseme * 0.2));
-        manager.setValue('oh', 0);
-        manager.setValue('ih', 0);
-        manager.setValue('ou', 0);
-        manager.setValue('ee', 0);
-
-        // Natural dynamic eye blink driven by EyeBehaviorController
-        const blinkVal = motion ? THREE.MathUtils.clamp(behavior.eye.leftBlink, 0, 1) : 0;
-        manager.setValue('blink', blinkVal);
-
-        // Emotion expression with speech suppression & eyelid squint blending
-        const speechSuppression = Math.max(0.38, 1 - this.displayedViseme * 0.85);
-        const emotionBase = (this.currentEmotion === 'NEUTRAL' ? 0.18
-          : this.currentEmotion === 'GENTLY_ANNOYED' ? 0.2 : 0.34) * behavior.emotionIntensity;
-
-        for (const preset of Object.keys(this.emotionWeights)) {
-          let targetWeight = preset === this.activeEmotionVrmPreset ? emotionBase * speechSuppression : 0;
-          if (preset === 'relaxed' && behavior.eye.squint > 0) {
-            targetWeight = Math.max(targetWeight, behavior.eye.squint * speechSuppression);
-          }
-          const weight = THREE.MathUtils.damp(this.emotionWeights[preset], targetWeight, 5.5, frameDelta);
-          this.emotionWeights[preset] = weight;
-          manager.setValue(preset, weight);
+        for (const [key, val] of Object.entries(frame.facial.vrmPresets)) {
+          manager.setValue(key, val * motion);
         }
       }
 
-      // Apply Hips (Contrapposto weight shift & living body sway)
-      if (this.vrmHipsBone) {
-        const targetHipsZ = this.vrmHipsRest.z + (behavior.posture.hipTiltZ + behavior.posture.bodySway.z) * motion;
-        const targetHipsY = this.vrmHipsRest.y + behavior.posture.hipYawY * motion;
-        this.vrmHipsBone.rotation.z = THREE.MathUtils.damp(this.vrmHipsBone.rotation.z, targetHipsZ, 3.2, frameDelta);
-        this.vrmHipsBone.rotation.y = THREE.MathUtils.damp(this.vrmHipsBone.rotation.y, targetHipsY, 3.0, frameDelta);
-        this.vrmHipsBone.position.x = behavior.posture.bodySway.x * motion;
+      // Direct Morph Targets on Face Mesh (57 blendshapes)
+      if (this.vrmFaceMesh?.morphTargetDictionary && this.vrmFaceMesh.morphTargetInfluences) {
+        const dict = this.vrmFaceMesh.morphTargetDictionary;
+        const influences = this.vrmFaceMesh.morphTargetInfluences;
+        for (const [morphName, weight] of Object.entries(frame.facial.directMorphs)) {
+          const idx = dict[morphName];
+          if (typeof idx === 'number') {
+            influences[idx] = weight * motion;
+          }
+        }
       }
 
-      // Apply Spine (Breathing expansion & S-curve contrapposto)
+      // Hips (Contrapposto weight shift & living body sway)
+      if (this.vrmHipsBone) {
+        const targetHipsZ = this.vrmHipsRest.z +
+          (frame.posture.hipTiltZ + frame.posture.bodySway.z) * motion;
+        const targetHipsY = this.vrmHipsRest.y +
+          frame.posture.hipYawY * motion;
+
+        this.vrmHipsBone.rotation.z = THREE.MathUtils.damp(this.vrmHipsBone.rotation.z, targetHipsZ, 3.2, frameDelta);
+        this.vrmHipsBone.rotation.y = THREE.MathUtils.damp(this.vrmHipsBone.rotation.y, targetHipsY, 3.0, frameDelta);
+        this.vrmHipsBone.position.x = this.vrmHipsRestPosition.x + frame.posture.bodySway.x * motion;
+        // Strictly preserve exact natural vertical hip height - zero sinking into the floor!
+        this.vrmHipsBone.position.y = this.vrmHipsRestPosition.y;
+        this.vrmHipsBone.position.z = this.vrmHipsRestPosition.z;
+      }
+
+      // Spine (Breathing + Contrapposto S-Curve + Action Lean)
+      const actionOffsets = frame.action.offsets;
+      const actionWeight = frame.action.weight;
+
       if (this.vrmSpineBone) {
         const targetSpineX = this.vrmSpineRest.x +
-          (behavior.respiration.spineExpansion + behavior.posture.spineCurve.x + this.animationFrame.torso.lean) * motion;
+          (frame.respiration.spineExpansion + frame.posture.spineCurve.x + this.animationFrame.torso.lean + actionOffsets.torso.x * actionWeight) * motion;
         const targetSpineZ = this.vrmSpineRest.z +
-          (behavior.posture.spineCurve.z + this.animationFrame.torso.lean * 0.4) * motion;
+          (frame.posture.spineCurve.z + this.animationFrame.torso.lean * 0.4 + actionOffsets.torso.z * actionWeight) * motion;
 
         this.vrmSpineBone.rotation.x = THREE.MathUtils.damp(this.vrmSpineBone.rotation.x, targetSpineX, 3.5, frameDelta);
         this.vrmSpineBone.rotation.z = THREE.MathUtils.damp(this.vrmSpineBone.rotation.z, targetSpineZ, 3.0, frameDelta);
       }
 
-      // Apply Chest & Upper Chest (Respiration lift & posture roll counter)
+      // Chest & Upper Chest
       if (this.vrmChestBone) {
         const targetChestX = this.vrmChestRest.x +
-          (behavior.respiration.chestExpansion + behavior.posture.chestOrientation.x) * motion;
+          (frame.respiration.chestExpansion + frame.posture.chestOrientation.x) * motion;
         const targetChestZ = this.vrmChestRest.z +
-          behavior.posture.chestOrientation.z * motion;
+          frame.posture.chestOrientation.z * motion;
 
         this.vrmChestBone.rotation.x = THREE.MathUtils.damp(this.vrmChestBone.rotation.x, targetChestX, 4.0, frameDelta);
         this.vrmChestBone.rotation.z = THREE.MathUtils.damp(this.vrmChestBone.rotation.z, targetChestZ, 3.5, frameDelta);
       }
       if (this.vrmUpperChestBone) {
         const targetUpperChestX = this.vrmUpperChestRest.x +
-          behavior.respiration.chestExpansion * 0.7 * motion;
+          frame.respiration.chestExpansion * 0.7 * motion;
         this.vrmUpperChestBone.rotation.x = THREE.MathUtils.damp(this.vrmUpperChestBone.rotation.x, targetUpperChestX, 4.0, frameDelta);
       }
 
-      // Apply Clavicles / Shoulders (Respiration lift & contrapposto offset)
+      // Clavicles / Shoulders (Respiration + contrapposto + action shrug)
       if (this.vrmLeftShoulderBone) {
         const targetLShoulderZ = this.vrmLeftShoulderRest.z +
-          (behavior.respiration.shoulderLift + behavior.posture.leftShoulderOffset.y + behavior.micro.shoulderTwitch) * motion;
+          (frame.respiration.shoulderLift + frame.posture.leftShoulderOffset.y + frame.micro.shoulderTwitch + actionOffsets.shoulders.leftZ * actionWeight) * motion;
         this.vrmLeftShoulderBone.rotation.z = THREE.MathUtils.damp(this.vrmLeftShoulderBone.rotation.z, targetLShoulderZ, 3.5, frameDelta);
       }
       if (this.vrmRightShoulderBone) {
         const targetRShoulderZ = this.vrmRightShoulderRest.z -
-          (behavior.respiration.shoulderLift - behavior.posture.rightShoulderOffset.y + behavior.micro.shoulderTwitch) * motion;
+          (frame.respiration.shoulderLift - frame.posture.rightShoulderOffset.y + frame.micro.shoulderTwitch + actionOffsets.shoulders.rightZ * actionWeight) * motion;
         this.vrmRightShoulderBone.rotation.z = THREE.MathUtils.damp(this.vrmRightShoulderBone.rotation.z, targetRShoulderZ, 3.5, frameDelta);
       }
 
-      // Apply Head & Neck (Context-aware nods, tilts, micro-sway)
+      // Head & Neck (Nods + tilts + action rotation)
       if (this.vrmHeadBone) {
-        const targetHeadX = this.vrmHeadRest.x + (behavior.head.rotation.x + this.animationFrame.head.x) * motion;
-        const targetHeadY = this.vrmHeadRest.y + (behavior.head.rotation.y + this.animationFrame.head.y) * motion;
-        const targetHeadZ = this.vrmHeadRest.z + (behavior.head.rotation.z + this.animationFrame.head.z) * motion;
+        const targetHeadX = this.vrmHeadRest.x +
+          (frame.head.rotation.x + this.animationFrame.head.x + actionOffsets.head.x * actionWeight) * motion;
+        const targetHeadY = this.vrmHeadRest.y +
+          (frame.head.rotation.y + this.animationFrame.head.y + actionOffsets.head.y * actionWeight) * motion;
+        const targetHeadZ = this.vrmHeadRest.z +
+          (frame.head.rotation.z + this.animationFrame.head.z + actionOffsets.head.z * actionWeight) * motion;
 
         this.vrmHeadBone.rotation.x = THREE.MathUtils.damp(this.vrmHeadBone.rotation.x, targetHeadX, 4.5, frameDelta);
         this.vrmHeadBone.rotation.y = THREE.MathUtils.damp(this.vrmHeadBone.rotation.y, targetHeadY, 4.0, frameDelta);
@@ -590,149 +584,213 @@ export class CompanionRig {
 
       if (this.vrmNeckBone) {
         const targetNeckX = this.vrmNeckRest.x +
-          (behavior.head.rotation.x * 0.35 + behavior.respiration.neckTension) * motion;
-        const targetNeckY = this.vrmNeckRest.y + (behavior.head.rotation.y * 0.35) * motion;
-        const targetNeckZ = this.vrmNeckRest.z + (behavior.head.rotation.z * 0.35) * motion;
+          (frame.head.rotation.x * 0.35 + frame.respiration.neckTension + actionOffsets.head.x * 0.25 * actionWeight) * motion;
+        const targetNeckY = this.vrmNeckRest.y +
+          (frame.head.rotation.y * 0.35 + actionOffsets.head.y * 0.25 * actionWeight) * motion;
+        const targetNeckZ = this.vrmNeckRest.z +
+          (frame.head.rotation.z * 0.35 + actionOffsets.head.z * 0.25 * actionWeight) * motion;
 
         this.vrmNeckBone.rotation.x = THREE.MathUtils.damp(this.vrmNeckBone.rotation.x, targetNeckX, 4.5, frameDelta);
         this.vrmNeckBone.rotation.y = THREE.MathUtils.damp(this.vrmNeckBone.rotation.y, targetNeckY, 4.0, frameDelta);
         this.vrmNeckBone.rotation.z = THREE.MathUtils.damp(this.vrmNeckBone.rotation.z, targetNeckZ, 3.8, frameDelta);
       }
 
-      // Apply Arms & Hands (Length-aware expressive gestures & micro-twitches)
+      // Arms & Hands (Blends rest pose + speech gestures + choreographed full-body actions + walk swing)
+      const armSwing = frame.locomotion.armSwingOffset;
+
+      // Right Arm
       if (this.vrmRightUpperArm) {
-        this.vrmRightUpperArm.rotation.x = THREE.MathUtils.damp(
-          this.vrmRightUpperArm.rotation.x,
-          this.rightArmRest.x + (behavior.speech.rightArm.upperArm.x + this.animationFrame.arms.right) * motion,
-          5.0,
-          frameDelta
-        );
-        this.vrmRightUpperArm.rotation.y = THREE.MathUtils.damp(
-          this.vrmRightUpperArm.rotation.y,
-          this.rightArmRest.y + behavior.speech.rightArm.upperArm.y * motion,
-          5.0,
-          frameDelta
-        );
-        this.vrmRightUpperArm.rotation.z = THREE.MathUtils.damp(
-          this.vrmRightUpperArm.rotation.z,
-          this.rightArmRest.z + (behavior.speech.rightArm.upperArm.z - behavior.respiration.shoulderLift * 0.5) * motion,
-          5.0,
-          frameDelta
-        );
+        const targetRX = this.rightArmRest.x +
+          (frame.speech.rightArm.upperArm.x * (1 - actionWeight) + actionOffsets.rightUpperArm.x * actionWeight + armSwing.rightUpperArmX) * motion;
+        const targetRY = this.rightArmRest.y +
+          (frame.speech.rightArm.upperArm.y * (1 - actionWeight) + actionOffsets.rightUpperArm.y * actionWeight) * motion;
+        const targetRZ = this.rightArmRest.z +
+          (frame.speech.rightArm.upperArm.z * (1 - actionWeight) + actionOffsets.rightUpperArm.z * actionWeight - frame.respiration.shoulderLift * 0.5) * motion;
+
+        this.vrmRightUpperArm.rotation.x = THREE.MathUtils.damp(this.vrmRightUpperArm.rotation.x, targetRX, 5.5, frameDelta);
+        this.vrmRightUpperArm.rotation.y = THREE.MathUtils.damp(this.vrmRightUpperArm.rotation.y, targetRY, 5.5, frameDelta);
+        this.vrmRightUpperArm.rotation.z = THREE.MathUtils.damp(this.vrmRightUpperArm.rotation.z, targetRZ, 5.5, frameDelta);
       }
       if (this.vrmRightLowerArm) {
-        this.vrmRightLowerArm.rotation.y = THREE.MathUtils.damp(
-          this.vrmRightLowerArm.rotation.y,
-          this.rightLowerArmRest.y + behavior.speech.rightArm.lowerArm.y * motion,
-          5.0,
-          frameDelta
-        );
+        const targetRLowerY = this.rightLowerArmRest.y +
+          (frame.speech.rightArm.lowerArm.y * (1 - actionWeight) + actionOffsets.rightLowerArm.y * actionWeight) * motion;
+        this.vrmRightLowerArm.rotation.y = THREE.MathUtils.damp(this.vrmRightLowerArm.rotation.y, targetRLowerY, 5.5, frameDelta);
       }
       if (this.vrmRightHand) {
-        this.vrmRightHand.rotation.x = THREE.MathUtils.damp(
-          this.vrmRightHand.rotation.x,
-          this.rightHandRest.x + (behavior.speech.rightArm.hand.x + behavior.micro.rightHandFingers * 0.5) * motion,
-          5.0,
-          frameDelta
-        );
+        const targetRHandX = this.rightHandRest.x +
+          (frame.speech.rightArm.hand.x * (1 - actionWeight) + actionOffsets.rightHand.x * actionWeight + frame.micro.rightHandFingers * 0.5) * motion;
+        this.vrmRightHand.rotation.x = THREE.MathUtils.damp(this.vrmRightHand.rotation.x, targetRHandX, 5.5, frameDelta);
       }
 
+      // Left Arm
       if (this.vrmLeftUpperArm) {
-        this.vrmLeftUpperArm.rotation.x = THREE.MathUtils.damp(
-          this.vrmLeftUpperArm.rotation.x,
-          this.leftArmRest.x + (behavior.speech.leftArm.upperArm.x + this.animationFrame.arms.left) * motion,
-          5.0,
-          frameDelta
-        );
-        this.vrmLeftUpperArm.rotation.y = THREE.MathUtils.damp(
-          this.vrmLeftUpperArm.rotation.y,
-          this.leftArmRest.y + behavior.speech.leftArm.upperArm.y * motion,
-          5.0,
-          frameDelta
-        );
-        this.vrmLeftUpperArm.rotation.z = THREE.MathUtils.damp(
-          this.vrmLeftUpperArm.rotation.z,
-          this.leftArmRest.z + (behavior.speech.leftArm.upperArm.z + behavior.respiration.shoulderLift * 0.5) * motion,
-          5.0,
-          frameDelta
-        );
+        const targetLX = this.leftArmRest.x +
+          (frame.speech.leftArm.upperArm.x * (1 - actionWeight) + actionOffsets.leftUpperArm.x * actionWeight + armSwing.leftUpperArmX) * motion;
+        const targetLY = this.leftArmRest.y +
+          (frame.speech.leftArm.upperArm.y * (1 - actionWeight) + actionOffsets.leftUpperArm.y * actionWeight) * motion;
+        const targetLZ = this.leftArmRest.z +
+          (frame.speech.leftArm.upperArm.z * (1 - actionWeight) + actionOffsets.leftUpperArm.z * actionWeight + frame.respiration.shoulderLift * 0.5) * motion;
+
+        this.vrmLeftUpperArm.rotation.x = THREE.MathUtils.damp(this.vrmLeftUpperArm.rotation.x, targetLX, 5.5, frameDelta);
+        this.vrmLeftUpperArm.rotation.y = THREE.MathUtils.damp(this.vrmLeftUpperArm.rotation.y, targetLY, 5.5, frameDelta);
+        this.vrmLeftUpperArm.rotation.z = THREE.MathUtils.damp(this.vrmLeftUpperArm.rotation.z, targetLZ, 5.5, frameDelta);
       }
       if (this.vrmLeftLowerArm) {
-        this.vrmLeftLowerArm.rotation.y = THREE.MathUtils.damp(
-          this.vrmLeftLowerArm.rotation.y,
-          this.leftLowerArmRest.y + behavior.speech.leftArm.lowerArm.y * motion,
-          5.0,
+        const targetLLowerY = this.leftLowerArmRest.y +
+          (frame.speech.leftArm.lowerArm.y * (1 - actionWeight) + actionOffsets.leftLowerArm.y * actionWeight) * motion;
+        this.vrmLeftLowerArm.rotation.y = THREE.MathUtils.damp(this.vrmLeftLowerArm.rotation.y, targetLLowerY, 5.5, frameDelta);
+      }
+      if (this.vrmLeftHand) {
+        const targetLHandX = this.leftHandRest.x +
+          (frame.speech.leftArm.hand.x * (1 - actionWeight) + actionOffsets.leftHand.x * actionWeight + frame.micro.leftHandFingers * 0.5) * motion;
+        this.vrmLeftHand.rotation.x = THREE.MathUtils.damp(this.vrmLeftHand.rotation.x, targetLHandX, 5.5, frameDelta);
+      }
+
+      // 30 Finger Bones (Detailed hand poses & natural articulateness)
+      const leftHands = frame.hands.left;
+      const rightHands = frame.hands.right;
+
+      for (const joint of FINGER_BONE_NAMES) {
+        const lBone = this.vrmLeftFingers[joint];
+        if (lBone) {
+          const rot = (leftHands as any)[joint];
+          if (rot) {
+            lBone.rotation.x = rot.x * motion;
+            lBone.rotation.y = rot.y * motion;
+            lBone.rotation.z = rot.z * motion;
+          }
+        }
+
+        const rBone = this.vrmRightFingers[joint];
+        if (rBone) {
+          const rot = (rightHands as any)[joint];
+          if (rot) {
+            rBone.rotation.x = rot.x * motion;
+            rBone.rotation.y = rot.y * motion;
+            rBone.rotation.z = rot.z * motion;
+          }
+        }
+      }
+
+      // Lower Body / Legs (Locomotion Kinematics)
+      const lLeg = frame.locomotion.leftLeg;
+      const rLeg = frame.locomotion.rightLeg;
+
+      if (this.vrmLeftUpperLeg) {
+        this.vrmLeftUpperLeg.rotation.x = THREE.MathUtils.damp(
+          this.vrmLeftUpperLeg.rotation.x,
+          this.leftUpperLegRest.x + lLeg.upperLeg.x * motion,
+          7.0,
           frameDelta
         );
       }
-      if (this.vrmLeftHand) {
-        this.vrmLeftHand.rotation.x = THREE.MathUtils.damp(
-          this.vrmLeftHand.rotation.x,
-          this.leftHandRest.x + (behavior.speech.leftArm.hand.x + behavior.micro.leftHandFingers * 0.5) * motion,
-          5.0,
+      if (this.vrmLeftLowerLeg) {
+        this.vrmLeftLowerLeg.rotation.x = THREE.MathUtils.damp(
+          this.vrmLeftLowerLeg.rotation.x,
+          this.leftLowerLegRest.x + lLeg.lowerLeg.x * motion,
+          7.0,
           frameDelta
         );
+      }
+      if (this.vrmLeftFoot) {
+        this.vrmLeftFoot.rotation.x = THREE.MathUtils.damp(
+          this.vrmLeftFoot.rotation.x,
+          this.leftFootRest.x + lLeg.foot.x * motion,
+          7.0,
+          frameDelta
+        );
+      }
+      if (this.vrmLeftToes) {
+        this.vrmLeftToes.rotation.x = lLeg.toes.x * motion;
+      }
+
+      if (this.vrmRightUpperLeg) {
+        this.vrmRightUpperLeg.rotation.x = THREE.MathUtils.damp(
+          this.vrmRightUpperLeg.rotation.x,
+          this.rightUpperLegRest.x + rLeg.upperLeg.x * motion,
+          7.0,
+          frameDelta
+        );
+      }
+      if (this.vrmRightLowerLeg) {
+        this.vrmRightLowerLeg.rotation.x = THREE.MathUtils.damp(
+          this.vrmRightLowerLeg.rotation.x,
+          this.rightLowerLegRest.x + rLeg.lowerLeg.x * motion,
+          7.0,
+          frameDelta
+        );
+      }
+      if (this.vrmRightFoot) {
+        this.vrmRightFoot.rotation.x = THREE.MathUtils.damp(
+          this.vrmRightFoot.rotation.x,
+          this.rightFootRest.x + rLeg.foot.x * motion,
+          7.0,
+          frameDelta
+        );
+      }
+      if (this.vrmRightToes) {
+        this.vrmRightToes.rotation.x = rLeg.toes.x * motion;
       }
     }
 
-    // 5. Procedural Humanoid Rig Animation
+    // 5. Procedural Humanoid Rig Animation Fallback
     if (this.mouthMesh) {
       this.mouthMesh.scale.set(
-        1 + this.displayedViseme * 0.2 + behavior.micro.mouthMicroTwitch,
+        1 + this.displayedViseme * 0.2 + frame.micro.mouthMicroTwitch,
         1 + this.displayedViseme * 1.2,
         1
       );
     }
     if (this.chestBone) {
-      this.chestBone.position.y = 0.22 + (behavior.respiration.chestExpansion * 2.5 + this.animationFrame.torso.shoulderLift * 0.12) * motion;
-      this.chestBone.rotation.x = (behavior.respiration.chestExpansion + behavior.posture.chestOrientation.x + this.animationFrame.torso.lean) * motion;
-      this.chestBone.rotation.z = (behavior.posture.chestOrientation.z) * motion;
+      this.chestBone.position.y = 0.22 + (frame.respiration.chestExpansion * 2.5 + this.animationFrame.torso.shoulderLift * 0.12) * motion;
+      this.chestBone.rotation.x = (frame.respiration.chestExpansion + frame.posture.chestOrientation.x + this.animationFrame.torso.lean) * motion;
+      this.chestBone.rotation.z = (frame.posture.chestOrientation.z) * motion;
     }
     if (this.headBone) {
       this.headBone.rotation.x = THREE.MathUtils.damp(
         this.headBone.rotation.x,
-        (behavior.head.rotation.x + this.animationFrame.head.x) * motion,
+        (frame.head.rotation.x + this.animationFrame.head.x + frame.action.offsets.head.x) * motion,
         4.5,
         frameDelta
       );
       this.headBone.rotation.y = THREE.MathUtils.damp(
         this.headBone.rotation.y,
-        (behavior.head.rotation.y + this.animationFrame.head.y) * motion,
+        (frame.head.rotation.y + this.animationFrame.head.y + frame.action.offsets.head.y) * motion,
         4.0,
         frameDelta
       );
       this.headBone.rotation.z = THREE.MathUtils.damp(
         this.headBone.rotation.z,
-        (behavior.head.rotation.z + this.animationFrame.head.z) * motion,
+        (frame.head.rotation.z + this.animationFrame.head.z + frame.action.offsets.head.z) * motion,
         3.8,
         frameDelta
       );
     }
     if (this.leftEyebrow && this.rightEyebrow) {
-      this.leftEyebrow.rotation.z = THREE.MathUtils.damp(this.leftEyebrow.rotation.z, this.targetLeftBrowRotation + behavior.micro.browTwitch, 7, frameDelta);
-      this.rightEyebrow.rotation.z = THREE.MathUtils.damp(this.rightEyebrow.rotation.z, this.targetRightBrowRotation - behavior.micro.browTwitch, 7, frameDelta);
+      this.leftEyebrow.rotation.z = THREE.MathUtils.damp(this.leftEyebrow.rotation.z, this.targetLeftBrowRotation + frame.micro.browTwitch, 7, frameDelta);
+      this.rightEyebrow.rotation.z = THREE.MathUtils.damp(this.rightEyebrow.rotation.z, this.targetRightBrowRotation - frame.micro.browTwitch, 7, frameDelta);
       this.leftEyebrow.position.y = THREE.MathUtils.damp(this.leftEyebrow.position.y, this.targetLeftBrowHeight, 7, frameDelta);
       this.rightEyebrow.position.y = THREE.MathUtils.damp(this.rightEyebrow.position.y, this.targetRightBrowHeight, 7, frameDelta);
     }
     if (this.leftEye && this.rightEye) {
-      const proceduralBlinkScale = motion ? Math.max(0.08, 1 - behavior.eye.leftBlink) : 1;
+      const proceduralBlinkScale = motion ? Math.max(0.08, 1 - frame.eye.leftBlink) : 1;
       this.leftEye.scale.y = proceduralBlinkScale;
       this.rightEye.scale.y = proceduralBlinkScale;
     }
     if (!this.isVrm) {
       if (this.proceduralRightArm) {
-        this.proceduralRightArm.rotation.z = this.rightArmRest.z + (behavior.speech.rightArm.upperArm.z + this.animationFrame.arms.right) * motion;
-        this.proceduralRightArm.rotation.x = this.rightArmRest.x + behavior.speech.rightArm.upperArm.x * motion;
+        this.proceduralRightArm.rotation.z = this.rightArmRest.z + (frame.speech.rightArm.upperArm.z + this.animationFrame.arms.right + frame.action.offsets.rightUpperArm.z) * motion;
+        this.proceduralRightArm.rotation.x = this.rightArmRest.x + (frame.speech.rightArm.upperArm.x + frame.action.offsets.rightUpperArm.x) * motion;
       }
       if (this.proceduralLeftArm) {
-        this.proceduralLeftArm.rotation.z = this.leftArmRest.z + (behavior.speech.leftArm.upperArm.z + this.animationFrame.arms.left) * motion;
-        this.proceduralLeftArm.rotation.x = this.leftArmRest.x + behavior.speech.leftArm.upperArm.x * motion;
+        this.proceduralLeftArm.rotation.z = this.leftArmRest.z + (frame.speech.leftArm.upperArm.z + this.animationFrame.arms.left + frame.action.offsets.leftUpperArm.z) * motion;
+        this.proceduralLeftArm.rotation.x = this.leftArmRest.x + (frame.speech.leftArm.upperArm.x + frame.action.offsets.leftUpperArm.x) * motion;
       }
     }
 
     if (this.crystalCore) {
       this.crystalCore.rotation.y += frameDelta * 1.2 * motion;
-      const pulseScale = 1 + (behavior.respiration.lungVolume * 0.05) * motion;
+      const pulseScale = 1 + (frame.respiration.lungVolume * 0.05) * motion;
       this.crystalCore.scale.setScalar(pulseScale);
     }
   }

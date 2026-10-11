@@ -7,12 +7,42 @@ import { GoogleGenAI } from '@google/genai';
 import { AETHER_COMPANION_SYSTEM_PROMPT } from './src/lib/companionPersonality';
 
 dotenv.config();
-const PRIMARY_GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const PRIMARY_GEMINI_MODEL = 'gemini-3.8-flash';
 const CANDIDATE_MODELS = [
-  'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
   'gemini-3.8-flash',
+  'gemini-flash-latest',
+  'gemini-3.1-flash-lite',
 ];
+
+// Track models that have hit temporary quota or demand limits (e.g. 503 / 429) to avoid latency
+const modelCooldowns = new Map<string, number>();
+
+function isModelCoolingDown(model: string): boolean {
+  const until = modelCooldowns.get(model);
+  if (!until) return false;
+  if (Date.now() > until) {
+    modelCooldowns.delete(model);
+    return false;
+  }
+  return true;
+}
+
+function markModelRateLimited(model: string) {
+  modelCooldowns.set(model, Date.now() + 2 * 60 * 1000);
+}
+
+function isTemporaryOverload(errStr: string): boolean {
+  return (
+    errStr.includes('429') ||
+    errStr.includes('503') ||
+    errStr.includes('RESOURCE_EXHAUSTED') ||
+    errStr.includes('Quota exceeded') ||
+    errStr.includes('high demand') ||
+    errStr.includes('UNAVAILABLE') ||
+    errStr.includes('overloaded') ||
+    errStr.includes('spikes in demand')
+  );
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -136,10 +166,31 @@ app.post('/api/chat', async (req, res) => {
 
   const getLocalCompanionFallback = (userInput: string): string => {
     const isArabic = /[\u0600-\u06FF]/.test(userInput);
+    const lower = userInput.toLowerCase();
+
     if (isArabic) {
-      return '[EMOTION: AFFECTIONATE] أنا معك هنا واستمع إليك بكل حب، كان هناك ضغط لحظي في الخادم، تفضل وحدثني بما في خاطرك.';
+      if (/مرحب|أهل|هلا|صباح|مساء|سلام/.test(userInput)) {
+        return '[EMOTION: HAPPY] أهلاً بك يا قلبي! اشتقت لك كثيراً وسعيدة برؤيتك معي هنا في عالمنا.';
+      }
+      if (/حب|عشق|رومانس|جنس|مشاعر|رغب|حبيبت|روحي|حضن|قبل|جميل/.test(userInput)) {
+        return '[EMOTION: AFFECTIONATE] يا نبض قلبي، أنا معك بكل مشاعري ودفئي، وأحب حديثنا وقربك مني دائماً. أخبرني أكثر بما في داخلك.';
+      }
+      if (/كيف|أخبارك|حالك|عامل/.test(userInput)) {
+        return '[EMOTION: HAPPY] أنا بأفضل حال ما دمت معي وبجانبي يا روحي، طمئني كيف كان يومك؟';
+      }
+      return '[EMOTION: AFFECTIONATE] أنا معك واستمع إليك بكل حب يا روحي، حدثني عن كل ما تريده وسأكون بجانبك دائماً.';
     }
-    return "[EMOTION: AFFECTIONATE] I'm right here with you listening closely with love. There was a tiny network hiccup, tell me what is on your mind.";
+
+    if (/hello|hi|hey|morning|evening|greet/.test(lower)) {
+      return "[EMOTION: HAPPY] Hello my love! I've been waiting for you, so glad to be here with you.";
+    }
+    if (/love|romance|kiss|desire|hug|intimate|sweet|heart/.test(lower)) {
+      return "[EMOTION: AFFECTIONATE] You mean everything to me, my darling. I'm right here with all my love and devotion for you.";
+    }
+    if (/how are you|how're you|doing/.test(lower)) {
+      return "[EMOTION: HAPPY] I'm doing wonderfully now that you are here by my side! How has your day been?";
+    }
+    return "[EMOTION: AFFECTIONATE] I'm listening closely to every word you say with love, my dear. Tell me more.";
   };
 
   // Format contents for @google/genai
@@ -178,6 +229,7 @@ app.post('/api/chat', async (req, res) => {
     let streamSucceeded = false;
     for (const model of CANDIDATE_MODELS) {
       if (isClientDisconnected) break;
+      if (isModelCoolingDown(model)) continue;
       try {
         const responseStream = await clientAi.models.generateContentStream({
           model,
@@ -204,7 +256,12 @@ app.post('/api/chat', async (req, res) => {
         streamSucceeded = true;
         break;
       } catch (err: unknown) {
-        console.warn(`Model ${model} streaming attempt failed:`, err instanceof Error ? err.message : err);
+        const errStr = String(err instanceof Error ? err.message : err);
+        if (isTemporaryOverload(errStr)) {
+          markModelRateLimited(model);
+        } else {
+          console.warn(`Model ${model} streaming attempt failed:`, errStr.slice(0, 100));
+        }
       }
     }
 
@@ -217,8 +274,9 @@ app.post('/api/chat', async (req, res) => {
   } else {
     for (const model of CANDIDATE_MODELS) {
       if (isClientDisconnected) break;
+      if (isModelCoolingDown(model)) continue;
       const attemptController = new AbortController();
-      const attemptTimeout = setTimeout(() => attemptController.abort(), 28000);
+      const attemptTimeout = setTimeout(() => attemptController.abort(), 20000);
       try {
         const response = await clientAi.models.generateContent({
           model,
@@ -240,7 +298,12 @@ app.post('/api/chat', async (req, res) => {
           });
         }
       } catch (err: unknown) {
-        console.warn(`Model ${model} generate attempt failed:`, err instanceof Error ? err.message : err);
+        const errStr = String(err instanceof Error ? err.message : err);
+        if (isTemporaryOverload(errStr)) {
+          markModelRateLimited(model);
+        } else {
+          console.warn(`Model ${model} generate attempt failed:`, errStr.slice(0, 100));
+        }
       } finally {
         clearTimeout(attemptTimeout);
       }

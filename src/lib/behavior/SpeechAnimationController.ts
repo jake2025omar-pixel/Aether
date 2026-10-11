@@ -86,7 +86,20 @@ export class SpeechAnimationController {
       energy = 0.75;
     }
 
-    if (this.currentStyle === 'SHORT') {
+    if (emotion === 'AFFECTIONATE') {
+      // Intimate, affectionate gesture: Hand softly drawn towards heart / chest with open palm towards the partner
+      const romanticPulse = Math.sin(Math.min(t * 1.6, Math.PI));
+      const heartbeatCadence = Math.sin(t * 2.5) * 0.012;
+      targetRUpperX = (0.14 * romanticPulse + heartbeatCadence) * emotionIntensity;
+      targetRUpperY = -0.10 * romanticPulse;
+      targetRUpperZ = -0.12 * romanticPulse * emotionIntensity;
+      targetRLowerY = 0.22 * romanticPulse;
+      targetRHandX = 0.10 * romanticPulse;
+
+      // Subtle warm lean with left arm relaxing closer
+      targetLUpperZ = 0.03 * romanticPulse;
+      targetLLowerY = -0.04 * romanticPulse;
+    } else if (this.currentStyle === 'SHORT') {
       // Short response: subtle right hand palm opening
       const wave = Math.sin(Math.min(t * 3.5, Math.PI));
       targetRUpperX = 0.06 * wave * energy;

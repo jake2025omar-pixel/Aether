@@ -365,7 +365,11 @@ export default function App() {
         {activeView === 'home' && (
           <div className="relative w-full h-full flex flex-col justify-end overflow-hidden pointer-events-none">
             {/* Bottom Floating Interaction Bar (Microphone + Text + Send) */}
-            <div className="relative w-full pb-1 sm:pb-3 z-20 pointer-events-auto">
+            <div
+              className={`relative w-full z-20 pointer-events-auto transition-all duration-200 ${
+                isComposerFocused ? 'pb-1 sm:pb-3' : 'pb-16 sm:pb-20 md:pb-3'
+              }`}
+            >
               <InteractionBar
                 onSendMessage={handleCompanionInteraction}
                 onToggleVoice={handleToggleVoice}
