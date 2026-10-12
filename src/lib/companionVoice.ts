@@ -268,7 +268,9 @@ class CompanionVoiceService {
       const syllableProgress = (clampedProgress * syllableCount) % 1;
       const syllablePulse = Math.sin(syllableProgress * Math.PI);
       const wordEnvelope = Math.sin(clampedProgress * Math.PI);
-      return Math.max(0, Math.min(0.72, wordEnvelope * (0.28 + syllablePulse * 0.44)));
+      // Stronger aperture makes Arabic and English syllables readable in the
+      // avatar while the rig applies this value only to mouth blend shapes.
+      return Math.max(0, Math.min(0.9, wordEnvelope * (0.32 + syllablePulse * 0.58)));
     };
 
     const startVisemeLoop = () => {

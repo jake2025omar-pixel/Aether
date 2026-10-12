@@ -511,11 +511,11 @@ export class CompanionRig {
         }
       }
 
-      // Dark ICE has no authored animation clips. Keep the static neutral
-      // correction from construction, facial expressions, blinking, and
-      // visemes, but do not apply generated posture, head, hand, finger, or
-      // locomotion offsets to this VRM.
-      if (!this.isVrm) {
+      // Dark ICE has no authored animation clips, so apply the safe procedural
+      // performance layer to the real VRM bones. Every target is derived from
+      // its stored authored rest pose; no cumulative transforms or root motion
+      // are introduced, and facial/lip controls remain separate from the body.
+      if (this.isVrm) {
       // Hips (Contrapposto weight shift & living body sway)
       if (this.vrmHipsBone) {
         const targetHipsZ = this.vrmHipsRest.z +

@@ -315,27 +315,30 @@ export class FacialPerformanceEngine {
     }
 
     // 3. Multi-Vowel Anime Speech Visemes (A, I, U, E, O)
+    // Drive only mouth expression channels; never translate the jaw, head, or
+    // face mesh. This keeps the lips anchored while making speech readable.
     if (visemeMouthOpen > 0.02) {
       this.speechVowelPhase = (this.speechVowelPhase + frameDelta * 7.5) % (Math.PI * 2);
-      const vA = Math.max(0, Math.sin(this.speechVowelPhase)) * visemeMouthOpen;
-      const vI = Math.max(0, Math.sin(this.speechVowelPhase + 1.25)) * visemeMouthOpen * 0.6;
-      const vO = Math.max(0, Math.sin(this.speechVowelPhase + 2.5)) * visemeMouthOpen * 0.7;
-      const vE = Math.max(0, Math.sin(this.speechVowelPhase + 3.75)) * visemeMouthOpen * 0.5;
-      const vU = Math.max(0, Math.sin(this.speechVowelPhase + 5.0)) * visemeMouthOpen * 0.4;
+      const mouthDrive = THREE.MathUtils.clamp(visemeMouthOpen * 1.25, 0, 1);
+      const vA = Math.max(0, Math.sin(this.speechVowelPhase)) * mouthDrive;
+      const vI = Math.max(0, Math.sin(this.speechVowelPhase + 1.25)) * mouthDrive * 0.66;
+      const vO = Math.max(0, Math.sin(this.speechVowelPhase + 2.5)) * mouthDrive * 0.78;
+      const vE = Math.max(0, Math.sin(this.speechVowelPhase + 3.75)) * mouthDrive * 0.58;
+      const vU = Math.max(0, Math.sin(this.speechVowelPhase + 5.0)) * mouthDrive * 0.48;
 
       // VRM Preset Visemes
-      targetVrm.aa = vA * 0.22;
-      targetVrm.ih = vI * 0.18;
-      targetVrm.oh = vO * 0.20;
-      targetVrm.ee = vE * 0.16;
-      targetVrm.ou = vU * 0.14;
+      targetVrm.aa = vA * 0.52;
+      targetVrm.ih = vI * 0.42;
+      targetVrm.oh = vO * 0.48;
+      targetVrm.ee = vE * 0.38;
+      targetVrm.ou = vU * 0.32;
 
       // Direct Morph Targets on Face mesh
-      targetMorphs.Fcl_MTH_A = vA * 0.45;
-      targetMorphs.Fcl_MTH_I = vI * 0.35;
-      targetMorphs.Fcl_MTH_O = vO * 0.38;
-      targetMorphs.Fcl_MTH_E = vE * 0.32;
-      targetMorphs.Fcl_MTH_U = vU * 0.28;
+      targetMorphs.Fcl_MTH_A = vA * 0.86;
+      targetMorphs.Fcl_MTH_I = vI * 0.68;
+      targetMorphs.Fcl_MTH_O = vO * 0.74;
+      targetMorphs.Fcl_MTH_E = vE * 0.62;
+      targetMorphs.Fcl_MTH_U = vU * 0.52;
     } else {
       this.speechVowelPhase = 0;
     }
