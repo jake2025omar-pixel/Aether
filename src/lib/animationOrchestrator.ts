@@ -277,7 +277,9 @@ export class AnimationOrchestrator {
     this.actionElapsed += dt;
     this.idleElapsed += dt;
     this.advanceLifecycle(dt);
-    this.maybeScheduleIdle(elapsed);
+    // The supplied VRM has no authored animation clips. Keep semantic state
+    // for expressions, speech, and recovery, but do not invent recurring idle
+    // gestures that can fight the model's authored rest pose.
     const progress = this.progress();
     const transition = this.lifecycle === 'BLENDING_OUT' ? clamp01(this.blendElapsed / Math.max(this.activeProfile.transitionOut, 0.05)) : 1;
     const shaped = easeInOut(clamp01(progress));

@@ -7,13 +7,14 @@ const advance = (scheduler: AnimationOrchestrator, seconds: number, start = 0) =
   return frame;
 };
 
-// A: long silence produces a living state and eventually an autonomous idle action.
+// A: long silence remains in the stable waiting/neutral state; the supplied
+// VRM has no authored clips, so no autonomous idle gesture may be invented.
 {
   const scheduler = new AnimationOrchestrator();
   scheduler.setConversationState('IDLE');
-  advance(scheduler, 2);
-  const frame = advance(scheduler, 6, 2);
-  assert.ok(['waiting', 'head_tilt', 'glance', 'neutral'].includes(frame.action));
+  const frame = advance(scheduler, 8);
+  assert.ok(['neutral', 'waiting'].includes(frame.action));
+  assert.equal(frame.state, 'WAITING_FOR_USER');
   assert.notEqual(frame.state, 'SAFE_FALLBACK');
 }
 
