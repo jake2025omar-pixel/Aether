@@ -214,12 +214,15 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     sceneRef.current = scene;
     const BG_COLOR = 0x06030b;
     scene.background = new THREE.Color(BG_COLOR);
-    scene.fog = new THREE.FogExp2(BG_COLOR, 0.05);
+    scene.fog = new THREE.FogExp2(BG_COLOR, 0.035);
 
     // 2. Camera setup - centered directly on companion at eye/chest level
-    const camera = new THREE.PerspectiveCamera(46, width / height, 0.1, 100);
-    camera.position.set(0, 1.25, 2.7);
-    camera.lookAt(0, 1.25, 0);
+    const portraitViewport = height > width * 1.08;
+    const initialCameraDistance = portraitViewport ? 2.28 : 2.7;
+    const initialFocusY = portraitViewport ? 1.38 : 1.25;
+    const camera = new THREE.PerspectiveCamera(portraitViewport ? 42 : 46, width / height, 0.1, 100);
+    camera.position.set(0, initialFocusY, initialCameraDistance);
+    camera.lookAt(0, initialFocusY, 0);
     cameraRef.current = camera;
     targetLookPosRef.current.copy(camera.position);
 
@@ -232,6 +235,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     rendererRef.current = renderer;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
     renderer.setSize(width, height);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -251,25 +256,30 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
     // 4. Lighting Rig (Soft Amethyst Studio & Warm Key)
-    const ambientLight = new THREE.AmbientLight(0x281545, 1.35);
+    const ambientLight = new THREE.AmbientLight(0x1b2a3d, 0.72);
     scene.add(ambientLight);
 
-    const keyLight = new THREE.DirectionalLight(0xfff5eb, 1.9);
-    keyLight.position.set(1.8, 3.8, 3.0);
+    const keyLight = new THREE.DirectionalLight(0xffead8, 2.15);
+    keyLight.position.set(1.8, 3.8, 3.2);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(1024, 1024);
+    keyLight.shadow.camera.near = 0.5;
+    keyLight.shadow.camera.far = 12;
+    keyLight.shadow.camera.left = -5;
+    keyLight.shadow.camera.right = 5;
+    keyLight.shadow.camera.top = 5;
+    keyLight.shadow.camera.bottom = -2;
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0x38bdf8, 1.25);
-    fillLight.position.set(-2.8, 2.2, 2.0);
+    const fillLight = new THREE.DirectionalLight(0x8fc8e8, 0.58);
+    fillLight.position.set(-3.2, 2.8, 2.4);
     scene.add(fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0xc084fc, 2.2);
+    const rimLight = new THREE.DirectionalLight(0x6ea8c7, 0.9);
     rimLight.position.set(0, 3.2, -2.8);
     scene.add(rimLight);
 
-    const floorGlow = new THREE.PointLight(0xa855f7, 2.2, 8);
-    floorGlow.position.set(0, 0.35, 0);
-    floorGlowRef.current = floorGlow;
-    scene.add(floorGlow);
+    floorGlowRef.current = null;
 
     // 5. Boundless, Immersive Room Environment (No box walls, no harsh lines or borders)
     const roomGroup = new THREE.Group();
@@ -286,20 +296,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     floor.position.y = 0;
     floor.receiveShadow = true;
     roomGroup.add(floor);
-
-    // Ethereal radial ground aura directly under the companion
-    const auraTexture = createRadialGlowTexture();
-    const auraGeo = new THREE.PlaneGeometry(5.2, 5.2);
-    const auraMat = new THREE.MeshBasicMaterial({
-      map: auraTexture,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const auraMesh = new THREE.Mesh(auraGeo, auraMat);
-    auraMesh.rotation.x = -Math.PI / 2;
-    auraMesh.position.set(0, 0.003, 0);
-    roomGroup.add(auraMesh);
 
     // Ambient floating starlight particles providing depth and spatial atmosphere
     const particleCount = 65;
@@ -356,6 +352,25 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           carpetElevation: 0.002,
         });
 
+        // Keep the authored architectural shell visible. Hide only the source
+        // furniture after extraction; doing this earlier would make the clones
+        // produced by FurnitureLayoutEngine inherit visible=false.
+        const sourceFurnitureNames = new Set([
+          'Carpet', 'Drawer Base', 'DrawerSide1', 'DrawerSide2',
+          'DrawerDoor1', 'DrawerDoor2', 'DrawerDoor3', 'DrawerDoor4',
+          'Nightstand', 'Pillow', 'Pillow.001',
+          'SimplePillow1_Root', 'SimplePillow2_Root',
+        ]);
+        res.scene.traverse((node) => {
+          if (sourceFurnitureNames.has(node.name)) node.visible = false;
+          if ((node as THREE.Mesh).isMesh) {
+            const mesh = node as THREE.Mesh;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+          }
+        });
+        scene.add(res.scene);
+
         // Add extracted furniture into room
         scene.add(layoutResult.furnitureGroup);
         furnitureColliders.push(...layoutResult.colliders);
@@ -365,17 +380,13 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           companionRigRef.current.setFurnitureColliders(furnitureColliders);
         }
 
-        // Clean up raw unused room shell geometry to prevent camera occlusion and GPU memory overhead
-        dispose3DResource(res.scene);
-
         // Adjust studio ambiance for authentic high-end penthouse interior
-        ambientLight.color.setHex(0x1a122e);
-        ambientLight.intensity = 1.3;
-        keyLight.intensity = 1.85;
-        fillLight.intensity = 1.35;
-        rimLight.intensity = 2.1;
-        floorGlow.color.setHex(0xa855f7);
-        renderer.toneMappingExposure = 1.05;
+        ambientLight.color.setHex(0x203246);
+        ambientLight.intensity = 0.78;
+        keyLight.intensity = 1.9;
+        fillLight.intensity = 0.62;
+        rimLight.intensity = 0.82;
+        renderer.toneMappingExposure = 0.92;
       }).catch((err: unknown) => {
         if (!isCancelled) console.warn('[Room3D] Neon room load exception, keeping procedural room:', err);
       });
@@ -437,8 +448,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     // Pinch and mouse wheel zoom smoothly.
     const MIN_DISTANCE = 1.1;
     const MAX_DISTANCE = 5.2;
-    let currentCamDist = 2.7;
-    let targetCamDist = 2.7;
+    let currentCamDist = initialCameraDistance;
+    let targetCamDist = initialCameraDistance;
     let currentYaw = 0.0;
     let targetYaw = 0.0;
     let currentPitch = 0.0;
@@ -451,8 +462,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     let lastPointerY = 0;
     let lastTouchX = 0;
     let lastTouchY = 0;
-    const currentRoomFocus = new THREE.Vector3(0.0, 1.25, 0.0);
-    const targetRoomFocus = new THREE.Vector3(0.0, 1.25, 0.0);
+    const currentRoomFocus = new THREE.Vector3(0.0, initialFocusY, 0.0);
+    const targetRoomFocus = new THREE.Vector3(0.0, initialFocusY, 0.0);
 
     const ROTATION_SENSITIVITY_MOUSE = 0.0032;
     const ROTATION_SENSITIVITY_TOUCH = 0.0038;
@@ -460,7 +471,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     // Touch gesture tracking (1 finger = orbit, 2 fingers = smooth pinch-to-zoom)
     let isPinching = false;
     let initialPinchDist = 0;
-    let pinchStartCamDist = 2.7;
+    let pinchStartCamDist = initialCameraDistance;
 
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
@@ -632,7 +643,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         companionRigRef.current.update(delta, elapsed, targetLookPosRef.current);
         targetRoomFocus.x = companionRigRef.current.root.position.x;
         targetRoomFocus.z = companionRigRef.current.root.position.z;
-        targetRoomFocus.y = 1.25;
+        targetRoomFocus.y = initialFocusY;
       }
 
       // Atmospheric floor light pulse
