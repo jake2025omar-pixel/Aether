@@ -95,12 +95,8 @@ function computePresetJoints(preset: HandPosePreset, isLeft: boolean, time = 0):
 
   switch (preset) {
     case 'RELAXED':
-      // Natural anatomical cascade: index softly bent, pinky progressively more bent
-      curlThumb(joints, 0.12 * splaySign, 0.15, 0.12);
-      curlFinger(joints, 'index', 0.18, 0.04 * splaySign);
-      curlFinger(joints, 'middle', 0.28, 0.01 * splaySign);
-      curlFinger(joints, 'ring', 0.38, -0.02 * splaySign);
-      curlFinger(joints, 'little', 0.46, -0.06 * splaySign);
+      // Preserve the authored/rest pose. Finger articulation is only applied
+      // by an intentional hand pose such as pointing, waving, or thinking.
       break;
 
     case 'POINTING':

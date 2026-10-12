@@ -84,6 +84,10 @@ console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
   assert.ok(sample.left.middleProximal.z < -0.8, 'Left pointing middle must be curled tight');
   assert.ok(sample.right.littleDistal.z !== 0, 'Right waving pinky must articulate');
 
+  const relaxed = new FingerHandController().update(0.05, 1.0);
+  assert.equal(relaxed.left.indexProximal.z, 0, 'Relaxed fingers must not curl without an intentional pose');
+  assert.equal(relaxed.right.middleDistal.z, 0, 'Relaxed fingers must preserve the authored/rest pose');
+
   // Verify all 15 bones per hand exist and return numeric joint rotations
   for (const hand of [sample.left, sample.right]) {
     assert.ok(typeof hand.thumbMetacarpal.y === 'number');
@@ -126,7 +130,13 @@ console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
   const secondTry = actions.triggerAction('FRIENDLY_WAVE', false); // Without force
   assert.equal(secondTry, false, 'Action must be rejected while on active cooldown');
 
-  console.log('✓ Test 3 Passed: 9 full-body choreographed actions and anti-repetition cooldown verified');
+  actions.interrupt();
+  for (let i = 0; i < 400; i++) {
+    const idleFrame = actions.update(0.1, 2 + i * 0.1, 'IDLE', 'NEUTRAL', false, false);
+    assert.equal(idleFrame.activeAction, null, 'Neutral idle must not invent a hand gesture');
+  }
+
+  console.log('✓ Test 3 Passed: intentional full-body actions, cooldowns, and neutral-idle safety verified');
 }
 
 // 4. AUTONOMOUS ROOM NAVIGATION & LOCOMOTION TEST

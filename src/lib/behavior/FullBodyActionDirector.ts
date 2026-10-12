@@ -88,10 +88,6 @@ export class FullBodyActionDirector {
     EXPLANATORY_GESTURE: 10,
   };
 
-  // Autonomous gesture scheduling
-  private timeSinceLastAction = 0;
-  private nextIdleActionDelay = 18.0;
-
   public triggerAction(type: FullBodyActionType, force = false): boolean {
     const now = performance.now() / 1000;
 
@@ -105,7 +101,6 @@ export class FullBodyActionDirector {
 
     this.currentAction = type;
     this.actionTimer = 0;
-    this.timeSinceLastAction = 0;
 
     switch (type) {
       case 'HEAD_SCRATCH':
@@ -159,40 +154,12 @@ export class FullBodyActionDirector {
   public update(
     dt: number,
     time: number,
-    state: CompanionState,
-    emotion: CompanionEmotion,
-    isSpeaking: boolean,
-    isWalking: boolean
+    _state: CompanionState,
+    _emotion: CompanionEmotion,
+    _isSpeaking: boolean,
+    _isWalking: boolean
   ): FullBodyActionSample {
     const frameDelta = Math.min(Math.max(dt, 0), 0.05);
-    this.timeSinceLastAction += frameDelta;
-
-    // Autonomous Action Spontaneous Selection when idle
-    if (!this.currentAction && !isWalking && !isSpeaking && state === 'IDLE') {
-      if (this.timeSinceLastAction >= this.nextIdleActionDelay) {
-        this.timeSinceLastAction = 0;
-        this.nextIdleActionDelay = 22.0 + Math.random() * 25.0;
-
-        // Choose action that fits current emotion
-        if (emotion === 'HAPPY' || emotion === 'CURIOUS') {
-          this.triggerAction(Math.random() > 0.5 ? 'FRIENDLY_WAVE' : 'CONFIDENT_HIP_REST');
-        } else if (emotion === 'AFFECTIONATE') {
-          this.triggerAction('AFFECTIONATE_REACH');
-        } else if (emotion === 'CONFUSED' || emotion === 'THINKING') {
-          this.triggerAction(Math.random() > 0.5 ? 'HEAD_SCRATCH' : 'THINKING_CONTEMPLATION');
-        } else if (emotion === 'SURPRISED') {
-          this.triggerAction('SURPRISED_RECOIL');
-        } else if (emotion === 'GENTLY_ANNOYED') {
-          this.triggerAction('EXPRESSIVE_SHRUG');
-        } else {
-          // Neutral random natural living gesture
-          const choices: FullBodyActionType[] = ['EXPRESSIVE_SHRUG', 'FRIENDLY_WAVE', 'CONFIDENT_HIP_REST'];
-          const picked = choices[Math.floor(Math.random() * choices.length)];
-          this.triggerAction(picked);
-        }
-      }
-    }
-
     if (this.currentAction) {
       this.actionTimer += frameDelta;
       const progress = Math.min(1.0, this.actionTimer / this.actionDuration);

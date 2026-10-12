@@ -61,6 +61,8 @@ export class CompanionRig {
   // VRM Humanoid Bones - 30 Finger Bones
   private vrmLeftFingers: Record<string, THREE.Object3D | null> = {};
   private vrmRightFingers: Record<string, THREE.Object3D | null> = {};
+  private vrmLeftFingerRest: Record<string, THREE.Euler> = {};
+  private vrmRightFingerRest: Record<string, THREE.Euler> = {};
 
   // Face Mesh for Direct Morph Targets (57 blendshapes)
   private vrmFaceMesh: THREE.Mesh | null = null;
@@ -160,6 +162,8 @@ export class CompanionRig {
         const rightBoneName = `right${joint.charAt(0).toUpperCase() + joint.slice(1)}` as any;
         this.vrmLeftFingers[joint] = humanoid?.getNormalizedBoneNode(leftBoneName) || null;
         this.vrmRightFingers[joint] = humanoid?.getNormalizedBoneNode(rightBoneName) || null;
+        if (this.vrmLeftFingers[joint]) this.vrmLeftFingerRest[joint] = this.vrmLeftFingers[joint]!.rotation.clone();
+        if (this.vrmRightFingers[joint]) this.vrmRightFingerRest[joint] = this.vrmRightFingers[joint]!.rotation.clone();
       }
 
       // 4. Find Face Mesh for Direct Morph Targets (57 blendshapes)
@@ -660,9 +664,8 @@ export class CompanionRig {
         if (lBone) {
           const rot = (leftHands as any)[joint];
           if (rot) {
-            lBone.rotation.x = rot.x * motion;
-            lBone.rotation.y = rot.y * motion;
-            lBone.rotation.z = rot.z * motion;
+            const rest = this.vrmLeftFingerRest[joint] || new THREE.Euler();
+            lBone.rotation.set(rest.x + rot.x * motion, rest.y + rot.y * motion, rest.z + rot.z * motion);
           }
         }
 
@@ -670,9 +673,8 @@ export class CompanionRig {
         if (rBone) {
           const rot = (rightHands as any)[joint];
           if (rot) {
-            rBone.rotation.x = rot.x * motion;
-            rBone.rotation.y = rot.y * motion;
-            rBone.rotation.z = rot.z * motion;
+            const rest = this.vrmRightFingerRest[joint] || new THREE.Euler();
+            rBone.rotation.set(rest.x + rot.x * motion, rest.y + rot.y * motion, rest.z + rot.z * motion);
           }
         }
       }
