@@ -511,6 +511,11 @@ export class CompanionRig {
         }
       }
 
+      // Dark ICE has no authored animation clips. Keep the static neutral
+      // correction from construction, facial expressions, blinking, and
+      // visemes, but do not apply generated posture, head, hand, finger, or
+      // locomotion offsets to this VRM.
+      if (!this.isVrm) {
       // Hips (Contrapposto weight shift & living body sway)
       if (this.vrmHipsBone) {
         const targetHipsZ = this.vrmHipsRest.z +
@@ -730,6 +735,7 @@ export class CompanionRig {
       }
       if (this.vrmRightToes) {
         this.vrmRightToes.rotation.x = rLeg.toes.x * motion;
+      }
       }
     }
 
