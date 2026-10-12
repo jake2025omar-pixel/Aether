@@ -369,6 +369,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
             mesh.receiveShadow = true;
           }
         });
+        // Neon World contains its own authored floor/base surfaces. Once the
+        // room loads, hide the large fallback plane so the two coplanar floors
+        // cannot z-fight and produce diagonal seams or black patches.
+        floor.visible = false;
         scene.add(res.scene);
 
         // Add extracted furniture into room
