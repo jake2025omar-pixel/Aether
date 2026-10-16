@@ -346,9 +346,15 @@ export class FacialPerformanceEngine {
     // 4. Smooth Damping to Prevent Facial Jitter or Snapping
     const dampRate = 9.0;
     for (const key of Object.keys(this.vrmPresets) as (keyof typeof this.vrmPresets)[]) {
-      this.vrmPresets[key] = THREE.MathUtils.damp(this.vrmPresets[key], targetVrm[key], dampRate, frameDelta);
-      if (targetVrm[key] === 0 && this.vrmPresets[key] < 0.005) {
-        this.vrmPresets[key] = 0;
+      if (key === 'blink' || key === 'blinkLeft' || key === 'blinkRight') {
+        // Blinking is computed with precise anatomical sine/cosine curve in EyeBehaviorController.
+        // Applying slow damping (dampRate = 9) drags and glitches eyelid closure.
+        this.vrmPresets[key] = THREE.MathUtils.clamp(targetVrm[key] || 0, 0, 1);
+      } else {
+        this.vrmPresets[key] = THREE.MathUtils.damp(this.vrmPresets[key], targetVrm[key], dampRate, frameDelta);
+        if (targetVrm[key] === 0 && this.vrmPresets[key] < 0.005) {
+          this.vrmPresets[key] = 0;
+        }
       }
     }
 

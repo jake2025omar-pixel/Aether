@@ -77,16 +77,18 @@ function createEmptyJoints(): InternalHandJoints {
   return joints;
 }
 
-function curlFinger(joints: InternalHandJoints, finger: 'index' | 'middle' | 'ring' | 'little', curlRad: number, splayRad = 0): void {
-  joints[`${finger}Proximal`].set(0, splayRad, -curlRad);
-  joints[`${finger}Intermediate`].set(0, 0, -curlRad * 1.15);
-  joints[`${finger}Distal`].set(0, 0, -curlRad * 0.85);
+function curlFinger(joints: InternalHandJoints, finger: 'index' | 'middle' | 'ring' | 'little', curlRad: number, splayRad = 0, isLeft = true): void {
+  const curlSign = isLeft ? -1 : 1;
+  joints[`${finger}Proximal`].set(0, splayRad, curlSign * curlRad);
+  joints[`${finger}Intermediate`].set(0, 0, curlSign * curlRad * 1.15);
+  joints[`${finger}Distal`].set(0, 0, curlSign * curlRad * 0.85);
 }
 
-function curlThumb(joints: InternalHandJoints, metacarpalY: number, proximalZ: number, distalZ: number): void {
-  joints['thumbMetacarpal'].set(0, metacarpalY, 0.08);
-  joints['thumbProximal'].set(0, 0.05, proximalZ);
-  joints['thumbDistal'].set(0, 0, distalZ);
+function curlThumb(joints: InternalHandJoints, metacarpalY: number, proximalZ: number, distalZ: number, isLeft = true): void {
+  const thumbZSign = isLeft ? 1 : -1;
+  joints['thumbMetacarpal'].set(0, metacarpalY, thumbZSign * 0.08);
+  joints['thumbProximal'].set(0, 0.05 * (isLeft ? 1 : -1), thumbZSign * proximalZ);
+  joints['thumbDistal'].set(0, 0, thumbZSign * distalZ);
 }
 
 function computePresetJoints(preset: HandPosePreset, isLeft: boolean, time = 0): InternalHandJoints {
@@ -95,35 +97,39 @@ function computePresetJoints(preset: HandPosePreset, isLeft: boolean, time = 0):
 
   switch (preset) {
     case 'RELAXED':
-      // Preserve the authored/rest pose. Finger articulation is only applied
-      // by an intentional hand pose such as pointing, waving, or thinking.
+      // Natural anatomical cascade: index softly bent, pinky progressively more bent
+      curlThumb(joints, 0.12 * splaySign, 0.15, 0.12, isLeft);
+      curlFinger(joints, 'index', 0.18, 0.04 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.28, 0.01 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.38, -0.02 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.46, -0.06 * splaySign, isLeft);
       break;
 
     case 'POINTING':
       // Index extended, others curled into palm, thumb resting
-      curlThumb(joints, 0.22 * splaySign, 0.45, 0.40);
-      curlFinger(joints, 'index', -0.02, 0.05 * splaySign);
-      curlFinger(joints, 'middle', 1.15, -0.01 * splaySign);
-      curlFinger(joints, 'ring', 1.20, -0.04 * splaySign);
-      curlFinger(joints, 'little', 1.25, -0.08 * splaySign);
+      curlThumb(joints, 0.22 * splaySign, 0.45, 0.40, isLeft);
+      curlFinger(joints, 'index', -0.02, 0.05 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 1.15, -0.01 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 1.20, -0.04 * splaySign, isLeft);
+      curlFinger(joints, 'little', 1.25, -0.08 * splaySign, isLeft);
       break;
 
     case 'OPEN_PALM':
       // Gentle open palm with graceful splay
-      curlThumb(joints, -0.15 * splaySign, 0.02, 0.02);
-      curlFinger(joints, 'index', 0.04, 0.08 * splaySign);
-      curlFinger(joints, 'middle', 0.06, 0.02 * splaySign);
-      curlFinger(joints, 'ring', 0.08, -0.04 * splaySign);
-      curlFinger(joints, 'little', 0.12, -0.10 * splaySign);
+      curlThumb(joints, -0.15 * splaySign, 0.02, 0.02, isLeft);
+      curlFinger(joints, 'index', 0.04, 0.08 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.06, 0.02 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.08, -0.04 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.12, -0.10 * splaySign, isLeft);
       break;
 
     case 'PALMS_UP_QUESTION':
       // Questioning open palm, slightly curved up
-      curlThumb(joints, -0.10 * splaySign, 0.06, 0.05);
-      curlFinger(joints, 'index', 0.14, 0.06 * splaySign);
-      curlFinger(joints, 'middle', 0.16, 0.01 * splaySign);
-      curlFinger(joints, 'ring', 0.20, -0.03 * splaySign);
-      curlFinger(joints, 'little', 0.26, -0.07 * splaySign);
+      curlThumb(joints, -0.10 * splaySign, 0.06, 0.05, isLeft);
+      curlFinger(joints, 'index', 0.14, 0.06 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.16, 0.01 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.20, -0.03 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.26, -0.07 * splaySign, isLeft);
       break;
 
     case 'GENTLE_WAVE': {
@@ -134,77 +140,77 @@ function computePresetJoints(preset: HandPosePreset, isLeft: boolean, time = 0):
       const flutterR = Math.sin(time * 6.0 - 0.8) * 0.09;
       const flutterL = Math.sin(time * 6.0 - 1.2) * 0.11;
 
-      curlThumb(joints, -0.08 * splaySign, 0.08, 0.06);
-      curlFinger(joints, 'index', 0.10 + flutterI, 0.06 * splaySign);
-      curlFinger(joints, 'middle', 0.12 + flutterM, 0.02 * splaySign);
-      curlFinger(joints, 'ring', 0.16 + flutterR, -0.03 * splaySign);
-      curlFinger(joints, 'little', 0.22 + flutterL, -0.08 * splaySign);
+      curlThumb(joints, -0.08 * splaySign, 0.08, 0.06, isLeft);
+      curlFinger(joints, 'index', 0.10 + flutterI, 0.06 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.12 + flutterM, 0.02 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.16 + flutterR, -0.03 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.22 + flutterL, -0.08 * splaySign, isLeft);
       break;
     }
 
     case 'CHIN_TOUCH':
       // Index extended alongside jaw, middle/ring/pinky loosely curved
-      curlThumb(joints, 0.18 * splaySign, 0.28, 0.22);
-      curlFinger(joints, 'index', 0.06, 0.04 * splaySign);
-      curlFinger(joints, 'middle', 0.65, -0.02 * splaySign);
-      curlFinger(joints, 'ring', 0.82, -0.05 * splaySign);
-      curlFinger(joints, 'little', 0.95, -0.09 * splaySign);
+      curlThumb(joints, 0.18 * splaySign, 0.28, 0.22, isLeft);
+      curlFinger(joints, 'index', 0.06, 0.04 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.65, -0.02 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.82, -0.05 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.95, -0.09 * splaySign, isLeft);
       break;
 
     case 'MOUTH_COVER':
       // Graceful curve over mouth (giggle / bashful)
-      curlThumb(joints, 0.10 * splaySign, 0.18, 0.14);
-      curlFinger(joints, 'index', 0.26, 0.03 * splaySign);
-      curlFinger(joints, 'middle', 0.32, 0.01 * splaySign);
-      curlFinger(joints, 'ring', 0.38, -0.02 * splaySign);
-      curlFinger(joints, 'little', 0.44, -0.05 * splaySign);
+      curlThumb(joints, 0.10 * splaySign, 0.18, 0.14, isLeft);
+      curlFinger(joints, 'index', 0.26, 0.03 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.32, 0.01 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.38, -0.02 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.44, -0.05 * splaySign, isLeft);
       break;
 
     case 'CHEST_HEART':
       // Soft hand resting on chest/heart
-      curlThumb(joints, 0.08 * splaySign, 0.14, 0.10);
-      curlFinger(joints, 'index', 0.22, 0.04 * splaySign);
-      curlFinger(joints, 'middle', 0.26, 0.01 * splaySign);
-      curlFinger(joints, 'ring', 0.32, -0.03 * splaySign);
-      curlFinger(joints, 'little', 0.38, -0.06 * splaySign);
+      curlThumb(joints, 0.08 * splaySign, 0.14, 0.10, isLeft);
+      curlFinger(joints, 'index', 0.22, 0.04 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.26, 0.01 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.32, -0.03 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.38, -0.06 * splaySign, isLeft);
       break;
 
     case 'HIP_REST':
       // Thumb back, fingers forward over hip
-      curlThumb(joints, -0.25 * splaySign, 0.15, 0.12);
-      curlFinger(joints, 'index', 0.42, 0.06 * splaySign);
-      curlFinger(joints, 'middle', 0.50, 0.02 * splaySign);
-      curlFinger(joints, 'ring', 0.56, -0.03 * splaySign);
-      curlFinger(joints, 'little', 0.64, -0.08 * splaySign);
+      curlThumb(joints, -0.25 * splaySign, 0.15, 0.12, isLeft);
+      curlFinger(joints, 'index', 0.42, 0.06 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.50, 0.02 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.56, -0.03 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.64, -0.08 * splaySign, isLeft);
       break;
 
     case 'SHRUG_PALMS':
       // Splayed open palms
-      curlThumb(joints, -0.22 * splaySign, 0.04, 0.02);
-      curlFinger(joints, 'index', 0.06, 0.10 * splaySign);
-      curlFinger(joints, 'middle', 0.08, 0.03 * splaySign);
-      curlFinger(joints, 'ring', 0.12, -0.05 * splaySign);
-      curlFinger(joints, 'little', 0.16, -0.12 * splaySign);
+      curlThumb(joints, -0.22 * splaySign, 0.04, 0.02, isLeft);
+      curlFinger(joints, 'index', 0.06, 0.10 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.08, 0.03 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.12, -0.05 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.16, -0.12 * splaySign, isLeft);
       break;
 
     case 'FIDGET_TAP': {
       // Subtle nervous or thoughtful tap
       const tap = (Math.sin(time * 4.5) + 1) * 0.5;
-      curlThumb(joints, 0.16 * splaySign, 0.20 + tap * 0.15, 0.15);
-      curlFinger(joints, 'index', 0.24 + tap * 0.18, 0.04 * splaySign);
-      curlFinger(joints, 'middle', 0.36 + (1 - tap) * 0.14, 0.01 * splaySign);
-      curlFinger(joints, 'ring', 0.48, -0.02 * splaySign);
-      curlFinger(joints, 'little', 0.56, -0.05 * splaySign);
+      curlThumb(joints, 0.16 * splaySign, 0.20 + tap * 0.15, 0.15, isLeft);
+      curlFinger(joints, 'index', 0.24 + tap * 0.18, 0.04 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.36 + (1 - tap) * 0.14, 0.01 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.48, -0.02 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.56, -0.05 * splaySign, isLeft);
       break;
     }
 
     case 'LOOSE_CURL':
     default:
-      curlThumb(joints, 0.20 * splaySign, 0.35, 0.28);
-      curlFinger(joints, 'index', 0.62, 0.03 * splaySign);
-      curlFinger(joints, 'middle', 0.74, 0.01 * splaySign);
-      curlFinger(joints, 'ring', 0.84, -0.02 * splaySign);
-      curlFinger(joints, 'little', 0.92, -0.06 * splaySign);
+      curlThumb(joints, 0.20 * splaySign, 0.35, 0.28, isLeft);
+      curlFinger(joints, 'index', 0.62, 0.03 * splaySign, isLeft);
+      curlFinger(joints, 'middle', 0.74, 0.01 * splaySign, isLeft);
+      curlFinger(joints, 'ring', 0.84, -0.02 * splaySign, isLeft);
+      curlFinger(joints, 'little', 0.92, -0.06 * splaySign, isLeft);
       break;
   }
 

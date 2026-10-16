@@ -627,18 +627,18 @@ export class CompanionRig {
       }
       if (this.vrmRightHand) {
         const targetRHandX = this.rightHandRest.x +
-          (frame.speech.rightArm.hand.x * (1 - actionWeight) + actionOffsets.rightHand.x * actionWeight + frame.micro.rightHandFingers * 0.5) * motion;
+          (frame.speech.rightArm.hand.x * (1 - actionWeight) + actionOffsets.rightHand.x * actionWeight) * motion;
         this.vrmRightHand.rotation.x = THREE.MathUtils.damp(this.vrmRightHand.rotation.x, targetRHandX, 5.5, frameDelta);
       }
 
-      // Left Arm
+      // Left Arm - Stably and naturally rests beside body without periodic twitches
       if (this.vrmLeftUpperArm) {
         const targetLX = this.leftArmRest.x +
           (frame.speech.leftArm.upperArm.x * (1 - actionWeight) + actionOffsets.leftUpperArm.x * actionWeight + armSwing.leftUpperArmX) * motion;
         const targetLY = this.leftArmRest.y +
           (frame.speech.leftArm.upperArm.y * (1 - actionWeight) + actionOffsets.leftUpperArm.y * actionWeight) * motion;
         const targetLZ = this.leftArmRest.z +
-          (frame.speech.leftArm.upperArm.z * (1 - actionWeight) + actionOffsets.leftUpperArm.z * actionWeight + frame.respiration.shoulderLift * 0.5) * motion;
+          (frame.speech.leftArm.upperArm.z * (1 - actionWeight) + actionOffsets.leftUpperArm.z * actionWeight) * motion;
 
         this.vrmLeftUpperArm.rotation.x = THREE.MathUtils.damp(this.vrmLeftUpperArm.rotation.x, targetLX, 5.5, frameDelta);
         this.vrmLeftUpperArm.rotation.y = THREE.MathUtils.damp(this.vrmLeftUpperArm.rotation.y, targetLY, 5.5, frameDelta);
@@ -651,7 +651,7 @@ export class CompanionRig {
       }
       if (this.vrmLeftHand) {
         const targetLHandX = this.leftHandRest.x +
-          (frame.speech.leftArm.hand.x * (1 - actionWeight) + actionOffsets.leftHand.x * actionWeight + frame.micro.leftHandFingers * 0.5) * motion;
+          (frame.speech.leftArm.hand.x * (1 - actionWeight) + actionOffsets.leftHand.x * actionWeight) * motion;
         this.vrmLeftHand.rotation.x = THREE.MathUtils.damp(this.vrmLeftHand.rotation.x, targetLHandX, 5.5, frameDelta);
       }
 

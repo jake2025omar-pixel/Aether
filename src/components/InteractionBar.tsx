@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { Send, Mic, MicOff, Square, Loader2 } from 'lucide-react';
+import { Send, Mic, MicOff, Square, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { COMPANION_DISPLAY_NAME } from '../lib/companionPersonality';
 
 interface InteractionBarProps {
@@ -8,6 +8,8 @@ interface InteractionBarProps {
   isListening?: boolean;
   isSpeaking?: boolean;
   onStopSpeaking?: () => void;
+  voiceMuted?: boolean;
+  onToggleMute?: () => void;
   loading?: boolean;
   disabled?: boolean;
   voiceError?: string | null;
@@ -21,6 +23,8 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
   isListening = false,
   isSpeaking = false,
   onStopSpeaking,
+  voiceMuted = false,
+  onToggleMute,
   loading = false,
   disabled = false,
   voiceError = null,
@@ -65,7 +69,6 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
     // If the virtual keyboard covers the container, lift it just above the keyboard with a subtle 4px clearance
     const overlap = naturalBottom - visualBottom;
     const newOffset = overlap > 2 ? Math.round(overlap + 4) : 0;
-
     if (activeOffsetRef.current !== newOffset) {
       activeOffsetRef.current = newOffset;
       setKeyboardOffset(newOffset);
@@ -180,6 +183,19 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
           )}
           {isListening ? <MicOff className="w-4 h-4 text-slate-950" /> : <Mic className="w-4 h-4" />}
         </button>
+
+        {onToggleMute && (
+          <button
+            type="button"
+            onClick={onToggleMute}
+            aria-label={voiceMuted ? 'إلغاء كتم الصوت' : 'كتم صوت الرفيقة'}
+            aria-pressed={voiceMuted}
+            title={voiceMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors flex-shrink-0 cursor-pointer active:scale-95 ${voiceMuted ? 'text-amber-200 bg-amber-300/10' : 'text-white/60 hover:text-white hover:bg-white/[0.08]'}`}
+          >
+            {voiceMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+        )}
 
         <div className="relative flex-1 min-w-0 flex items-end">
           <textarea

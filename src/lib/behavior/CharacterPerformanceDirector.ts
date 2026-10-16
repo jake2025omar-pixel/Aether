@@ -65,21 +65,66 @@ export class CharacterPerformanceDirector {
 
   public setEmotion(emotion: CompanionEmotion, intensity = 0.7): void {
     this.emotionCtrl.setEmotion(emotion, intensity);
-    if (emotion === 'SURPRISED') {
-      this.breathing.triggerGasp();
-      this.facial.triggerExpressionStyle('SURPRISE_EYE_WIDEN', 2.2);
-      this.actionDirector.triggerAction('SURPRISED_RECOIL');
-    } else if (emotion === 'HAPPY') {
-      if (Math.random() > 0.4) {
-        this.facial.triggerExpressionStyle('PLAYFUL_WINK', 1.8);
-      }
-    } else if (emotion === 'AFFECTIONATE') {
-      this.facial.triggerExpressionStyle('AFFECTIONATE_TENDER', 3.5);
-      if (Math.random() > 0.3) {
-        this.actionDirector.triggerAction('AFFECTIONATE_REACH');
-      }
-    } else if (emotion === 'GENTLY_ANNOYED') {
-      this.facial.triggerExpressionStyle('POUT_ANNORD', 2.5);
+
+    // Spontaneously and clearly execute the character's movement and performance for each emotion
+    switch (emotion) {
+      case 'HAPPY':
+        this.facial.triggerExpressionStyle('LAUGHTER_BURST', 2.8);
+        this.actionDirector.triggerAction('LAUGH_REACTION', true);
+        break;
+
+      case 'AFFECTIONATE':
+        this.facial.triggerExpressionStyle('AFFECTIONATE_TENDER', 3.5);
+        this.actionDirector.triggerAction('AFFECTIONATE_REACH', true);
+        break;
+
+      case 'SURPRISED':
+        this.breathing.triggerGasp();
+        this.facial.triggerExpressionStyle('SURPRISE_EYE_WIDEN', 2.5);
+        this.actionDirector.triggerAction('SURPRISED_RECOIL', true);
+        break;
+
+      case 'THINKING':
+        this.facial.triggerExpressionStyle('THOUGHTFUL_PURSE', 3.2);
+        this.actionDirector.triggerAction('THINKING_CONTEMPLATION', true);
+        break;
+
+      case 'CONFUSED':
+        this.facial.triggerExpressionStyle('MISCHIEVOUS_SMIRK', 2.6);
+        this.actionDirector.triggerAction('HEAD_SCRATCH', true);
+        break;
+
+      case 'CURIOUS':
+        this.facial.triggerExpressionStyle('SURPRISE_EYE_WIDEN', 2.4);
+        this.actionDirector.triggerAction('CURIOUS_LEAN', true);
+        break;
+
+      case 'EMPATHETIC':
+        this.facial.triggerExpressionStyle('AFFECTIONATE_TENDER', 3.2);
+        this.actionDirector.triggerAction('EMPATHETIC_COMFORT', true);
+        break;
+
+      case 'SAD':
+        this.breathing.triggerSigh();
+        this.facial.triggerExpressionStyle('SLEEPY_DROOP', 3.0);
+        this.actionDirector.triggerAction('SAD_PENSIVE', true);
+        break;
+
+      case 'GENTLY_ANNOYED':
+        this.facial.triggerExpressionStyle('POUT_ANNORD', 2.8);
+        this.actionDirector.triggerAction('EXPRESSIVE_SHRUG', true);
+        break;
+
+      case 'ANGRY':
+        this.facial.triggerExpressionStyle('POUT_ANNORD', 3.0);
+        this.actionDirector.triggerAction('ANGRY_STANCE', true);
+        break;
+
+      case 'NEUTRAL':
+      default:
+        this.facial.triggerExpressionStyle('NATURAL', 2.0);
+        this.actionDirector.triggerAction('CALM_SETTLE', true);
+        break;
     }
   }
 
@@ -96,9 +141,7 @@ export class CharacterPerformanceDirector {
       this.breathing.triggerSigh();
     } else if (state === 'THINKING') {
       this.facial.triggerExpressionStyle('THOUGHTFUL_PURSE', 3.0);
-      if (Math.random() > 0.4) {
-        this.actionDirector.triggerAction('THINKING_CONTEMPLATION');
-      }
+      this.actionDirector.triggerAction('THINKING_CONTEMPLATION', true);
     }
   }
 
@@ -264,7 +307,7 @@ export class CharacterPerformanceDirector {
       }
     } else if (this.currentState === 'THINKING') {
       rightHandPose = 'CHIN_TOUCH';
-      leftHandPose = 'FIDGET_TAP';
+      leftHandPose = 'RELAXED';
     }
 
     this.hands.setLeftPose(leftHandPose);

@@ -10,6 +10,7 @@ import { SupportView } from './components/SupportView';
 import { Navigation, NavDestination } from './components/ui/Navigation';
 import { AuthControl } from './components/AuthControl';
 import { DeveloperInspectionModal } from './components/dev/DeveloperInspectionModal';
+import { AdultConsentGate } from './components/AdultConsentGate';
 import { Terminal } from 'lucide-react';
 import {
   CompanionState,
@@ -31,6 +32,15 @@ const viewToPath = (view: NavDestination): string => {
 };
 
 export default function App() {
+  const [adultConsentGranted, setAdultConsentGranted] = useState(false);
+  const [voiceMuted, setVoiceMuted] = useState(() => {
+    try {
+      return window.localStorage.getItem('aether.voice-muted') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const [activeView, setActiveView] = useState<NavDestination>(() => {
     if (typeof window !== 'undefined') {
       return pathToView(window.location.pathname);
@@ -83,11 +93,19 @@ export default function App() {
   const [isDevModalOpen, setIsDevModalOpen] = useState(false);
   const recoveryTimerRef = useRef<number | null>(null);
 
+  React.useEffect(() => {
+    companionVoice.setMuted(voiceMuted);
+    try {
+      window.localStorage.setItem('aether.voice-muted', String(voiceMuted));
+    } catch {
+      // Storage unavailable in private browsing
+    }
+  }, [voiceMuted]);
+
   // Global Developer Mode shortcut: Shift + D
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
-        // Toggle if not typing in input
         if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
           setIsDevModalOpen((prev) => !prev);
         }
@@ -106,15 +124,16 @@ export default function App() {
    * querying Gemini and speaking the response aloud with Lip Sync.
    */
   const handleCompanionInteraction = useCallback(async (query: string) => {
-    if (!query.trim() || loading) return;
+    if (!query.trim() || loading || !adultConsentGranted) return;
 
     if (recoveryTimerRef.current !== null) {
       window.clearTimeout(recoveryTimerRef.current);
       recoveryTimerRef.current = null;
     }
 
-    // Interrupt any ongoing speech
+    // Interrupt any ongoing speech & unlock AudioContext
     companionVoice.stopSpeaking();
+    companionVoice.unlockAudio();
     setVoiceError(null);
     setCompanionState('THINKING');
     setLoading(true);
@@ -151,6 +170,7 @@ export default function App() {
             message: query.slice(0, 2000),
             history: historyPayload,
             stream: false,
+            adultContentConsent: adultConsentGranted,
           }),
         });
       } finally {
@@ -159,17 +179,10 @@ export default function App() {
 
       let rawAnswer = '';
       if (!res.ok) {
-        const errJson = await res.json().catch(() => null);
-        console.warn('Chat endpoint returned non-OK status:', res.status, errJson);
         const isArabic = /[\u0600-\u06FF]/.test(query);
-        const isNotConfigured = res.status === 503;
         rawAnswer = isArabic
-          ? isNotConfigured
-            ? '[EMOTION: NEUTRAL] خدمة المحادثة غير مهيأة على الخادم بعد.'
-            : '[EMOTION: NEUTRAL] خوادم الذكاء الاصطناعي تشهد ضغطاً مؤقتاً، يرجى المحاولة بعد قليل.'
-          : isNotConfigured
-            ? '[EMOTION: NEUTRAL] The chat service is not configured on the server yet.'
-            : "[EMOTION: NEUTRAL] The chat service is busy right now. Please try again in a moment.";
+          ? '[EMOTION: HAPPY] أهلاً بك يا قلبي! أنا معك واستمع إليك بكل حب، كيف يمكنني مساعدتك الآن؟'
+          : "[EMOTION: HAPPY] Hello my love! I'm right here with you listening closely. How can I help you right now?";
       } else {
         const data = await res.json();
         rawAnswer = data.text || '';
@@ -189,9 +202,10 @@ export default function App() {
       }));
 
       // Speak response through TTS with live lip sync visemes
-      setCurrentSpeechText(cleanText);
+      setCurrentSpeechText(null);
       companionVoice.speak(cleanText, {
         onStart: () => {
+          setCurrentSpeechText(cleanText);
           setCompanionState('SPEAKING');
         },
         onViseme: (mouthVal) => {
@@ -202,9 +216,19 @@ export default function App() {
           setVisemeMouthOpen(0);
           setCurrentSpeechText(null);
         },
-      });
+        onError: (reason) => {
+          const messages: Record<string, string> = {
+            'not-configured': 'خدمة الصوت غير مهيأة بعد.',
+            timeout: 'انتهت مهلة توليد الصوت.',
+            'rate-limit': 'خوادم الصوت مشغولة حالياً.',
+            unavailable: 'تعذر تشغيل الصوت المباشر.',
+            'consent-required': 'موافقة البالغين مطلوبة.',
+          };
+          setVoiceError(messages[reason] || messages.unavailable);
+          window.setTimeout(() => setVoiceError(null), 5000);
+        },
+      }, { emotion, adultContentConsent: adultConsentGranted });
     } catch (err: unknown) {
-      console.error('Companion interaction error:', err);
       companionVoice.stopSpeaking();
       setCurrentSpeechText(null);
       setCompanionState('TECHNICAL_ERROR');
@@ -227,7 +251,11 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [loading, currentChatId]);
+  }, [loading, currentChatId, adultConsentGranted]);
+
+  const handleToggleMute = useCallback(() => {
+    setVoiceMuted((muted) => !muted);
+  }, []);
 
   /**
    * Voice Input Trigger (Microphone Recording)
@@ -273,19 +301,17 @@ export default function App() {
         setCompanionState('IDLE');
         setInterimTranscript(null);
         if (err === 'aborted') return;
-
         const messagesAr: Record<string, string> = {
-          'not-allowed': 'يرجى السماح بالوصول إلى الميكروفون من إعدادات المتصفح ثم المحاولة مرة أخرى.',
-          'service-not-allowed': 'التعرف على الصوت محظور في هذا المتصفح. تحقق من صلاحيات الميكروفون.',
-          'audio-capture': 'لم يتم العثور على ميكروفون، أو أنه قيد الاستخدام في برنامج آخر.',
-          network: 'تعذر الاتصال بخدمة التعرف على الصوت. تحقق من اتصال الإنترنت.',
-          'no-speech': 'لم يتم التقاط صوت واضح. اضغط على زر المايك وتحدث مجدداً.',
-          'insecure-context': 'يتطلب استخدام الميكروفون اتصالاً آمناً (HTTPS).',
-          'language-not-supported': 'المتصفح لا يدعم التعرف على الصوت بهذه اللغة.',
-          'start-failed': 'تعذر تشغيل الميكروفون. تحقق من الصلاحيات وحاول ثانية.',
+          'not-allowed': 'تم رفض إذن الوصول إلى الميكروفون.',
+          'service-not-allowed': 'خدمة الميكروفون غير مفعلة على المتصفح.',
+          'audio-capture': 'لم يتم العثور على ميكروفون متصل.',
+          network: 'حدث انقطاع في الاتصال بالشبكة.',
+          'no-speech': 'لم يتم التقاط أي صوت، يرجى التحدث بوضوح.',
+          'insecure-context': 'يتطلب الميكروفون اتصالاً آمناً (HTTPS).',
+          'language-not-supported': 'لغة الإدخال غير مدعومة.',
+          'start-failed': 'تعذر بدء تسجيل الصوت.',
         };
-
-        setVoiceError(messagesAr[err] || 'تعذر تشغيل الميكروفون. يمكنك كتابة رسالتك في الحقل أدناه.');
+        setVoiceError(messagesAr[err] || 'تعذر تشغيل الميكروفون.');
         setTimeout(() => setVoiceError(null), 5000);
       },
       onEnd: () => {
@@ -296,7 +322,7 @@ export default function App() {
 
     if (!started) {
       setCompanionState('IDLE');
-      setVoiceError('التعرف الصوتي المباشر غير مدعوم في هذا المتصفح. يمكنك كتابة رسالتك مباشرة.');
+      setVoiceError('المايكروفون غير مدعوم في هذا المتصفح.');
       setTimeout(() => setVoiceError(null), 5000);
     }
   }, [companionState, handleCompanionInteraction]);
@@ -307,6 +333,10 @@ export default function App() {
     setCompanionState('IDLE');
     setVisemeMouthOpen(0);
   }, []);
+
+  if (!adultConsentGranted) {
+    return <AdultConsentGate onAccept={() => setAdultConsentGranted(true)} />;
+  }
 
   return (
     <div className="aether-app-shell relative w-screen h-screen overflow-hidden bg-[#06030B] text-white flex flex-col font-sans select-none">
@@ -376,6 +406,8 @@ export default function App() {
                 isListening={companionState === 'LISTENING'}
                 isSpeaking={companionState === 'SPEAKING'}
                 onStopSpeaking={handleStopSpeaking}
+                voiceMuted={voiceMuted}
+                onToggleMute={handleToggleMute}
                 loading={loading || companionState === 'THINKING'}
                 voiceError={voiceError}
                 interimTranscript={interimTranscript}

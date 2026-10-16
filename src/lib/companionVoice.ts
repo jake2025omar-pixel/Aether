@@ -14,16 +14,26 @@ export interface VoicePlaybackHandlers {
   onStart: () => void;
   onEnd: () => void;
   onViseme: (mouthOpen: number) => void;
+  onError?: (reason: string) => void;
+}
+
+export interface CompanionSpeechOptions {
+  emotion?: string;
+  adultContentConsent?: boolean;
 }
 
 class CompanionVoiceService {
   private recognition: any = null;
   private isListening = false;
   private visemeInterval: number | null = null;
-  private currentUtterance: SpeechSynthesisUtterance | null = null;
-  private cachedVoices: SpeechSynthesisVoice[] = [];
   private currentPlaybackHandlers: VoicePlaybackHandlers | null = null;
+  private activeSource: AudioBufferSourceNode | null = null;
+  private activeAbortController: AbortController | null = null;
+  private audioContext: AudioContext | null = null;
   private playbackId = 0;
+  private muted = false;
+  private cachedVoices: SpeechSynthesisVoice[] = [];
+  private currentUtterance: SpeechSynthesisUtterance | null = null;
 
   constructor() {
     this.initSpeechRecognition();
@@ -43,7 +53,7 @@ class CompanionVoiceService {
         this.recognition.interimResults = false;
         this.recognition.maxAlternatives = 1;
       } catch (err) {
-        console.warn('SpeechRecognition initialization error:', err);
+        // Safe initialization
       }
     }
   }
@@ -65,6 +75,30 @@ class CompanionVoiceService {
 
   public isSpeechSynthesisSupported(): boolean {
     return typeof window !== 'undefined' && 'speechSynthesis' in window;
+  }
+
+  public isAudioPlaybackSupported(): boolean {
+    return typeof window !== 'undefined' && typeof window.AudioContext !== 'undefined';
+  }
+
+  private getAudioContext(): AudioContext | null {
+    if (!this.isAudioPlaybackSupported()) return null;
+    if (!this.audioContext || this.audioContext.state === 'closed') {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioContext = new AudioCtx();
+    }
+    return this.audioContext;
+  }
+
+  /** Call synchronously from a user gesture so later server audio can autoplay. */
+  public unlockAudio(): void {
+    const context = this.getAudioContext();
+    if (context?.state === 'suspended') void context.resume().catch(() => undefined);
+  }
+
+  public setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (muted) this.stopSpeaking();
   }
 
   /**
@@ -125,6 +159,7 @@ class CompanionVoiceService {
       recognition.onresult = (event: any) => {
         let interimText = '';
         let finalText = '';
+
         if (event.results) {
           for (let i = 0; i < event.results.length; i++) {
             const res = event.results[i];
@@ -137,13 +172,16 @@ class CompanionVoiceService {
             }
           }
         }
+
         if (interimText.trim()) {
           handlers.onInterim?.(interimText.trim());
         }
+
         const candidate = (finalText || interimText).trim();
         if (candidate) {
           lastSpokenText = candidate;
         }
+
         if (finalText.trim()) {
           receivedFinalTranscript = true;
           handlers.onResult(finalText.trim());
@@ -154,14 +192,13 @@ class CompanionVoiceService {
         this.isListening = false;
         const err = event.error || 'Speech recognition error';
         if (err !== 'aborted' && err !== 'no-speech') {
-          console.warn('[CompanionVoice] Speech recognition error:', err);
+          // Handled gracefully
         }
         handlers.onError(err);
       };
 
       recognition.onend = () => {
         this.isListening = false;
-        // If final event wasn't sent but we caught spoken text, deliver it
         if (!receivedFinalTranscript && lastSpokenText.trim()) {
           receivedFinalTranscript = true;
           handlers.onResult(lastSpokenText.trim());
@@ -203,19 +240,20 @@ class CompanionVoiceService {
   }
 
   /**
-   * Speaks the companion's response and generates real-time lip sync visemes
+   * Browser SpeechSynthesis fallback
    */
-  public speak(text: string, handlers: VoicePlaybackHandlers): void {
-    if (!this.isSpeechSynthesisSupported() || !text.trim()) {
-      this.stopSpeaking();
+  private speakWithBrowserSynthesis(
+    text: string,
+    playbackId: number,
+    handlers: VoicePlaybackHandlers
+  ): void {
+    if (!this.isSpeechSynthesisSupported()) {
       handlers.onViseme(0);
       handlers.onEnd();
       return;
     }
 
-    this.stopSpeaking();
-
-    // Detect language (Arabic vs English)
+    const isCurrentPlayback = () => this.playbackId === playbackId;
     const isArabic = /[\u0600-\u06FF]/.test(text);
     const lang = isArabic ? 'ar-SA' : 'en-US';
 
@@ -225,7 +263,6 @@ class CompanionVoiceService {
     utterance.rate = isArabic ? 0.98 : 1.0;
     utterance.pitch = 1.03;
 
-    // Prefer the requested regional voice, then any voice in the right language.
     const voices = this.cachedVoices.length > 0 ? this.cachedVoices : window.speechSynthesis.getVoices();
     const language = isArabic ? 'ar' : 'en';
     const normalizedLang = lang.toLowerCase();
@@ -236,109 +273,191 @@ class CompanionVoiceService {
       utterance.voice = matchingVoice;
     }
 
-    const playbackId = ++this.playbackId;
-    const isCurrentPlayback = () => this.playbackId === playbackId && this.currentUtterance === utterance;
-    this.currentPlaybackHandlers = handlers;
     const words = text.match(/\S+/gu) || [];
     const segments = words.map((word) => {
       const letters = word.replace(/[^\p{L}\p{N}]/gu, '');
       const syllables = isArabic
         ? Math.max(1, Math.min(4, Math.ceil([...letters].length / 3)))
         : Math.max(1, Math.min(4, (letters.match(/[aeiouy]/gi) || []).length));
-      const duration = Math.max(140, Math.min(520, 95 + syllables * 115));
-      const pause = /[.!?؟،;:]$/u.test(word) ? 180 : 45;
-      return { duration, pause, syllables };
-    });
-    let fallbackStartAt = 0;
-    const fallbackSegments = segments.map((segment) => {
-      const start = fallbackStartAt;
-      fallbackStartAt += segment.duration + segment.pause;
-      return { ...segment, start };
+      return { word, syllables };
     });
 
-    let speechStartedAt = 0;
-    let boundaryStartAt = 0;
-    let boundaryDuration = 0;
-    let boundarySyllables = 1;
-    let hasSpeechBoundary = false;
-    let completed = false;
+    const totalSyllables = segments.reduce((sum, item) => sum + item.syllables, 0);
+    const estimatedSeconds = Math.max(1.0, (words.length * 0.42) / (utterance.rate || 1.0));
+    const syllableCadence = (estimatedSeconds / Math.max(1, totalSyllables)) * 1000;
 
-    const syllabicAperture = (progress: number, syllableCount: number): number => {
-      const clampedProgress = Math.max(0, Math.min(1, progress));
-      const syllableProgress = (clampedProgress * syllableCount) % 1;
-      const syllablePulse = Math.sin(syllableProgress * Math.PI);
-      const wordEnvelope = Math.sin(clampedProgress * Math.PI);
-      // Stronger aperture makes Arabic and English syllables readable in the
-      // avatar while the rig applies this value only to mouth blend shapes.
-      return Math.max(0, Math.min(0.9, wordEnvelope * (0.32 + syllablePulse * 0.58)));
-    };
+    let syllableCounter = 0;
+    let visemePhase = 0;
 
-    const startVisemeLoop = () => {
-      if (this.visemeInterval) clearInterval(this.visemeInterval);
+    utterance.onstart = () => {
+      if (!isCurrentPlayback()) return;
+      handlers.onStart();
+
       this.visemeInterval = window.setInterval(() => {
         if (!isCurrentPlayback()) return;
-        const now = performance.now();
-        let progress = -1;
-        let syllables = 1;
+        visemePhase += 0.35;
+        const rhythm = (Math.sin(visemePhase) + 1) * 0.5;
+        const openness = Math.min(0.75, rhythm * 0.65 + 0.1);
+        handlers.onViseme(openness);
 
-        if (hasSpeechBoundary) {
-          progress = (now - boundaryStartAt) / boundaryDuration;
-          syllables = boundarySyllables;
-        } else {
-          const elapsed = now - speechStartedAt;
-          const segment = fallbackSegments.find((item) => elapsed >= item.start && elapsed < item.start + item.duration);
-          if (segment) {
-            progress = (elapsed - segment.start) / segment.duration;
-            syllables = segment.syllables;
-          }
+        syllableCounter += 0.25;
+        if (syllableCounter >= totalSyllables) {
+          handlers.onViseme(0.05);
         }
-
-        handlers.onViseme(progress >= 0 && progress <= 1 ? syllabicAperture(progress, syllables) : 0);
-      }, 40);
+      }, Math.max(30, Math.min(80, Math.round(syllableCadence * 0.25))));
     };
 
-    const stopVisemeLoop = () => {
-      if (this.visemeInterval) {
-        clearInterval(this.visemeInterval);
+    const cleanup = () => {
+      if (!isCurrentPlayback()) return;
+      if (this.visemeInterval !== null) {
+        window.clearInterval(this.visemeInterval);
         this.visemeInterval = null;
       }
+      this.currentUtterance = null;
       handlers.onViseme(0);
+      handlers.onEnd();
     };
+
+    utterance.onend = cleanup;
+    utterance.onerror = cleanup;
+
+    try {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      cleanup();
+    }
+  }
+
+  /** Requests Gemini TTS and drives lip motion from decoded audio amplitude. */
+  public speak(
+    text: string,
+    handlers: VoicePlaybackHandlers,
+    options: CompanionSpeechOptions = {},
+  ): void {
+    this.stopSpeaking();
+    if (!text.trim() || this.muted) {
+      handlers.onViseme(0);
+      handlers.onEnd();
+      return;
+    }
+
+    if (options.adultContentConsent !== true) {
+      handlers.onError?.('consent-required');
+      handlers.onViseme(0);
+      handlers.onEnd();
+      return;
+    }
+
+    const audioContext = this.getAudioContext();
+    if (!audioContext) {
+      // Fallback to speech synthesis if AudioContext is unavailable
+      this.speakWithBrowserSynthesis(text, this.playbackId, handlers);
+      return;
+    }
+
+    const playbackId = ++this.playbackId;
+    const isCurrentPlayback = () => this.playbackId === playbackId;
+    const controller = new AbortController();
+    this.activeAbortController = controller;
+    this.currentPlaybackHandlers = handlers;
+    let timedOut = false;
+    let completed = false;
+    let smoothedLevel = 0;
+
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 45_000);
 
     const finishPlayback = () => {
       if (!isCurrentPlayback() || completed) return;
       completed = true;
-      stopVisemeLoop();
-      this.currentUtterance = null;
+      if (this.visemeInterval !== null) {
+        window.clearInterval(this.visemeInterval);
+        this.visemeInterval = null;
+      }
+      this.activeSource = null;
+      this.activeAbortController = null;
       this.currentPlaybackHandlers = null;
+      handlers.onViseme(0);
       handlers.onEnd();
     };
 
-    utterance.onstart = () => {
-      if (!isCurrentPlayback()) return;
-      speechStartedAt = performance.now();
-      handlers.onStart();
-      startVisemeLoop();
-    };
+    void (async () => {
+      try {
+        if (audioContext.state === 'suspended') await audioContext.resume();
 
-    utterance.onboundary = (event: SpeechSynthesisEvent) => {
-      if (!isCurrentPlayback() || event.name !== 'word') return;
-      const start = Math.max(0, event.charIndex || 0);
-      const fallbackWord = text.slice(start).match(/^[^\s.,!?؟،;:]+/u)?.[0] || '';
-      const word = text.slice(start, start + (event.charLength || fallbackWord.length)) || fallbackWord;
-      const letters = word.replace(/[^\p{L}\p{N}]/gu, '');
-      boundarySyllables = isArabic
-        ? Math.max(1, Math.min(4, Math.ceil([...letters].length / 3)))
-        : Math.max(1, Math.min(4, (letters.match(/[aeiouy]/gi) || []).length));
-      boundaryDuration = Math.max(140, Math.min(520, 95 + boundarySyllables * 115));
-      boundaryStartAt = performance.now();
-      hasSpeechBoundary = true;
-    };
+        const response = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            text: text.slice(0, 4_000),
+            voice: 'Achernar',
+            emotion: options.emotion || 'NEUTRAL',
+            adultContentConsent: options.adultContentConsent,
+          }),
+        });
 
-    utterance.onend = finishPlayback;
-    utterance.onerror = finishPlayback;
+        if (!response.ok) {
+          // If server TTS is temporarily unavailable, fall back to browser speech synthesis
+          if (isCurrentPlayback()) {
+            this.speakWithBrowserSynthesis(text, playbackId, handlers);
+          }
+          return;
+        }
 
-    window.speechSynthesis.speak(utterance);
+        const encodedAudio = await response.arrayBuffer();
+        if (!isCurrentPlayback()) return;
+
+        const audioBuffer = await audioContext.decodeAudioData(encodedAudio.slice(0));
+        if (!isCurrentPlayback()) return;
+
+        const source = audioContext.createBufferSource();
+        const analyser = audioContext.createAnalyser();
+        const gain = audioContext.createGain();
+        const waveform = new Uint8Array(analyser.fftSize);
+
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.18;
+
+        source.buffer = audioBuffer;
+        source.connect(analyser);
+        analyser.connect(gain);
+        gain.connect(audioContext.destination);
+
+        this.activeSource = source;
+        source.onended = finishPlayback;
+        handlers.onStart();
+
+        this.visemeInterval = window.setInterval(() => {
+          if (!isCurrentPlayback()) return;
+          analyser.getByteTimeDomainData(waveform);
+          let sumSquares = 0;
+          for (const sample of waveform) {
+            const centered = (sample - 128) / 128;
+            sumSquares += centered * centered;
+          }
+          const rms = Math.sqrt(sumSquares / waveform.length);
+          const target = Math.max(0, Math.min(0.82, (rms - 0.012) * 5.4));
+          smoothedLevel += (target - smoothedLevel) * (target > smoothedLevel ? 0.48 : 0.28);
+          handlers.onViseme(smoothedLevel < 0.015 ? 0 : smoothedLevel);
+        }, 32);
+
+        source.start(0);
+      } catch (error: unknown) {
+        if (!isCurrentPlayback()) return;
+        if (controller.signal.aborted && !timedOut) {
+          finishPlayback();
+          return;
+        }
+        // Seamless fallback to browser speech synthesis
+        this.speakWithBrowserSynthesis(text, playbackId, handlers);
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    })();
   }
 
   /**
@@ -346,19 +465,24 @@ class CompanionVoiceService {
    */
   public stopSpeaking(): void {
     this.playbackId += 1;
-    if (this.visemeInterval) {
-      clearInterval(this.visemeInterval);
+    if (this.visemeInterval !== null) {
+      window.clearInterval(this.visemeInterval);
       this.visemeInterval = null;
     }
-
     const handlers = this.currentPlaybackHandlers;
-    this.currentUtterance = null;
     this.currentPlaybackHandlers = null;
-
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    this.activeAbortController?.abort();
+    this.activeAbortController = null;
+    const source = this.activeSource;
+    this.activeSource = null;
+    if (source) {
+      source.onended = null;
+      try { source.stop(); } catch { /* already stopped */ }
     }
-
+    if (this.currentUtterance) {
+      try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+      this.currentUtterance = null;
+    }
     if (handlers) {
       handlers.onViseme(0);
       handlers.onEnd();

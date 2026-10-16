@@ -117,12 +117,12 @@ export class SpeechAnimationController {
       targetRLowerY = 0.12 * phraseEnvelope;
       targetRHandX = 0.08 * phraseEnvelope;
 
-      // Subtle sympathetic micro-motion on left arm
-      targetLUpperZ = 0.02 * phraseEnvelope;
+      // Left arm remains gracefully relaxed beside body
+      targetLUpperZ = 0;
     } else if (this.currentStyle === 'EXPLANATORY') {
       // Long explanation: Alternating natural gestures
       // Phase 1 (0 to 3s): Right hand leads
-      // Phase 2 (3 to 6s): Both hands open in explanation
+      // Phase 2 (3 to 6s): Gentle two-handed open gesture
       // Phase 3 (6s+): Relaxed conversational pulses
       const cadence = Math.sin(t * 3.8) * 0.03 * (0.4 + visemeMouthOpen * 0.6);
 
@@ -134,14 +134,14 @@ export class SpeechAnimationController {
         targetRHandX = 0.09 * p1;
       } else if (t < 7.0) {
         const p2 = Math.sin(((t - 3.2) / 3.8) * Math.PI);
-        // Both hands slightly open in explanation
+        // Right hand leads in explanation, left arm rests smoothly
         targetRUpperX = (0.08 * p2 + cadence) * energy;
         targetRUpperZ = -0.06 * p2;
         targetRLowerY = 0.10 * p2;
 
-        targetLUpperX = (0.07 * p2 - cadence * 0.5) * energy;
-        targetLUpperZ = 0.05 * p2;
-        targetLLowerY = -0.10 * p2;
+        targetLUpperX = 0.03 * p2 * energy;
+        targetLUpperZ = 0;
+        targetLLowerY = 0;
       } else {
         // Sustained gentle speaking cadence
         const p3 = 0.5 + 0.5 * Math.sin(t * 1.5);

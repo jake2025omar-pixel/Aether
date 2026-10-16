@@ -4,9 +4,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
-import { AETHER_COMPANION_SYSTEM_PROMPT } from './src/lib/companionPersonality';
+import { AETHER_COMPANION_SYSTEM_PROMPT } from './server/companionSystemPrompt';
+import { handleGeminiTtsRequest } from './server/geminiTts';
 
 dotenv.config();
+
 const PRIMARY_GEMINI_MODEL = 'gemini-3.8-flash';
 const CANDIDATE_MODELS = [
   'gemini-3.8-flash',
@@ -32,15 +34,18 @@ function markModelRateLimited(model: string) {
 }
 
 function isTemporaryOverload(errStr: string): boolean {
+  const lower = errStr.toLowerCase();
   return (
-    errStr.includes('429') ||
-    errStr.includes('503') ||
-    errStr.includes('RESOURCE_EXHAUSTED') ||
-    errStr.includes('Quota exceeded') ||
-    errStr.includes('high demand') ||
-    errStr.includes('UNAVAILABLE') ||
-    errStr.includes('overloaded') ||
-    errStr.includes('spikes in demand')
+    lower.includes('429') ||
+    lower.includes('503') ||
+    lower.includes('resource_exhausted') ||
+    lower.includes('quota exceeded') ||
+    lower.includes('high demand') ||
+    lower.includes('unavailable') ||
+    lower.includes('overloaded') ||
+    lower.includes('spikes in demand') ||
+    lower.includes('aborted') ||
+    lower.includes('timeout')
   );
 }
 
@@ -116,6 +121,23 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// Gemini TTS Endpoint
+app.post('/api/tts', async (req, res) => {
+  const forwardedRequest = new Request('http://localhost/api/tts', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Client-IP': req.ip || req.socket.remoteAddress || 'unknown',
+    },
+    body: JSON.stringify(req.body ?? {}),
+  });
+
+  const speechResponse = await handleGeminiTtsRequest(forwardedRequest, process.env.GEMINI_API_KEY);
+  speechResponse.headers.forEach((value, key) => res.setHeader(key, value));
+  const audioOrError = await speechResponse.arrayBuffer();
+  res.status(speechResponse.status).send(Buffer.from(audioOrError));
+});
+
 // Streaming Chat API endpoint
 app.post('/api/chat', async (req, res) => {
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
@@ -124,6 +146,10 @@ app.post('/api/chat', async (req, res) => {
     return res.status(429).json({
       error: 'Too many requests. Please wait a moment before sending another message.',
     });
+  }
+
+  if (req.body?.adultContentConsent !== true) {
+    return res.status(403).json({ error: 'Adult access consent is required.' });
   }
 
   const { message, history = [], stream = false } = req.body;
@@ -202,19 +228,21 @@ app.post('/api/chat', async (req, res) => {
     },
   ];
 
-  // The Gemini credential must come only from the server environment, never from a browser header.
   if (!apiKey || !ai) {
+    const fallbackText = getLocalCompanionFallback(trimmedMessage);
     if (stream) {
-      res.status(503);
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      res.write(`data: ${JSON.stringify({ error: 'Gemini API key is not configured on the server. Please set GEMINI_API_KEY in server environment.' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ text: fallbackText })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
       return;
     } else {
-      return res.status(503).json({
-        error: 'Gemini API key is not configured on the server. Please set GEMINI_API_KEY in server environment.',
+      return res.json({
+        text: fallbackText,
+        model: 'local-fallback',
+        isFallback: true,
       });
     }
   }
@@ -259,8 +287,6 @@ app.post('/api/chat', async (req, res) => {
         const errStr = String(err instanceof Error ? err.message : err);
         if (isTemporaryOverload(errStr)) {
           markModelRateLimited(model);
-        } else {
-          console.warn(`Model ${model} streaming attempt failed:`, errStr.slice(0, 100));
         }
       }
     }
@@ -273,10 +299,13 @@ app.post('/api/chat', async (req, res) => {
     }
   } else {
     for (const model of CANDIDATE_MODELS) {
-      if (isClientDisconnected) break;
+      if (isClientDisconnected || providerAbortController.signal.aborted) break;
       if (isModelCoolingDown(model)) continue;
       const attemptController = new AbortController();
-      const attemptTimeout = setTimeout(() => attemptController.abort(), 20000);
+      const attemptTimeout = setTimeout(() => attemptController.abort(), 4500);
+      const onAbort = () => attemptController.abort();
+      providerAbortController.signal.addEventListener('abort', onAbort, { once: true });
+
       try {
         const response = await clientAi.models.generateContent({
           model,
@@ -292,6 +321,7 @@ app.post('/api/chat', async (req, res) => {
         const generatedText = response.text || '';
         if (generatedText) {
           clearTimeout(attemptTimeout);
+          providerAbortController.signal.removeEventListener('abort', onAbort);
           return res.json({
             text: generatedText,
             model,
@@ -301,11 +331,10 @@ app.post('/api/chat', async (req, res) => {
         const errStr = String(err instanceof Error ? err.message : err);
         if (isTemporaryOverload(errStr)) {
           markModelRateLimited(model);
-        } else {
-          console.warn(`Model ${model} generate attempt failed:`, errStr.slice(0, 100));
         }
       } finally {
         clearTimeout(attemptTimeout);
+        providerAbortController.signal.removeEventListener('abort', onAbort);
       }
     }
 

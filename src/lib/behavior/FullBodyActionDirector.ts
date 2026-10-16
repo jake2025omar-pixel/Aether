@@ -12,7 +12,12 @@ export type FullBodyActionType =
   | 'AFFECTIONATE_REACH'
   | 'SURPRISED_RECOIL'
   | 'CONFIDENT_HIP_REST'
-  | 'EXPLANATORY_GESTURE';
+  | 'EXPLANATORY_GESTURE'
+  | 'CURIOUS_LEAN'
+  | 'EMPATHETIC_COMFORT'
+  | 'SAD_PENSIVE'
+  | 'ANGRY_STANCE'
+  | 'CALM_SETTLE';
 
 export interface ActionJointOffsets {
   leftUpperArm: THREE.Vector3;
@@ -86,7 +91,16 @@ export class FullBodyActionDirector {
     SURPRISED_RECOIL: 16,
     CONFIDENT_HIP_REST: 20,
     EXPLANATORY_GESTURE: 10,
+    CURIOUS_LEAN: 14,
+    EMPATHETIC_COMFORT: 14,
+    SAD_PENSIVE: 16,
+    ANGRY_STANCE: 18,
+    CALM_SETTLE: 12,
   };
+
+  // Autonomous gesture scheduling
+  private timeSinceLastAction = 0;
+  private nextIdleActionDelay = 22.0;
 
   public triggerAction(type: FullBodyActionType, force = false): boolean {
     const now = performance.now() / 1000;
@@ -101,6 +115,7 @@ export class FullBodyActionDirector {
 
     this.currentAction = type;
     this.actionTimer = 0;
+    this.timeSinceLastAction = 0;
 
     switch (type) {
       case 'HEAD_SCRATCH':
@@ -130,6 +145,21 @@ export class FullBodyActionDirector {
       case 'EXPLANATORY_GESTURE':
         this.actionDuration = 3.0;
         break;
+      case 'CURIOUS_LEAN':
+        this.actionDuration = 3.4;
+        break;
+      case 'EMPATHETIC_COMFORT':
+        this.actionDuration = 3.8;
+        break;
+      case 'SAD_PENSIVE':
+        this.actionDuration = 4.0;
+        break;
+      case 'ANGRY_STANCE':
+        this.actionDuration = 3.6;
+        break;
+      case 'CALM_SETTLE':
+        this.actionDuration = 3.0;
+        break;
     }
 
     this.actionHistory.push({ type, timestamp: now });
@@ -154,12 +184,50 @@ export class FullBodyActionDirector {
   public update(
     dt: number,
     time: number,
-    _state: CompanionState,
-    _emotion: CompanionEmotion,
-    _isSpeaking: boolean,
-    _isWalking: boolean
+    state: CompanionState,
+    emotion: CompanionEmotion,
+    isSpeaking: boolean,
+    isWalking: boolean
   ): FullBodyActionSample {
     const frameDelta = Math.min(Math.max(dt, 0), 0.05);
+    this.timeSinceLastAction += frameDelta;
+
+    // Autonomous Action Spontaneous Selection when idle
+    if (!this.currentAction && !isWalking && !isSpeaking && state === 'IDLE') {
+      if (this.timeSinceLastAction >= this.nextIdleActionDelay) {
+        this.timeSinceLastAction = 0;
+        this.nextIdleActionDelay = 22.0 + Math.random() * 25.0;
+
+        // Choose action that fits current emotion naturally
+        if (emotion === 'HAPPY') {
+          this.triggerAction(Math.random() > 0.4 ? 'LAUGH_REACTION' : 'CONFIDENT_HIP_REST');
+        } else if (emotion === 'CURIOUS') {
+          this.triggerAction('CURIOUS_LEAN');
+        } else if (emotion === 'AFFECTIONATE') {
+          this.triggerAction('AFFECTIONATE_REACH');
+        } else if (emotion === 'CONFUSED') {
+          this.triggerAction('HEAD_SCRATCH');
+        } else if (emotion === 'THINKING') {
+          this.triggerAction('THINKING_CONTEMPLATION');
+        } else if (emotion === 'EMPATHETIC') {
+          this.triggerAction('EMPATHETIC_COMFORT');
+        } else if (emotion === 'SAD') {
+          this.triggerAction('SAD_PENSIVE');
+        } else if (emotion === 'SURPRISED') {
+          this.triggerAction('SURPRISED_RECOIL');
+        } else if (emotion === 'GENTLY_ANNOYED') {
+          this.triggerAction('EXPRESSIVE_SHRUG');
+        } else if (emotion === 'ANGRY') {
+          this.triggerAction('ANGRY_STANCE');
+        } else {
+          // Neutral calm, graceful living posture
+          const choices: FullBodyActionType[] = ['CALM_SETTLE', 'CONFIDENT_HIP_REST', 'CURIOUS_LEAN'];
+          const picked = choices[Math.floor(Math.random() * choices.length)];
+          this.triggerAction(picked);
+        }
+      }
+    }
+
     if (this.currentAction) {
       this.actionTimer += frameDelta;
       const progress = Math.min(1.0, this.actionTimer / this.actionDuration);
@@ -226,7 +294,7 @@ export class FullBodyActionDirector {
           head: new THREE.Vector3(0.05 * envelope, 0, 0.04 * envelope),
           torso: new THREE.Vector3(-0.02 * envelope, 0, -0.02 * envelope),
           shoulders: { leftZ: 0, rightZ: 0.08 * envelope },
-          facialStyle: 'PLAYFUL_WINK',
+          facialStyle: 'LAUGHTER_BURST',
         };
       }
 
@@ -374,6 +442,111 @@ export class FullBodyActionDirector {
           head: new THREE.Vector3(0.05 * envelope, -0.06 * envelope, 0),
           torso: new THREE.Vector3(0.03 * envelope, 0, 0),
           shoulders: { leftZ: 0.03 * envelope, rightZ: 0.04 * envelope },
+          facialStyle: 'NATURAL',
+        };
+      }
+
+      case 'CURIOUS_LEAN': {
+        // Inquisitive forward lean, open right hand, curious tilt, left arm steady and relaxed
+        return {
+          ...DEFAULT_OFFSETS,
+          rightUpperArm: new THREE.Vector3(0.28 * envelope, -0.12 * envelope, -0.48 * envelope),
+          rightLowerArm: new THREE.Vector3(0, 0.58 * envelope, 0),
+          rightHand: new THREE.Vector3(0.10 * envelope, 0, 0),
+          rightHandPose: 'OPEN_PALM',
+
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
+          leftHand: new THREE.Vector3(),
+          leftHandPose: 'RELAXED',
+
+          head: new THREE.Vector3(-0.06 * envelope, 0.08 * envelope, -0.10 * envelope),
+          torso: new THREE.Vector3(0.06 * envelope, 0, 0.02 * envelope),
+          shoulders: { leftZ: 0, rightZ: 0.04 * envelope },
+          facialStyle: 'NATURAL',
+        };
+      }
+
+      case 'EMPATHETIC_COMFORT': {
+        // Caring chest touch, gentle lean forward, compassionate expression
+        return {
+          ...DEFAULT_OFFSETS,
+          rightUpperArm: new THREE.Vector3(0.25 * envelope, -0.15 * envelope, -0.38 * envelope),
+          rightLowerArm: new THREE.Vector3(0, 0.72 * envelope, 0),
+          rightHand: new THREE.Vector3(0.12 * envelope, 0, 0),
+          rightHandPose: 'CHEST_HEART',
+
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
+          leftHand: new THREE.Vector3(),
+          leftHandPose: 'RELAXED',
+
+          head: new THREE.Vector3(0.06 * envelope, 0.02 * envelope, 0.06 * envelope),
+          torso: new THREE.Vector3(0.04 * envelope, 0, 0),
+          shoulders: { leftZ: -0.02 * envelope, rightZ: 0.03 * envelope },
+          facialStyle: 'AFFECTIONATE_TENDER',
+        };
+      }
+
+      case 'SAD_PENSIVE': {
+        // Gentle downcast posture, shoulders softening downwards, hands resting softly
+        return {
+          ...DEFAULT_OFFSETS,
+          rightUpperArm: new THREE.Vector3(0.10 * envelope, 0, -0.12 * envelope),
+          rightLowerArm: new THREE.Vector3(0, 0.28 * envelope, 0),
+          rightHand: new THREE.Vector3(0.05 * envelope, 0, 0),
+          rightHandPose: 'RELAXED',
+
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
+          leftHand: new THREE.Vector3(),
+          leftHandPose: 'RELAXED',
+
+          head: new THREE.Vector3(0.12 * envelope, 0, 0.04 * envelope),
+          torso: new THREE.Vector3(0.05 * envelope, 0, 0),
+          shoulders: { leftZ: -0.04 * envelope, rightZ: -0.04 * envelope },
+          facialStyle: 'SLEEPY_DROOP',
+        };
+      }
+
+      case 'ANGRY_STANCE': {
+        // Assertive firm posture, right hand on hip, head high
+        return {
+          ...DEFAULT_OFFSETS,
+          rightUpperArm: new THREE.Vector3(0.18 * envelope, -0.25 * envelope, -0.48 * envelope),
+          rightLowerArm: new THREE.Vector3(0, 0.80 * envelope, 0),
+          rightHand: new THREE.Vector3(0.20 * envelope, 0, 0),
+          rightHandPose: 'HIP_REST',
+
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
+          leftHand: new THREE.Vector3(),
+          leftHandPose: 'RELAXED',
+
+          head: new THREE.Vector3(-0.04 * envelope, 0.04 * envelope, 0),
+          torso: new THREE.Vector3(-0.02 * envelope, 0, -0.02 * envelope),
+          shoulders: { leftZ: 0.03 * envelope, rightZ: 0.06 * envelope },
+          facialStyle: 'POUT_ANNORD',
+        };
+      }
+
+      case 'CALM_SETTLE': {
+        // Peaceful posture reset, hands gracefully relaxed by side
+        return {
+          ...DEFAULT_OFFSETS,
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
+          rightHand: new THREE.Vector3(),
+          rightHandPose: 'RELAXED',
+
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
+          leftHand: new THREE.Vector3(),
+          leftHandPose: 'RELAXED',
+
+          head: new THREE.Vector3(-0.02 * envelope, 0, 0),
+          torso: new THREE.Vector3(0.01 * envelope, 0, 0),
+          shoulders: { leftZ: 0, rightZ: 0 },
           facialStyle: 'NATURAL',
         };
       }

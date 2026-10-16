@@ -50,12 +50,14 @@ export interface LayoutEngineConfig {
   companionCenter?: THREE.Vector3;
   companionSafeRadius?: number;
   carpetElevation?: number;
+  preserveSourceAssets?: boolean;
 }
 
 const DEFAULT_CONFIG: Required<LayoutEngineConfig> = {
   companionCenter: new THREE.Vector3(0, 0, 0),
   companionSafeRadius: 0.85, // Generous full-body animation and gesture radius
   carpetElevation: 0.002,    // Just above the base obsidian floor to prevent z-fighting
+  preserveSourceAssets: false,
 };
 
 /**
@@ -99,7 +101,6 @@ function enhanceExtractedMaterials(object: THREE.Object3D): void {
       const mesh = child as THREE.Mesh;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const mat of mats) {
         if (!mat) continue;
@@ -152,7 +153,6 @@ function computeAggregateBounds(objects: THREE.Object3D[]): THREE.Box3 {
 
 /**
  * FurnitureLayoutEngine
- *
  * Extracts furniture, lighting, and decorative items from Neon World 3 (Noeo_world_3)
  * and organizes them into an intentional, high-end architectural layout within the AetherAI room.
  */
@@ -165,9 +165,13 @@ export class FurnitureLayoutEngine {
     config: LayoutEngineConfig = {}
   ): FurnitureLayoutEngineResult {
     const opts = { ...DEFAULT_CONFIG, ...config };
+
+    if (opts.preserveSourceAssets) {
+      return FurnitureLayoutEngine.inspectAuthoredAssets(sourceScene, opts);
+    }
+
     const furnitureGroup = new THREE.Group();
     furnitureGroup.name = 'AetherInteriorFurnitureLayout';
-
     const items: ExtractedFurnitureAsset[] = [];
     const colliders: THREE.Box3[] = [];
 
@@ -199,13 +203,13 @@ export class FurnitureLayoutEngine {
       carpetClone.position.z -= center.z;
 
       // Target placement: Perfectly grounds the companion stage and conversation zone
-      // Centered at X=0, resting at Y=opts.carpetElevation, Z=-0.35m
       const targetPos = new THREE.Vector3(0, opts.carpetElevation, -0.35);
       carpetAssembly.position.copy(targetPos);
+
       enhanceExtractedMaterials(carpetAssembly);
       furnitureGroup.add(carpetAssembly);
-
       carpetAssembly.updateWorldMatrix(true, true);
+
       const worldBounds = new THREE.Box3().setFromObject(carpetAssembly);
 
       items.push({
@@ -219,7 +223,7 @@ export class FurnitureLayoutEngine {
         position: targetPos.clone(),
         rotation: new THREE.Euler(0, 0, 0),
         supportSurfaceY: opts.carpetElevation,
-        clearanceToCompanion: 0, // Companion stands squarely upon it
+        clearanceToCompanion: 0,
         description: '4.0m x 5.0m plush geometric area rug visually anchoring the companion living suite',
         materialNames: collectMaterialNames(carpetAssembly),
       });
@@ -227,7 +231,6 @@ export class FurnitureLayoutEngine {
 
     // -------------------------------------------------------------------------
     // 2. LUXURY CREDENZA / 4-DOOR CONSOLE (Zone: North Feature Wall Backdrop)
-    // Composite asset assembled from 7 distinct sub-nodes in Neon World 3
     // -------------------------------------------------------------------------
     const credenzaNodeNames = [
       'Drawer Base',
@@ -238,7 +241,6 @@ export class FurnitureLayoutEngine {
       'DrawerDoor3',
       'DrawerDoor4',
     ];
-
     const credenzaClones: THREE.Object3D[] = [];
     for (const nodeName of credenzaNodeNames) {
       const node = findNodeByName(sourceScene, nodeName);
@@ -248,7 +250,6 @@ export class FurnitureLayoutEngine {
     }
 
     if (credenzaClones.length > 0) {
-      // Create temporary parent to calculate combined bounds in original coordinates
       const tempGroup = new THREE.Group();
       for (const clone of credenzaClones) tempGroup.add(clone);
       tempGroup.updateWorldMatrix(true, true);
@@ -260,8 +261,6 @@ export class FurnitureLayoutEngine {
       const credenzaAssembly = new THREE.Group();
       credenzaAssembly.name = 'LuxuryCredenza_Assembly';
 
-      // Move clones into credenzaAssembly offset so assembly pivot is at (0, 0, 0)
-      // with base at Y=0 and center at X=0, Z=0
       for (const clone of credenzaClones) {
         clone.position.x -= center.x;
         clone.position.y -= rawBounds.min.y;
@@ -269,14 +268,13 @@ export class FurnitureLayoutEngine {
         credenzaAssembly.add(clone);
       }
 
-      // Target placement: Executive north feature backdrop
-      // X = 0.0m, Y = 0.0m, Z = -3.20m (Doors face forward toward room)
       const targetPos = new THREE.Vector3(0, 0, -3.20);
       credenzaAssembly.position.copy(targetPos);
+
       enhanceExtractedMaterials(credenzaAssembly);
       furnitureGroup.add(credenzaAssembly);
-
       credenzaAssembly.updateWorldMatrix(true, true);
+
       const worldBounds = new THREE.Box3().setFromObject(credenzaAssembly);
       colliders.push(worldBounds);
 
@@ -315,21 +313,19 @@ export class FurnitureLayoutEngine {
       nsAssembly.name = 'Nightstand_Assembly';
       nsAssembly.add(nsClone);
 
-      // Offset child so base is at Y=0 and center is at X=0, Z=0
       nsClone.position.x -= center.x;
       nsClone.position.y -= rawBounds.min.y;
       nsClone.position.z -= center.z;
 
-      // Target placement: West lounge terrace wing
-      // X = -2.45m, Y = 0.0m, Z = -0.85m, subtle inward angle (22.5 deg)
       const targetPos = new THREE.Vector3(-2.45, 0, -0.85);
       const targetRot = new THREE.Euler(0, Math.PI / 8, 0);
       nsAssembly.position.copy(targetPos);
       nsAssembly.rotation.copy(targetRot);
+
       enhanceExtractedMaterials(nsAssembly);
       furnitureGroup.add(nsAssembly);
-
       nsAssembly.updateWorldMatrix(true, true);
+
       const worldBounds = new THREE.Box3().setFromObject(nsAssembly);
       colliders.push(worldBounds);
 
@@ -357,14 +353,11 @@ export class FurnitureLayoutEngine {
     // -------------------------------------------------------------------------
     const pillow1Root = findNodeByName(sourceScene, 'SimplePillow1_Root') || findNodeByName(sourceScene, 'Pillow');
     const pillow2Root = findNodeByName(sourceScene, 'SimplePillow2_Root') || findNodeByName(sourceScene, 'Pillow.001');
+    const carpetTopY = opts.carpetElevation + 0.012;
 
-    const carpetTopY = opts.carpetElevation + 0.012; // Carpet thickness = 12mm
-
-    // Cushion 1 (West Lounge Cushion)
     if (pillow1Root) {
       const p1Clone = pillow1Root.clone(true);
       p1Clone.updateWorldMatrix(true, true);
-
       const p1Bounds = new THREE.Box3().setFromObject(p1Clone);
       const p1Center = p1Bounds.getCenter(new THREE.Vector3());
       const p1Size = p1Bounds.getSize(new THREE.Vector3());
@@ -373,21 +366,19 @@ export class FurnitureLayoutEngine {
       p1Assembly.name = 'Pillow1_Assembly';
       p1Assembly.add(p1Clone);
 
-      // Center geometry within assembly so bottom is at Y=0
       p1Clone.position.x -= p1Center.x;
       p1Clone.position.y -= p1Bounds.min.y;
       p1Clone.position.z -= p1Center.z;
 
-      // Position flush on top of carpet surface
       const targetPos = new THREE.Vector3(-1.35, carpetTopY, -1.60);
       const targetRot = new THREE.Euler(0.12, 0.45, -0.08);
-
       p1Assembly.position.copy(targetPos);
       p1Assembly.rotation.copy(targetRot);
+
       enhanceExtractedMaterials(p1Assembly);
       furnitureGroup.add(p1Assembly);
-
       p1Assembly.updateWorldMatrix(true, true);
+
       const worldBounds = new THREE.Box3().setFromObject(p1Assembly);
       colliders.push(worldBounds);
 
@@ -410,11 +401,9 @@ export class FurnitureLayoutEngine {
       });
     }
 
-    // Cushion 2 (East Lounge Cushion)
     if (pillow2Root) {
       const p2Clone = pillow2Root.clone(true);
       p2Clone.updateWorldMatrix(true, true);
-
       const p2Bounds = new THREE.Box3().setFromObject(p2Clone);
       const p2Center = p2Bounds.getCenter(new THREE.Vector3());
       const p2Size = p2Bounds.getSize(new THREE.Vector3());
@@ -423,21 +412,19 @@ export class FurnitureLayoutEngine {
       p2Assembly.name = 'Pillow2_Assembly';
       p2Assembly.add(p2Clone);
 
-      // Center geometry within assembly so bottom is at Y=0
       p2Clone.position.x -= p2Center.x;
       p2Clone.position.y -= p2Bounds.min.y;
       p2Clone.position.z -= p2Center.z;
 
-      // Position flush on top of carpet surface
       const targetPos = new THREE.Vector3(1.35, carpetTopY, -1.55);
       const targetRot = new THREE.Euler(-0.09, -0.40, 0.07);
-
       p2Assembly.position.copy(targetPos);
       p2Assembly.rotation.copy(targetRot);
+
       enhanceExtractedMaterials(p2Assembly);
       furnitureGroup.add(p2Assembly);
-
       p2Assembly.updateWorldMatrix(true, true);
+
       const worldBounds = new THREE.Box3().setFromObject(p2Assembly);
       colliders.push(worldBounds);
 
@@ -467,7 +454,6 @@ export class FurnitureLayoutEngine {
     if (ledNode) {
       const ledClone = ledNode.clone(true);
       ledClone.updateWorldMatrix(true, true);
-
       const rawBounds = new THREE.Box3().setFromObject(ledClone);
       const center = rawBounds.getCenter(new THREE.Vector3());
       const size = rawBounds.getSize(new THREE.Vector3());
@@ -480,13 +466,13 @@ export class FurnitureLayoutEngine {
       ledClone.position.y -= rawBounds.min.y;
       ledClone.position.z -= center.z;
 
-      // Target placement: Suspended architectural cove luminaire above credenza
       const targetPos = new THREE.Vector3(0, 2.95, -3.35);
       ledAssembly.position.copy(targetPos);
+
       enhanceExtractedMaterials(ledAssembly);
       furnitureGroup.add(ledAssembly);
-
       ledAssembly.updateWorldMatrix(true, true);
+
       const worldBounds = new THREE.Box3().setFromObject(ledAssembly);
 
       items.push({
@@ -516,8 +502,8 @@ export class FurnitureLayoutEngine {
     if (windowFrameNode || windowGlassNode) {
       const terraceAssembly = new THREE.Group();
       terraceAssembly.name = 'Terrace_Vista_Assembly';
-
       const nodesToAssemble: THREE.Object3D[] = [];
+
       if (windowFrameNode) nodesToAssemble.push(windowFrameNode.clone(true));
       if (windowGlassNode) nodesToAssemble.push(windowGlassNode.clone(true));
       if (curtainFrameNode) nodesToAssemble.push(curtainFrameNode.clone(true));
@@ -533,14 +519,13 @@ export class FurnitureLayoutEngine {
         terraceAssembly.add(node);
       }
 
-      // Positioned on the far west perimeter (X = -3.85m) as a floor-to-ceiling glass terrace
-      // completely clear of the camera orbit path
       const targetPos = new THREE.Vector3(-3.85, 0, -1.35);
       terraceAssembly.position.copy(targetPos);
+
       enhanceExtractedMaterials(terraceAssembly);
       furnitureGroup.add(terraceAssembly);
-
       terraceAssembly.updateWorldMatrix(true, true);
+
       const worldBounds = new THREE.Box3().setFromObject(terraceAssembly);
       colliders.push(worldBounds);
 
@@ -573,6 +558,155 @@ export class FurnitureLayoutEngine {
       items,
       validationReport,
     };
+  }
+
+  /**
+   * Measure the authored Neon World 3 objects in place. This is the production
+   * path: it preserves the source hierarchy/materials, creates no visual clones,
+   * and derives locomotion colliders from the actual furniture bounds.
+   */
+  private static inspectAuthoredAssets(
+    sourceScene: THREE.Object3D,
+    config: Required<LayoutEngineConfig>,
+  ): FurnitureLayoutEngineResult {
+    sourceScene.updateWorldMatrix(true, true);
+
+    const carpet = findNodeByName(sourceScene, 'Carpet');
+    if (carpet) carpet.visible = false;
+
+    const malformedLedCircle = findNodeByName(sourceScene, 'LedCircle_LedCircle_Root')
+      ?? findNodeByName(sourceScene, 'LedCircle');
+    if (malformedLedCircle) malformedLedCircle.visible = false;
+
+    const specs: Array<{
+      id: string;
+      name: string;
+      nodeNames: string[];
+      category: FurnitureCategory;
+      floorStanding?: boolean;
+      solid?: boolean;
+      description: string;
+    }> = [
+      { id: 'bed_primary', name: 'Neon World 3 Bed', nodeNames: ['BoxBed_BoxBed_Root'], category: 'STORAGE', floorStanding: true, solid: true, description: 'Original bed prefab, uniformly scaled and positioned by the measured room layout.' },
+      { id: 'bedside_table', name: 'Original Bedside Table', nodeNames: ['Nightstand'], category: 'SURFACE', floorStanding: true, solid: true, description: 'Original nightstand aligned to the bed with a clear approach gap.' },
+      { id: 'console', name: 'Original Drawer Console', nodeNames: ['Drawer Base', 'DrawerSide1', 'DrawerSide2', 'DrawerDoor1', 'DrawerDoor2', 'DrawerDoor3', 'DrawerDoor4'], category: 'STORAGE', floorStanding: true, solid: true, description: 'Original console assembly retained on its authored wall and measured as one furniture piece.' },
+      { id: 'floor_cushion_west', name: 'Original Floor Cushion', nodeNames: ['SimplePillow1_Root'], category: 'ACCENT', floorStanding: true, description: 'Original soft furnishing resting directly on the continuous wooden floor.' },
+      { id: 'floor_cushion_east', name: 'Original Floor Cushion 2', nodeNames: ['SimplePillow2_Root'], category: 'ACCENT', floorStanding: true, description: 'Original soft furnishing resting directly on the continuous wooden floor.' },
+      { id: 'tv', name: 'Original TV', nodeNames: ['TV_TV_Root'], category: 'ARCHITECTURAL', description: 'Original TV prefab corrected in place and aligned to the console.' },
+      { id: 'wall_clock', name: 'Original Alarm Clock', nodeNames: ['Alarm_Alarm_Root'], category: 'ARCHITECTURAL', description: 'Original clock case aligned with the bedroom composition.' },
+      { id: 'vessel', name: 'Original Console Vessel', nodeNames: ['Vessel_Vessel_Root'], category: 'ACCENT', description: 'Original vase seated on the console without changing its proportions unnecessarily.' },
+      { id: 'window_curtain', name: 'Original Window Curtain', nodeNames: ['Curtain_Curtain_Root'], category: 'ARCHITECTURAL', description: 'Original full-height curtain aligned with the existing window.' },
+      { id: 'window_header', name: 'Original Curtain Header', nodeNames: ['SmallWallCurtain_SmallWallCurtain_Root'], category: 'ARCHITECTURAL', description: 'Original small curtain header seated over the existing window.' },
+    ];
+
+    const items: ExtractedFurnitureAsset[] = [];
+    const colliders: THREE.Box3[] = [];
+    const floorIds = new Set<string>();
+    const solidIds = new Set<string>();
+
+    for (const spec of specs) {
+      const nodes = spec.nodeNames
+        .map((name) => findNodeByName(sourceScene, name))
+        .filter((node): node is THREE.Object3D => node !== null);
+      if (!nodes.length) continue;
+
+      const worldBounds = computeAggregateBounds(nodes);
+      if (worldBounds.isEmpty()) continue;
+
+      const dimensions = worldBounds.getSize(new THREE.Vector3());
+      const position = worldBounds.getCenter(new THREE.Vector3());
+      const dx = Math.max(0, worldBounds.min.x - config.companionCenter.x, config.companionCenter.x - worldBounds.max.x);
+      const dz = Math.max(0, worldBounds.min.z - config.companionCenter.z, config.companionCenter.z - worldBounds.max.z);
+
+      const item: ExtractedFurnitureAsset = {
+        id: spec.id,
+        name: spec.name,
+        category: spec.category,
+        nodeNames: nodes.map((node) => node.name),
+        object: nodes[0],
+        worldBounds,
+        dimensions,
+        position,
+        rotation: nodes[0].rotation.clone(),
+        supportSurfaceY: worldBounds.min.y,
+        clearanceToCompanion: Math.hypot(dx, dz),
+        description: spec.description,
+        materialNames: [...new Set(nodes.flatMap((node) => collectMaterialNames(node)))],
+      };
+
+      items.push(item);
+      if (spec.floorStanding) floorIds.add(spec.id);
+      if (spec.solid) {
+        solidIds.add(spec.id);
+        colliders.push(worldBounds.clone());
+      }
+    }
+
+    const structuralRoot = findNodeByName(sourceScene, 'Base1');
+    const roomBounds = structuralRoot ? new THREE.Box3().setFromObject(structuralRoot) : null;
+    const physicalItems = items.filter((item) => floorIds.has(item.id));
+    const majorSolids = items.filter((item) => solidIds.has(item.id));
+
+    const envelopeErrors: string[] = [];
+    if (roomBounds) {
+      for (const item of items) {
+        const b = item.worldBounds;
+        if (b.min.x < roomBounds.min.x - 0.03 || b.max.x > roomBounds.max.x + 0.03 ||
+            b.min.y < roomBounds.min.y - 0.03 || b.max.y > roomBounds.max.y + 0.03 ||
+            b.min.z < roomBounds.min.z - 0.03 || b.max.z > roomBounds.max.z + 0.03) {
+          envelopeErrors.push(item.name);
+        }
+      }
+    }
+
+    const floorErrors = physicalItems
+      .filter((item) => item.worldBounds.min.y < -0.015 || item.worldBounds.min.y > 0.03)
+      .map((item) => `${item.name} base Y=${item.worldBounds.min.y.toFixed(3)}m`);
+
+    const collisionErrors: string[] = [];
+    let minSeparation = Infinity;
+    for (let i = 0; i < majorSolids.length; i += 1) {
+      for (let j = i + 1; j < majorSolids.length; j += 1) {
+        const a = majorSolids[i].worldBounds;
+        const b = majorSolids[j].worldBounds;
+        if (a.intersectsBox(b)) collisionErrors.push(`${majorSolids[i].name} intersects ${majorSolids[j].name}`);
+        const dx = Math.max(0, a.min.x - b.max.x, b.min.x - a.max.x);
+        const dz = Math.max(0, a.min.z - b.max.z, b.min.z - a.max.z);
+        minSeparation = Math.min(minSeparation, Math.hypot(dx, dz));
+      }
+    }
+
+    const companionClearance = majorSolids.length
+      ? Math.min(...majorSolids.map((item) => item.clearanceToCompanion))
+      : 0;
+
+    const itemCountPassed = majorSolids.length >= 3;
+    const envelopePassed = !roomBounds || envelopeErrors.length === 0;
+    const floorPassed = floorErrors.length === 0 && physicalItems.length >= 3;
+    const collisionsPassed = collisionErrors.length === 0;
+    const clearancePassed = companionClearance >= config.companionSafeRadius;
+
+    const checks: ValidationCheck[] = [
+      { name: 'Measured source furniture', passed: itemCountPassed, details: `Measured ${majorSolids.length} original solid furniture items; no furniture is cloned or replaced.` },
+      { name: 'Room envelope', passed: envelopePassed, details: envelopePassed ? 'Measured furniture remains within the authored room bounds.' : `Items outside the room bounds: ${envelopeErrors.join(', ')}.` },
+      { name: 'Wood-floor contact', passed: floorPassed, details: floorPassed ? 'Floor-standing furniture and cushions contact the continuous wood floor.' : `Floor alignment issues: ${floorErrors.join('; ') || 'required floor-standing assets are missing'}.` },
+      { name: 'Major furniture clearance', passed: collisionsPassed, details: collisionsPassed ? 'Bed, bedside table, and console bounds do not intersect.' : `Intersections: ${collisionErrors.join('; ')}.` },
+      { name: 'Companion circulation', passed: clearancePassed, details: `Nearest measured furniture clearance from the companion origin: ${companionClearance.toFixed(2)}m (target ${config.companionSafeRadius.toFixed(2)}m).` },
+    ];
+
+    const validationReport: PlacementValidationReport = {
+      passed: checks.every((check) => check.passed),
+      checks,
+      itemCount: items.length,
+      companionClearanceMeters: companionClearance,
+      minInterObjectSeparationMeters: minSeparation === Infinity ? 0 : minSeparation,
+    };
+
+    const furnitureGroup = new THREE.Group();
+    furnitureGroup.name = 'AetherAuthoredFurnitureMeasurements';
+    furnitureGroup.userData.sourceAssetsPreserved = true;
+
+    return { success: validationReport.passed, furnitureGroup, colliders, items, validationReport };
   }
 
   /**
@@ -623,6 +757,7 @@ export class FurnitureLayoutEngine {
     let interCollisionPassed = true;
     let minSeparation = Infinity;
     const collisionErrors: string[] = [];
+
     const solidItems = items.filter(
       (it) => it.category === 'STORAGE' || it.category === 'SURFACE' || it.category === 'ACCENT'
     );
@@ -635,7 +770,6 @@ export class FurnitureLayoutEngine {
           interCollisionPassed = false;
           collisionErrors.push(`${solidItems[i].name} collides with ${solidItems[j].name}`);
         } else {
-          // Compute rough minimum distance
           const dist = Math.hypot(
             Math.max(0, Math.max(a.min.x - b.max.x, b.min.x - a.max.x)),
             Math.max(0, Math.max(a.min.z - b.max.z, b.min.z - a.max.z))
@@ -661,7 +795,6 @@ export class FurnitureLayoutEngine {
       if (item.category === 'RUG') continue; // Companion stands on rug
       const clearance = item.clearanceToCompanion;
       if (clearance < minCompanionClearance) minCompanionClearance = clearance;
-
       if (clearance < config.companionSafeRadius) {
         clearancePassed = false;
         clearanceErrors.push(
@@ -669,7 +802,6 @@ export class FurnitureLayoutEngine {
         );
       }
     }
-
     checks.push({
       name: 'Companion Animation & Interaction Clearance',
       passed: clearancePassed,
@@ -679,7 +811,6 @@ export class FurnitureLayoutEngine {
     });
 
     // 5. Camera Line-of-Sight & Silhouette Verification
-    // Verify that front camera view at (0, 1.25, 2.7) has zero tall furniture in front
     let cameraViewPassed = true;
     for (const item of items) {
       if (item.category === 'STORAGE' && item.position.z > 0.5) {
@@ -718,7 +849,6 @@ export class FurnitureLayoutEngine {
       new THREE.Vector3(point.x - radius, point.y, point.z - radius),
       new THREE.Vector3(point.x + radius, point.y + 1.8, point.z + radius)
     );
-
     for (const col of colliders) {
       if (col.intersectsBox(pointBox)) {
         return true;

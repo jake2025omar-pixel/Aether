@@ -1,6 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CompanionRig } from './CompanionRig';
+import { applyNeonWorld3SpatialLayout } from './neonWorld3Layout';
+import { createDigitalClockDisplay } from './digitalClockDisplay';
 import { CompanionState, CompanionEmotion, COMPANION_DISPLAY_NAME } from '../../lib/companionPersonality';
 import { dispose3DResource, loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
 import { FurnitureLayoutEngine } from '../../lib/environment/FurnitureLayoutEngine';
@@ -70,7 +72,6 @@ function enhanceVRMTextures(root: THREE.Object3D, maxAnisotropy: number): void {
       const mesh = obj as THREE.Mesh;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const mat of materials) {
         if (!mat) continue;
@@ -108,13 +109,14 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   const companionRigRef = useRef<CompanionRig | null>(null);
   const floorGlowRef = useRef<THREE.PointLight | null>(null);
   const animFrameIdRef = useRef<number | null>(null);
+
   const stateRef = useRef(companionState);
   const emotionRef = useRef(companionEmotion);
   const visemeRef = useRef(visemeMouthOpen);
   const motionEnabledRef = useRef(true);
   const targetLookPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.25, 2.7));
-
-
+  const interactionClickRef = useRef<((clientX: number, clientY: number) => boolean) | null>(null);
+  const hasDraggedRef = useRef(false);
 
   stateRef.current = companionState;
   emotionRef.current = companionEmotion;
@@ -220,7 +222,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     const portraitViewport = height > width * 1.08;
     const initialCameraDistance = portraitViewport ? 2.28 : 2.7;
     const initialFocusY = portraitViewport ? 1.38 : 1.25;
-    const camera = new THREE.PerspectiveCamera(portraitViewport ? 42 : 46, width / height, 0.1, 100);
+
+    const camera = new THREE.PerspectiveCamera(portraitViewport ? 78 : 74, width / height, 0.1, 100);
     camera.position.set(0, initialFocusY, initialCameraDistance);
     camera.lookAt(0, initialFocusY, 0);
     cameraRef.current = camera;
@@ -303,6 +306,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     const particlePositions = new Float32Array(particleCount * 3);
     const particleBaseY = new Float32Array(particleCount);
     const particleSpeeds = new Float32Array(particleCount);
+
     for (let i = 0; i < particleCount; i++) {
       particlePositions[i * 3] = (Math.random() - 0.5) * 8.0;
       particlePositions[i * 3 + 1] = 0.2 + Math.random() * 2.8;
@@ -310,6 +314,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 5.5 - 0.4;
       particleSpeeds[i] = 0.3 + Math.random() * 0.7;
     }
+
     particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
     const particleTexture = createParticleTexture();
     const particleMat = new THREE.PointsMaterial({
@@ -322,17 +327,33 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     });
     const particles = new THREE.Points(particleGeo, particleMat);
     roomGroup.add(particles);
-
     scene.add(roomGroup);
 
     // 6. Architectural Furniture Extraction & Spatial Layout Engine
-    // Extracts authentic furniture and decorative assets from Neon World 3 (Noeo_world_3),
-    // organizing them within the boundless AetherAI room with millimeter floor contact,
-    // intentional architectural zoning, and active obstacle colliders for companion locomotion.
     let isCancelled = false;
     const roomLoadController = new AbortController();
     const companionLoadController = new AbortController();
     const furnitureColliders: THREE.Box3[] = [];
+    let wallClockInterval: number | null = null;
+    let bedInteractionMeshes: THREE.Object3D[] = [];
+    let bedApproachPoint: THREE.Vector3 | null = null;
+    let bedCenterPoint: THREE.Vector3 | null = null;
+    let bedCollisionBox: THREE.Box3 | null = null;
+    let roomMovementBounds: THREE.Box3 | null = null;
+    let movementObstacleBoxes: THREE.Box3[] = [];
+    let bedMarker: THREE.Mesh | null = null;
+
+    const bedRaycaster = new THREE.Raycaster();
+    const bedPointer = new THREE.Vector2();
+
+    const isPointerOverBed = (clientX: number, clientY: number): boolean => {
+      if (!bedInteractionMeshes.length) return false;
+      const rect = renderer.domElement.getBoundingClientRect();
+      if (!rect.width || !rect.height) return false;
+      bedPointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+      bedRaycaster.setFromCamera(bedPointer, camera);
+      return bedRaycaster.intersectObjects(bedInteractionMeshes, true).length > 0;
+    };
 
     if (roomModelUrl) {
       loadWeb3DAsset(roomModelUrl, false, roomLoadController.signal).then((res) => {
@@ -341,43 +362,137 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           return;
         }
         if (!res.success || !res.scene) {
-          console.warn('[Room3D] Neon room load failed, keeping procedural room:', res.error);
           return;
         }
 
-        // Run Furniture Layout Engine
+        // Fit the authored shell to a human-scale room while preserving every
+        // source furniture hierarchy and its proportions.
+        const originalBounds = new THREE.Box3().setFromObject(res.scene);
+        const originalSize = originalBounds.getSize(new THREE.Vector3());
+        const roomScale = originalSize.y > 0 ? Math.min(1, 3.8 / originalSize.y) : 1;
+        res.scene.scale.setScalar(roomScale);
+        res.scene.position.y += -originalBounds.min.y * roomScale;
+
+        applyNeonWorld3SpatialLayout(res.scene);
+        res.scene.updateMatrixWorld(true);
+
+        // Render the original wall-clock face with a crisp, live seven-segment display.
+        const alarmCase = res.scene.getObjectByName('Alarm');
+        if (alarmCase) {
+          const alarmBounds = new THREE.Box3().setFromObject(alarmCase);
+          const alarmSize = alarmBounds.getSize(new THREE.Vector3());
+          const alarmCenter = alarmBounds.getCenter(new THREE.Vector3());
+          if (alarmSize.x > 0 && alarmSize.y > 0) {
+            const display = createDigitalClockDisplay(alarmSize.x / roomScale, alarmSize.y / roomScale);
+            display.group.position.copy(res.scene.worldToLocal(new THREE.Vector3(
+              alarmCenter.x, alarmCenter.y, alarmBounds.max.z + 0.003,
+            )));
+            display.group.quaternion.copy(res.scene.getWorldQuaternion(new THREE.Quaternion()).invert());
+            res.scene.add(display.group);
+            display.update();
+            wallClockInterval = window.setInterval(display.update, 60_000);
+          }
+        }
+
+        // FurnitureLayoutEngine measures the original assets in place and derives colliders
         const layoutResult = FurnitureLayoutEngine.extractAndOrganize(res.scene, {
           companionCenter: new THREE.Vector3(0, 0, 0),
-          companionSafeRadius: 0.85,
-          carpetElevation: 0.002,
+          companionSafeRadius: 0.42,
+          preserveSourceAssets: true,
         });
 
-        // Keep the authored architectural shell visible. Hide only the source
-        // furniture after extraction; doing this earlier would make the clones
-        // produced by FurnitureLayoutEngine inherit visible=false.
-        const sourceFurnitureNames = new Set([
-          'Carpet', 'Drawer Base', 'DrawerSide1', 'DrawerSide2',
-          'DrawerDoor1', 'DrawerDoor2', 'DrawerDoor3', 'DrawerDoor4',
-          'Nightstand', 'Pillow', 'Pillow.001',
-          'SimplePillow1_Root', 'SimplePillow2_Root',
-        ]);
         res.scene.traverse((node) => {
-          if (sourceFurnitureNames.has(node.name)) node.visible = false;
           if ((node as THREE.Mesh).isMesh) {
             const mesh = node as THREE.Mesh;
             mesh.castShadow = true;
             mesh.receiveShadow = true;
+            const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            for (const material of materials) {
+              material.side = THREE.DoubleSide;
+              if (material instanceof THREE.MeshStandardMaterial && material.name.toLowerCase().includes('led')) {
+                material.emissive.set(0x22d3ee);
+                material.emissiveIntensity = Math.min(Math.max(material.emissiveIntensity, 1.2), 1.8);
+              }
+              material.needsUpdate = true;
+            }
           }
         });
-        // Neon World contains its own authored floor/base surfaces. Once the
-        // room loads, hide the large fallback plane so the two coplanar floors
-        // cannot z-fight and produce diagonal seams or black patches.
+
+        // Hide the fallback floor plane so the authored wood floor shows seamlessly
         floor.visible = false;
         scene.add(res.scene);
-
-        // Add extracted furniture into room
-        scene.add(layoutResult.furnitureGroup);
+        res.scene.updateMatrixWorld(true);
         furnitureColliders.push(...layoutResult.colliders);
+
+        // Bed interaction point
+        const bedRoot = res.scene.getObjectByName('BoxBed_BoxBed_Root');
+        roomMovementBounds = res.scene.getObjectByName('Base1')
+          ? new THREE.Box3().setFromObject(res.scene.getObjectByName('Base1')!)
+          : new THREE.Box3().setFromObject(res.scene);
+        movementObstacleBoxes = furnitureColliders.map((bounds) => bounds.clone());
+
+        if (bedRoot) {
+          bedCollisionBox = new THREE.Box3().setFromObject(bedRoot);
+          bedCenterPoint = bedCollisionBox.getCenter(new THREE.Vector3());
+          const bedSize = bedCollisionBox.getSize(new THREE.Vector3());
+          const towardRoomCenter = new THREE.Vector3(-bedCenterPoint.x, 0, -bedCenterPoint.z);
+          if (towardRoomCenter.lengthSq() < 0.01) towardRoomCenter.set(0, 0, 1);
+          towardRoomCenter.normalize();
+          const projectedHalfExtent = Math.abs(towardRoomCenter.x) * bedSize.x * 0.5 + Math.abs(towardRoomCenter.z) * bedSize.z * 0.5;
+          bedApproachPoint = bedCenterPoint.clone().addScaledVector(towardRoomCenter, projectedHalfExtent + 0.42);
+          bedApproachPoint.y = 0;
+          bedRoot.userData.interactionPoint = {
+            id: 'bed-rest-approach', type: 'approach',
+            target: bedApproachPoint.toArray(), face: bedCenterPoint.toArray(),
+          };
+          const hitTargetHeight = Math.min(0.22, Math.max(0.12, bedSize.y * 0.25));
+          const bedHitTarget = new THREE.Mesh(
+            new THREE.BoxGeometry(bedSize.x * 0.98, hitTargetHeight, bedSize.z * 0.98),
+            new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0, colorWrite: false, depthWrite: false, side: THREE.DoubleSide }),
+          );
+          bedHitTarget.name = 'InteractionTarget_BedSurface';
+          bedHitTarget.position.set(bedCenterPoint.x, bedCollisionBox.max.y - hitTargetHeight / 2 - 0.005, bedCenterPoint.z);
+          bedHitTarget.userData.interactionPoint = bedRoot.userData.interactionPoint;
+          scene.add(bedHitTarget);
+          bedInteractionMeshes = [bedHitTarget];
+
+          bedMarker = new THREE.Mesh(
+            new THREE.RingGeometry(0.12, 0.16, 28),
+            new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide }),
+          );
+          bedMarker.name = 'InteractionPoint_BedApproach';
+          bedMarker.rotation.x = -Math.PI / 2;
+          bedMarker.position.copy(bedApproachPoint);
+          bedMarker.position.y += 0.008;
+          bedMarker.visible = false;
+          bedMarker.userData.interactionPoint = bedRoot.userData.interactionPoint;
+          scene.add(bedMarker);
+        }
+
+        interactionClickRef.current = (clientX, clientY) => {
+          if (!bedApproachPoint || !bedCenterPoint || !bedCollisionBox || !roomMovementBounds) return false;
+          if (!isPointerOverBed(clientX, clientY)) return false;
+          const rig = companionRigRef.current;
+          if (!rig) return true;
+          const from = rig.root.position.clone();
+          from.y = 0;
+          const to = bedApproachPoint!.clone();
+          const insideRoom = to.x >= roomMovementBounds!.min.x + 0.25 && to.x <= roomMovementBounds!.max.x - 0.25 &&
+            to.z >= roomMovementBounds!.min.z + 0.25 && to.z <= roomMovementBounds!.max.z - 0.25;
+          const obstacles = movementObstacleBoxes.map((bounds) => bounds.clone().expandByVector(new THREE.Vector3(0.28, 0.18, 0.28)));
+          let pathBlocked = false;
+          for (let step = 1; step < 24; step += 1) {
+            const point = from.clone().lerp(to, step / 24);
+            if (obstacles.some((obstacle) => obstacle.containsPoint(point))) { pathBlocked = true; break; }
+          }
+          if (!insideRoom || pathBlocked) {
+            return true;
+          }
+          const faceYaw = Math.atan2(bedCenterPoint!.x - to.x, bedCenterPoint!.z - to.z);
+          rig.navigateTo(to, faceYaw);
+          if (bedMarker) bedMarker.visible = true;
+          return true;
+        };
 
         // Feed collision barriers to companion rig if already mounted
         if (companionRigRef.current) {
@@ -385,14 +500,20 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         }
 
         // Adjust studio ambiance for authentic high-end penthouse interior
-        ambientLight.color.setHex(0x203246);
-        ambientLight.intensity = 0.78;
-        keyLight.intensity = 1.9;
-        fillLight.intensity = 0.62;
-        rimLight.intensity = 0.82;
-        renderer.toneMappingExposure = 0.92;
-      }).catch((err: unknown) => {
-        if (!isCancelled) console.warn('[Room3D] Neon room load exception, keeping procedural room:', err);
+        ambientLight.color.setHex(0x766e63);
+        ambientLight.intensity = 0.9;
+        keyLight.intensity = 1.35;
+        fillLight.intensity = 0.42;
+        rimLight.intensity = 0.52;
+        renderer.toneMappingExposure = 1.02;
+
+        const cyanBounce = new THREE.PointLight(0x22d3ee, 0.48, 5.5, 2);
+        cyanBounce.position.set(-2.6, 1.8, -1.4);
+        const violetBounce = new THREE.PointLight(0xa855f7, 0.24, 5.5, 2);
+        violetBounce.position.set(2.4, 1.7, -1.2);
+        scene.add(cyanBounce, violetBounce);
+      }).catch(() => {
+        // Procedural room fallback
       });
     }
 
@@ -419,7 +540,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           return;
         }
         if (!res.success || !res.vrm) {
-          console.warn('[Room3D] Companion load failed, using procedural rig:', res.error);
           mountFallbackRig();
           return;
         }
@@ -438,18 +558,14 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         rig.setViseme(visemeRef.current);
         rig.setState(stateRef.current);
         rig.setMotionEnabled(motionEnabledRef.current);
-      }).catch((err) => {
-        console.warn('[Room3D] Companion model load exception:', err);
+      }).catch(() => {
         mountFallbackRig();
       });
     } else {
       mountFallbackRig();
     }
 
-    // 8. Interactive 360° companion camera with ultra-smooth cinematic physics.
-    // Centered directly on the companion at (0, 1.25, 0).
-    // Drag horizontally to orbit around companion; drag vertically to tilt.
-    // Pinch and mouse wheel zoom smoothly.
+    // 8. Interactive 360° companion camera with ultra-smooth cinematic physics
     const MIN_DISTANCE = 1.1;
     const MAX_DISTANCE = 5.2;
     let currentCamDist = initialCameraDistance;
@@ -466,9 +582,9 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     let lastPointerY = 0;
     let lastTouchX = 0;
     let lastTouchY = 0;
+
     const currentRoomFocus = new THREE.Vector3(0.0, initialFocusY, 0.0);
     const targetRoomFocus = new THREE.Vector3(0.0, initialFocusY, 0.0);
-
     const ROTATION_SENSITIVITY_MOUSE = 0.0032;
     const ROTATION_SENSITIVITY_TOUCH = 0.0038;
 
@@ -478,6 +594,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     let pinchStartCamDist = initialCameraDistance;
 
     const handleTouchStart = (e: TouchEvent) => {
+      hasDraggedRef.current = false;
       if (e.touches.length === 2) {
         isPinching = true;
         initialPinchDist = Math.hypot(
@@ -514,6 +631,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         const t = e.touches[0];
         const dx = (t.clientX - lastTouchX) * ROTATION_SENSITIVITY_TOUCH;
         const dy = (t.clientY - lastTouchY) * ROTATION_SENSITIVITY_TOUCH;
+        if (Math.abs(dx) + Math.abs(dy) > 0.012) hasDraggedRef.current = true;
         targetYaw -= dx;
         targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.42, 0.45);
 
@@ -522,7 +640,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         const instPitchVel = dy / dt;
         yawVelocity = yawVelocity * 0.35 + instYawVel * 0.65;
         pitchVelocity = pitchVelocity * 0.35 + instPitchVel * 0.65;
-
         lastTouchX = t.clientX;
         lastTouchY = t.clientY;
       }
@@ -539,7 +656,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       }
     };
 
-    // Desktop Mouse Wheel Zoom with ultra-smooth delta
+    // Desktop Mouse Wheel Zoom
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       const zoomStep = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY) * 0.002, 0.32);
@@ -548,6 +665,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     const handlePointerDown = (e: PointerEvent) => {
       if (e.pointerType === 'touch') return;
+      hasDraggedRef.current = false;
       isOrbiting = true;
       lastPointerX = e.clientX;
       lastPointerY = e.clientY;
@@ -562,9 +680,9 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       const now = performance.now();
       const dt = Math.max((now - lastMoveTime) / 1000, 0.008);
       lastMoveTime = now;
-
       const dx = (e.clientX - lastPointerX) * ROTATION_SENSITIVITY_MOUSE;
       const dy = (e.clientY - lastPointerY) * ROTATION_SENSITIVITY_MOUSE;
+      if (Math.abs(dx) + Math.abs(dy) > 0.012) hasDraggedRef.current = true;
       targetYaw -= dx;
       targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.42, 0.45);
 
@@ -572,7 +690,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       const instPitchVel = dy / dt;
       yawVelocity = yawVelocity * 0.35 + instYawVel * 0.65;
       pitchVelocity = pitchVelocity * 0.35 + instPitchVel * 0.65;
-
       lastPointerX = e.clientX;
       lastPointerY = e.clientY;
     };
@@ -595,6 +712,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     // 9. Animation Loop
     const clock = new THREE.Clock();
     let wasMotionEnabled = true;
+
     const animate = () => {
       animFrameIdRef.current = requestAnimationFrame(animate);
       const delta = Math.min(clock.getDelta(), 0.1);
@@ -609,7 +727,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         } else {
           yawVelocity = 0;
         }
-
         if (Math.abs(pitchVelocity) > 0.0001) {
           targetPitch = THREE.MathUtils.clamp(targetPitch + pitchVelocity * delta, -0.42, 0.45);
           pitchVelocity *= Math.pow(0.91, delta * 60);
@@ -618,7 +735,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         }
       }
 
-      // Infinitesimal organic idle breathing sway when camera is resting
+      // Organic idle breathing sway when camera is resting
       const idleSway = motionEnabled && !isOrbiting && Math.abs(yawVelocity) < 0.02
         ? Math.sin(elapsed * 0.4) * 0.006
         : 0;
@@ -639,7 +756,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       camera.position.y = currentRoomFocus.y + sinPitch * currentCamDist;
       camera.position.z = currentRoomFocus.z + Math.cos(currentYaw) * cosPitch * currentCamDist;
       camera.lookAt(currentRoomFocus);
-
       targetLookPosRef.current.copy(camera.position);
 
       // Update Companion Rig (Idle Breathing, Blinking, Visemes, Look-At, Locomotion)
@@ -650,12 +766,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         targetRoomFocus.y = initialFocusY;
       }
 
-      // Atmospheric floor light pulse
-      if (floorGlowRef.current) {
-        floorGlowRef.current.intensity = motionEnabled ? 2.0 + Math.sin(elapsed * 2.2) * 0.4 : 2.0;
-      }
-
-      // Keep atmospheric particles still for reduced-motion preferences.
+      // Keep atmospheric particles still for reduced-motion preferences
       if (roomGroup.parent === scene && (motionEnabled || wasMotionEnabled)) {
         const positions = particleGeo.attributes.position as THREE.BufferAttribute;
         for (let i = 0; i < particleCount; i++) {
@@ -670,19 +781,16 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
       renderer.render(scene, camera);
     };
+
     animate();
 
-    // 10. Robust Resize Handling (Immune to Mobile, iPad, and PC Virtual Keyboard Squashing)
+    // 10. Robust Resize Handling
     let prevWidth = width;
     let prevHeight = height;
 
     const handleResize = (w: number, h: number) => {
       if (w <= 0 || h <= 0 || !cameraRef.current || !rendererRef.current) return;
 
-      // Detect if this resize is an on-screen keyboard opening/closing
-      // (On Mobile, iPad, or Laptop/PC touch keyboard):
-      // - Width remains virtually constant (|w - prevWidth| < 20).
-      // - Height drops significantly or restores while an input is focused or visualViewport is shrunk.
       const isInputActive =
         document.activeElement?.tagName === 'INPUT' ||
         document.activeElement?.tagName === 'TEXTAREA';
@@ -698,15 +806,11 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         (isInputActive || isHeightDrop || isVisualViewportReduced || isHeightRestore);
 
       if (isKeyboardEvent) {
-        // DO NOT RESIZE THE 3D CANVAS OR CAMERA!
-        // The 3D room and companion must remain 100% full-sized, pristine, and uncompressed.
         return;
       }
 
-      // Genuine window resize (desktop window resize or device orientation rotation)
       prevWidth = w;
       prevHeight = h;
-
       cameraRef.current.aspect = w / h;
       cameraRef.current.updateProjectionMatrix();
       rendererRef.current.setSize(w, h);
@@ -728,8 +832,19 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     return () => {
       isCancelled = true;
+      interactionClickRef.current = null;
+      bedInteractionMeshes = [];
+      bedApproachPoint = null;
+      bedCenterPoint = null;
+      bedCollisionBox = null;
+      roomMovementBounds = null;
+      movementObstacleBoxes = [];
+      bedMarker = null;
+
+      if (wallClockInterval !== null) window.clearInterval(wallClockInterval);
       roomLoadController.abort();
       companionLoadController.abort();
+
       container.removeEventListener('wheel', handleWheel);
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
@@ -750,7 +865,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       }
 
       dispose3DResource(scene);
-
       if (renderer.domElement && container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
@@ -799,7 +913,14 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       {/* 3D WebGL Canvas */}
       <div
         ref={containerRef}
-        onClick={onCompanionClick}
+        onClick={(event) => {
+          if (hasDraggedRef.current) {
+            hasDraggedRef.current = false;
+            return;
+          }
+          if (interactionClickRef.current?.(event.clientX, event.clientY)) return;
+          onCompanionClick?.();
+        }}
         className="fixed inset-0 w-full h-full cursor-pointer"
       />
 
@@ -813,7 +934,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
             {COMPANION_DISPLAY_NAME}
           </span>
           <span className="text-[10px] opacity-60 font-mono tracking-wider uppercase">
-            • {companionState}
+            {companionState}
           </span>
           {companionEmotion !== 'NEUTRAL' && (
             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-white/10 text-purple-200">

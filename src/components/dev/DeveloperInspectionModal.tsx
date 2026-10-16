@@ -33,6 +33,11 @@ const FULL_BODY_ACTIONS: { id: FullBodyActionType; label: string; desc: string }
   { id: 'SURPRISED_RECOIL', label: 'Surprise Recoil', desc: 'Torso recoils back, hands to chest, eyes widen in shock' },
   { id: 'CONFIDENT_HIP_REST', label: 'Confident Hip Rest', desc: 'Hand rests on hip, contrapposto tilt, playful smirk' },
   { id: 'EXPLANATORY_GESTURE', label: 'Explanatory Point', desc: 'Pointing phrase emphasis with cadence head accent' },
+  { id: 'CURIOUS_LEAN', label: 'Curious Lean', desc: 'Inquisitive forward lean with open hand and head tilt' },
+  { id: 'EMPATHETIC_COMFORT', label: 'Empathetic Comfort', desc: 'Warm chest touch with soft forward compassionate posture' },
+  { id: 'SAD_PENSIVE', label: 'Pensive Sadness', desc: 'Gentle downcast head tilt and soft lowered shoulders' },
+  { id: 'ANGRY_STANCE', label: 'Assertive Stance', desc: 'Firm confident stance with hands squared and direct gaze' },
+  { id: 'CALM_SETTLE', label: 'Calm Settle', desc: 'Peaceful posture reset with arms relaxed gracefully' },
 ];
 
 const ANIME_FACIAL_STYLES: { id: AnimeExpressionStyle; label: string; tag: string }[] = [
@@ -180,7 +185,7 @@ export const DeveloperInspectionModal: React.FC<DeveloperInspectionModalProps> =
         {activeTab === 'performance' && (
           <div className="flex-1 overflow-y-auto space-y-4 text-xs pr-1">
             {/* Telemetry Summary Banner */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 font-mono text-[11px]">
               <div className="p-2.5 rounded-xl bg-purple-950/30 border border-purple-500/20">
                 <span className="text-purple-300/60 block text-[10px]">SKELETON BONES</span>
                 <span className="text-white font-semibold">54 Humanoid Bones</span>
@@ -195,7 +200,11 @@ export const DeveloperInspectionModal: React.FC<DeveloperInspectionModalProps> =
               </div>
               <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/20">
                 <span className="text-emerald-300/60 block text-[10px]">SPEECH VISEMES</span>
-                <span className="text-white font-semibold">5 Japanese Vowels (A,I,U,E,O)</span>
+                <span className="text-white font-semibold">5 Japanese Vowels</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/20">
+                <span className="text-amber-300/60 block text-[10px]">VOICE ENGINE</span>
+                <span className="text-white font-semibold truncate">Gemini 3 TTS (Kore)</span>
               </div>
             </div>
 

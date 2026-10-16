@@ -1,0 +1,21 @@
+# Verified Gemini TTS / privacy facts (2026-10-13)
+
+- Google Speech Generation docs: https://ai.google.dev/gemini-api/docs/speech-generation
+  - Gemini 3.8 Flash TTS model ID: `gemini-3.8-flash-tts`; Interactions REST endpoint `/v1beta/interactions`.
+  - Request shape uses `input[].content[].annotations[{type:"speech_metadata",style:...}]`, `response_format:{type:"audio"}`, and `generation_config.speech_config:[{voice:...}]`.
+  - REST responses carry base64 audio in `steps[].content[].data` (model_output/audio); docs also describe SDK `output_audio` convenience data.
+  - Default unary output is WAV (`audio/wav`); model auto-detects language; supported list includes Standard Arabic (Arabic script) and Egyptian Arabic.
+  - Achernar is a prebuilt voice characterized as Soft.
+- Model card: https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-tts
+  - Confirms model is available/stable, supports 130+ languages, and model code exactly `gemini-3.8-flash-tts`.
+- Pricing: https://ai.google.dev/gemini-api/docs/pricing
+  - Current official Standard pricing lists free-tier input/output as free of charge; free-tier content may be used to improve Google products.
+  - Paid Standard TTS: input $0.50/1M text tokens and output $9/1M audio tokens through 2026-12-31, equivalent to $0.00225 per 10s audio; from 2027-01-01 it lists $1/$18 per 1M and $0.0045 per 10s. Paid tier says content is not used to improve products.
+- Interactions API overview: https://ai.google.dev/gemini-api/docs/interactions-overview
+  - Interactions are stored by default; stateless calls opt out with `store:false`. Updated `server/geminiTts.ts` accordingly.
+- Chat model card: https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash
+  - Confirms stable model ID `gemini-3.8-flash`, accepts text and outputs text; chat route uses this ID.
+- The project currently has no `GEMINI_API_KEY` in the Sandbox environment, so the real upstream models and audio output have not been called in this session. Local API routes return fallback safely when a consenting request reaches the missing-key check.
+- Chat pricing from the same official pricing page: https://ai.google.dev/gemini-api/docs/pricing
+  - Gemini 3.8 Flash Standard: free tier input/output listed as free of charge; free-tier content may be used to improve Google products.
+  - Paid Standard: $0.75/1M input tokens and $3.75/1M output tokens through 2026-12-31; $1.50/$7.50 from 2027-01-01. Paid-tier content is not used to improve Google products.
