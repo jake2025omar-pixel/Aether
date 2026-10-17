@@ -739,12 +739,12 @@ export class CompanionRig {
     }
 
     // 5. Procedural Humanoid Rig Animation Fallback
+    // The fallback mouth mesh has no authored facial rig. Scaling it during
+    // speech changes its local silhouette and can make the lips appear to
+    // leave their anchor. Keep it static; the real VRM path owns lip sync via
+    // anchored expression Blend Shapes above.
     if (this.mouthMesh) {
-      this.mouthMesh.scale.set(
-        1 + this.displayedViseme * 0.2 + frame.micro.mouthMicroTwitch,
-        1 + this.displayedViseme * 1.2,
-        1
-      );
+      this.mouthMesh.scale.set(1, 1, 1);
     }
     if (this.chestBone) {
       this.chestBone.position.y = 0.22 + (frame.respiration.chestExpansion * 2.5 + this.animationFrame.torso.shoulderLift * 0.12) * motion;

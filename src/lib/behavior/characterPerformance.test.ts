@@ -170,14 +170,17 @@ console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
 {
   const facial = new FacialPerformanceEngine();
 
-  // Test active speech aperture with multi-vowel modulation
+  // Test active speech aperture is owned by the measured viseme envelope
   const speechFrame = facial.update(0.05, 1.2, 'HAPPY', 0.8, 'SPEAKING', 0.65, 0, 0);
 
-  // Verify multiple vowel channels active
+  // Verify anchored speech channels are active and unrelated emotional mouth
+  // shapes cannot stack with them (the former source of mouth drift).
   assert.ok(speechFrame.vrmPresets.aa > 0, 'aa viseme must participate in speech');
   assert.ok(speechFrame.vrmPresets.ih >= 0, 'ih viseme must participate in speech');
   assert.ok(speechFrame.vrmPresets.oh >= 0, 'oh viseme must participate in speech');
   assert.ok(speechFrame.directMorphs.Fcl_MTH_A > 0, 'Fcl_MTH_A direct morph must be active');
+  assert.equal(speechFrame.directMorphs.Fcl_MTH_Joy, 0, 'emotion mouth joy must not fight speech');
+  assert.equal(speechFrame.directMorphs.Fcl_MTH_Fun, 0, 'emotion mouth fun must not fight speech');
 
   // Verify clean closure when speech stops
   let restingFrame = facial.update(0.05, 2.0, 'HAPPY', 0.8, 'IDLE', 0, 0, 0);

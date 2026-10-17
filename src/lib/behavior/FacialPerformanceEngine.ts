@@ -333,7 +333,26 @@ export class FacialPerformanceEngine {
         break;
     }
 
-    // 3. Multi-Vowel Anime Speech Visemes (A, I, U, E, O)
+    // 3. Speech viseme ownership. While speaking, the audio envelope is the
+    // only owner of mouth shapes. Emotion styles such as sleepy, laugh, pout,
+    // and tender smile may still drive the eyes/brows, but must not stack
+    // mouth morphs on top of the measured speech aperture.
+    const speechActive = state === 'SPEAKING' || visemeMouthOpen > 0.02;
+    if (speechActive) {
+      targetVrm.happy = 0;
+      targetVrm.sad = 0;
+      targetVrm.surprised = 0;
+      targetMorphs.Fcl_MTH_SkinFung_R = 0;
+      targetMorphs.Fcl_MTH_SkinFung_L = 0;
+      targetMorphs.Fcl_MTH_Fun = 0;
+      targetMorphs.Fcl_MTH_Joy = 0;
+      targetMorphs.Fcl_MTH_Sorrow = 0;
+      targetMorphs.Fcl_MTH_Surprised = 0;
+      targetMorphs.Fcl_MTH_Small = 0;
+    }
+
+    // Audio-driven mouth Blend Shapes. There is intentionally no independent
+    // yawn/vowel oscillator or mouth transform here.
     // Drive only anchored mouth Blend Shapes from the measured speech
     // envelope. Do not synthesize an independent vowel oscillator: it drifts
     // from the audio and looks like random lip motion.
