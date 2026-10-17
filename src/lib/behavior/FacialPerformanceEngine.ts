@@ -84,9 +84,6 @@ export class FacialPerformanceEngine {
     Fcl_MTH_O: 0,
   };
 
-  // Vowel cycling cadence for multi-phoneme speech
-  private speechVowelPhase = 0;
-
   public triggerExpressionStyle(style: AnimeExpressionStyle, duration = 3.5): void {
     this.currentStyle = style;
     this.styleDuration = duration;
@@ -317,32 +314,26 @@ export class FacialPerformanceEngine {
     }
 
     // 3. Multi-Vowel Anime Speech Visemes (A, I, U, E, O)
-    // Drive only mouth expression channels; never translate the jaw, head, or
-    // face mesh. This keeps the lips anchored while making speech readable.
+    // Drive only anchored mouth Blend Shapes from the measured speech
+    // envelope. Do not synthesize an independent vowel oscillator: it drifts
+    // from the audio and looks like random lip motion.
     if (visemeMouthOpen > 0.02) {
-      this.speechVowelPhase = (this.speechVowelPhase + frameDelta * 7.5) % (Math.PI * 2);
-      const mouthDrive = THREE.MathUtils.clamp(visemeMouthOpen * 1.25, 0, 1);
-      const vA = Math.max(0, Math.sin(this.speechVowelPhase)) * mouthDrive;
-      const vI = Math.max(0, Math.sin(this.speechVowelPhase + 1.25)) * mouthDrive * 0.66;
-      const vO = Math.max(0, Math.sin(this.speechVowelPhase + 2.5)) * mouthDrive * 0.78;
-      const vE = Math.max(0, Math.sin(this.speechVowelPhase + 3.75)) * mouthDrive * 0.58;
-      const vU = Math.max(0, Math.sin(this.speechVowelPhase + 5.0)) * mouthDrive * 0.48;
+      const mouthDrive = THREE.MathUtils.clamp(visemeMouthOpen, 0, 1);
 
-      // VRM Preset Visemes
-      targetVrm.aa = vA * 0.52;
-      targetVrm.ih = vI * 0.42;
-      targetVrm.oh = vO * 0.48;
-      targetVrm.ee = vE * 0.38;
-      targetVrm.ou = vU * 0.32;
+      // A scalar audio envelope cannot identify phonemes. Use one stable
+      // primary aperture and restrained companion shapes instead of guessing
+      // vowels with unrelated time-based oscillation.
+      targetVrm.aa = mouthDrive * 0.58;
+      targetVrm.ih = mouthDrive * 0.10;
+      targetVrm.oh = mouthDrive * 0.16;
+      targetVrm.ee = mouthDrive * 0.06;
+      targetVrm.ou = mouthDrive * 0.04;
 
-      // Direct Morph Targets on Face mesh
-      targetMorphs.Fcl_MTH_A = vA * 0.86;
-      targetMorphs.Fcl_MTH_I = vI * 0.68;
-      targetMorphs.Fcl_MTH_O = vO * 0.74;
-      targetMorphs.Fcl_MTH_E = vE * 0.62;
-      targetMorphs.Fcl_MTH_U = vU * 0.52;
-    } else {
-      this.speechVowelPhase = 0;
+      targetMorphs.Fcl_MTH_A = mouthDrive * 0.72;
+      targetMorphs.Fcl_MTH_I = mouthDrive * 0.12;
+      targetMorphs.Fcl_MTH_O = mouthDrive * 0.20;
+      targetMorphs.Fcl_MTH_E = mouthDrive * 0.08;
+      targetMorphs.Fcl_MTH_U = mouthDrive * 0.05;
     }
 
     // 3.5 Realistic Eye Closure Decoupling:

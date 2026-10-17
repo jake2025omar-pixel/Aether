@@ -285,26 +285,24 @@ class CompanionVoiceService {
     const totalSyllables = segments.reduce((sum, item) => sum + item.syllables, 0);
     const estimatedSeconds = Math.max(1.0, (words.length * 0.42) / (utterance.rate || 1.0));
     const syllableCadence = (estimatedSeconds / Math.max(1, totalSyllables)) * 1000;
-
-    let syllableCounter = 0;
-    let visemePhase = 0;
+    let fallbackSpeechStartedAt = 0;
 
     utterance.onstart = () => {
       if (!isCurrentPlayback()) return;
+      fallbackSpeechStartedAt = performance.now();
       handlers.onStart();
 
-      this.visemeInterval = window.setInterval(() => {
-        if (!isCurrentPlayback()) return;
-        visemePhase += 0.35;
-        const rhythm = (Math.sin(visemePhase) + 1) * 0.5;
-        const openness = Math.min(0.75, rhythm * 0.65 + 0.1);
-        handlers.onViseme(openness);
-
-        syllableCounter += 0.25;
-        if (syllableCounter >= totalSyllables) {
-          handlers.onViseme(0.05);
-        }
-      }, Math.max(30, Math.min(80, Math.round(syllableCadence * 0.25))));
+        this.visemeInterval = window.setInterval(() => {
+          if (!isCurrentPlayback()) return;
+          const elapsedMs = performance.now() - fallbackSpeechStartedAt;
+          const syllablePhase = (elapsedMs / Math.max(1, syllableCadence)) % 1;
+          const envelope = syllablePhase < 0.14
+            ? syllablePhase / 0.14
+            : syllablePhase > 0.86
+              ? (1 - syllablePhase) / 0.14
+              : 1;
+          handlers.onViseme(Math.max(0, Math.min(0.62, 0.08 + envelope * 0.50)));
+        }, Math.max(30, Math.min(80, Math.round(syllableCadence * 0.25))));
     };
 
     const cleanup = () => {
@@ -419,8 +417,10 @@ class CompanionVoiceService {
         const gain = audioContext.createGain();
         const waveform = new Uint8Array(analyser.fftSize);
 
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.18;
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.32;
+        analyser.minDecibels = -80;
+        analyser.maxDecibels = -10;
 
         source.buffer = audioBuffer;
         source.connect(analyser);
@@ -440,9 +440,13 @@ class CompanionVoiceService {
             sumSquares += centered * centered;
           }
           const rms = Math.sqrt(sumSquares / waveform.length);
-          const target = Math.max(0, Math.min(0.82, (rms - 0.012) * 5.4));
-          smoothedLevel += (target - smoothedLevel) * (target > smoothedLevel ? 0.48 : 0.28);
-          handlers.onViseme(smoothedLevel < 0.015 ? 0 : smoothedLevel);
+          // Use the measured audio envelope only. The gate removes analyser
+          // noise; attack/release keeps the lips readable without popping.
+          const gated = Math.max(0, rms - 0.018);
+          const target = Math.max(0, Math.min(0.86, gated * 6.8));
+          const response = target > smoothedLevel ? 0.52 : 0.24;
+          smoothedLevel += (target - smoothedLevel) * response;
+          handlers.onViseme(smoothedLevel < 0.012 ? 0 : smoothedLevel);
         }, 32);
 
         source.start(0);

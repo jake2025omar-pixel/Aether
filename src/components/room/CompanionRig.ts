@@ -598,16 +598,13 @@ export class CompanionRig {
         this.vrmUpperChestBone.rotation.x = THREE.MathUtils.damp(this.vrmUpperChestBone.rotation.x, targetUpperChestX, 4.0, frameDelta);
       }
 
-      // Clavicles / Shoulders (Respiration + contrapposto + action shrug)
+      // Clavicles / shoulders remain in their authored neutral pose so parent
+      // motion cannot reintroduce unexplained hand lifting.
       if (this.vrmLeftShoulderBone) {
-        const targetLShoulderZ = this.vrmLeftShoulderRest.z +
-          (frame.respiration.shoulderLift + frame.posture.leftShoulderOffset.y + frame.micro.shoulderTwitch + actionOffsets.shoulders.leftZ * actionWeight) * motion;
-        this.vrmLeftShoulderBone.rotation.z = THREE.MathUtils.damp(this.vrmLeftShoulderBone.rotation.z, targetLShoulderZ, 3.5, frameDelta);
+        this.vrmLeftShoulderBone.rotation.copy(this.vrmLeftShoulderRest);
       }
       if (this.vrmRightShoulderBone) {
-        const targetRShoulderZ = this.vrmRightShoulderRest.z -
-          (frame.respiration.shoulderLift - frame.posture.rightShoulderOffset.y + frame.micro.shoulderTwitch + actionOffsets.shoulders.rightZ * actionWeight) * motion;
-        this.vrmRightShoulderBone.rotation.z = THREE.MathUtils.damp(this.vrmRightShoulderBone.rotation.z, targetRShoulderZ, 3.5, frameDelta);
+        this.vrmRightShoulderBone.rotation.copy(this.vrmRightShoulderRest);
       }
 
       // Head & Neck (Nods + tilts + action rotation)
@@ -637,49 +634,26 @@ export class CompanionRig {
         this.vrmNeckBone.rotation.z = THREE.MathUtils.damp(this.vrmNeckBone.rotation.z, targetNeckZ, 3.8, frameDelta);
       }
 
-      // Arms & Hands (Blends rest pose + speech gestures + choreographed full-body actions + walk swing)
-      const armSwing = frame.locomotion.armSwingOffset;
-
-      // Right Arm
+      // Arms, wrists, hands, and fingers are intentionally authoritative at
+      // the authored neutral pose. This removes every speech/action/locomotion
+      // hand animation path while preserving head, face, torso, breathing,
+      // and lower-body animation.
       if (this.vrmRightUpperArm) {
-        const targetRX = this.rightArmRest.x +
-          (frame.speech.rightArm.upperArm.x * (1 - actionWeight) + actionOffsets.rightUpperArm.x * actionWeight + armSwing.rightUpperArmX) * motion;
-        const targetRY = this.rightArmRest.y +
-          (frame.speech.rightArm.upperArm.y * (1 - actionWeight) + actionOffsets.rightUpperArm.y * actionWeight) * motion;
-        const targetRZ = this.rightArmRest.z +
-          (frame.speech.rightArm.upperArm.z * (1 - actionWeight) + actionOffsets.rightUpperArm.z * actionWeight - frame.respiration.shoulderLift * 0.5) * motion;
-
-        this.vrmRightUpperArm.rotation.x = THREE.MathUtils.damp(this.vrmRightUpperArm.rotation.x, targetRX, 5.5, frameDelta);
-        this.vrmRightUpperArm.rotation.y = THREE.MathUtils.damp(this.vrmRightUpperArm.rotation.y, targetRY, 5.5, frameDelta);
-        this.vrmRightUpperArm.rotation.z = THREE.MathUtils.damp(this.vrmRightUpperArm.rotation.z, targetRZ, 5.5, frameDelta);
+        this.vrmRightUpperArm.rotation.copy(this.rightArmRest);
       }
       if (this.vrmRightLowerArm) {
-        const targetRLowerY = this.rightLowerArmRest.y +
-          (frame.speech.rightArm.lowerArm.y * (1 - actionWeight) + actionOffsets.rightLowerArm.y * actionWeight) * motion;
-        this.vrmRightLowerArm.rotation.y = THREE.MathUtils.damp(this.vrmRightLowerArm.rotation.y, targetRLowerY, 5.5, frameDelta);
+        this.vrmRightLowerArm.rotation.copy(this.rightLowerArmRest);
       }
       if (this.vrmRightHand) {
-        // Zero animated hand movement per Task 1: preserve neutral authored rest pose
         this.vrmRightHand.rotation.copy(this.rightHandRest);
       }
 
-      // Left Arm - Stably and naturally rests beside body without periodic twitches
+      // Left arm
       if (this.vrmLeftUpperArm) {
-        const targetLX = this.leftArmRest.x +
-          (frame.speech.leftArm.upperArm.x * (1 - actionWeight) + actionOffsets.leftUpperArm.x * actionWeight + armSwing.leftUpperArmX) * motion;
-        const targetLY = this.leftArmRest.y +
-          (frame.speech.leftArm.upperArm.y * (1 - actionWeight) + actionOffsets.leftUpperArm.y * actionWeight) * motion;
-        const targetLZ = this.leftArmRest.z +
-          (frame.speech.leftArm.upperArm.z * (1 - actionWeight) + actionOffsets.leftUpperArm.z * actionWeight) * motion;
-
-        this.vrmLeftUpperArm.rotation.x = THREE.MathUtils.damp(this.vrmLeftUpperArm.rotation.x, targetLX, 5.5, frameDelta);
-        this.vrmLeftUpperArm.rotation.y = THREE.MathUtils.damp(this.vrmLeftUpperArm.rotation.y, targetLY, 5.5, frameDelta);
-        this.vrmLeftUpperArm.rotation.z = THREE.MathUtils.damp(this.vrmLeftUpperArm.rotation.z, targetLZ, 5.5, frameDelta);
+        this.vrmLeftUpperArm.rotation.copy(this.leftArmRest);
       }
       if (this.vrmLeftLowerArm) {
-        const targetLLowerY = this.leftLowerArmRest.y +
-          (frame.speech.leftArm.lowerArm.y * (1 - actionWeight) + actionOffsets.leftLowerArm.y * actionWeight) * motion;
-        this.vrmLeftLowerArm.rotation.y = THREE.MathUtils.damp(this.vrmLeftLowerArm.rotation.y, targetLLowerY, 5.5, frameDelta);
+        this.vrmLeftLowerArm.rotation.copy(this.leftLowerArmRest);
       }
       if (this.vrmLeftHand) {
         // Zero animated hand movement per Task 1: preserve neutral authored rest pose
