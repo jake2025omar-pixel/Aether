@@ -480,6 +480,14 @@ export class CompanionRig {
 
     // 4. VRM Character Kinematics & Full-Body Performance
     if (this.isVrm && this.vrmInstance) {
+      // Expression Manager (VRM 1.0 Presets) - Set before update so expressions evaluate in current frame
+      const manager = this.vrmInstance.expressionManager;
+      if (manager) {
+        for (const [key, val] of Object.entries(frame.facial.vrmPresets)) {
+          manager.setValue(key, val * motion);
+        }
+      }
+
       if (this.motionEnabled) {
         this.vrmInstance.update(frameDelta);
       } else {
@@ -490,16 +498,19 @@ export class CompanionRig {
       this.root.position.set(0, 0, 0);
       this.root.rotation.y = 0;
 
-      // Look-At Target
+      // Look-At Target - Smoothly center gaze during blinks to prevent iris/cornea clipping through closed eyelids
       if (this.vrmInstance.lookAt && this.motionEnabled) {
-        this.vrmInstance.lookAt.lookAt(frame.lookAtTarget);
-      }
-
-      // Expression Manager (VRM 1.0 Presets)
-      const manager = this.vrmInstance.expressionManager;
-      if (manager) {
-        for (const [key, val] of Object.entries(frame.facial.vrmPresets)) {
-          manager.setValue(key, val * motion);
+        const blinkAmount = frame.facial.vrmPresets.blink || 0;
+        if (blinkAmount > 0.2) {
+          const neutralEyeLevel = new THREE.Vector3(
+            this.root.position.x,
+            this.root.position.y + 1.45,
+            this.root.position.z + 3.2
+          );
+          const centeredGazeTarget = frame.lookAtTarget.clone().lerp(neutralEyeLevel, Math.min(1.0, blinkAmount * 0.9));
+          this.vrmInstance.lookAt.lookAt(centeredGazeTarget);
+        } else {
+          this.vrmInstance.lookAt.lookAt(frame.lookAtTarget);
         }
       }
 

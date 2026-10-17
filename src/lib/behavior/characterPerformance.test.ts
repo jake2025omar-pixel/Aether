@@ -23,10 +23,10 @@ console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
     return sample;
   };
 
-  // Test 1: Playful Wink + Fang Smirk
+  // Test 1: Playful Fang Smirk (Single-eye wink eliminated per user requirement)
   const wink = stepToPeak('PLAYFUL_WINK', 'HAPPY', 0.8);
-  assert.ok(wink.vrmPresets.blinkLeft > 0.3, 'Wink must close left eyelid');
-  assert.ok(wink.directMorphs.Fcl_MTH_SkinFung_R > 0.2, 'Wink must activate asymmetric fang smirk');
+  assert.strictEqual(wink.vrmPresets.blinkLeft, 0, 'Single-eye wink must be completely eliminated');
+  assert.ok(wink.directMorphs.Fcl_MTH_SkinFung_R > 0.2, 'Must activate asymmetric fang smirk');
 
   // Test 2: Mischievous Smirk
   const smirk = stepToPeak('MISCHIEVOUS_SMIRK', 'HAPPY', 0.8);

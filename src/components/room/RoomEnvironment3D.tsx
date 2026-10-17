@@ -42,25 +42,7 @@ function createRadialGlowTexture(): THREE.CanvasTexture {
   return texture;
 }
 
-/**
- * Creates soft circular particle sprites for ambient floating starlight motes.
- */
-function createParticleTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-    grad.addColorStop(0.35, 'rgba(192, 132, 252, 0.45)');
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 64, 64);
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  return texture;
-}
+
 
 /**
  * Configures all VRM textures for ultra-crisp closeup rendering:
@@ -300,33 +282,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     floor.receiveShadow = true;
     roomGroup.add(floor);
 
-    // Ambient floating starlight particles providing depth and spatial atmosphere
-    const particleCount = 65;
-    const particleGeo = new THREE.BufferGeometry();
-    const particlePositions = new Float32Array(particleCount * 3);
-    const particleBaseY = new Float32Array(particleCount);
-    const particleSpeeds = new Float32Array(particleCount);
+    floor.receiveShadow = true;
+    roomGroup.add(floor);
 
-    for (let i = 0; i < particleCount; i++) {
-      particlePositions[i * 3] = (Math.random() - 0.5) * 8.0;
-      particlePositions[i * 3 + 1] = 0.2 + Math.random() * 2.8;
-      particleBaseY[i] = particlePositions[i * 3 + 1];
-      particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 5.5 - 0.4;
-      particleSpeeds[i] = 0.3 + Math.random() * 0.7;
-    }
-
-    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
-    const particleTexture = createParticleTexture();
-    const particleMat = new THREE.PointsMaterial({
-      size: 0.075,
-      map: particleTexture,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      opacity: 0.65,
-    });
-    const particles = new THREE.Points(particleGeo, particleMat);
-    roomGroup.add(particles);
+    // Clean, unobstructed visual space (particles removed per user specification)
     scene.add(roomGroup);
 
     // 6. Architectural Furniture Extraction & Spatial Layout Engine
@@ -766,17 +725,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         targetRoomFocus.y = initialFocusY;
       }
 
-      // Keep atmospheric particles still for reduced-motion preferences
-      if (roomGroup.parent === scene && (motionEnabled || wasMotionEnabled)) {
-        const positions = particleGeo.attributes.position as THREE.BufferAttribute;
-        for (let i = 0; i < particleCount; i++) {
-          const py = motionEnabled
-            ? particleBaseY[i] + Math.sin(elapsed * particleSpeeds[i] + i) * 0.025
-            : particleBaseY[i];
-          positions.setY(i, py);
-        }
-        positions.needsUpdate = true;
-      }
       wasMotionEnabled = motionEnabled;
 
       renderer.render(scene, camera);

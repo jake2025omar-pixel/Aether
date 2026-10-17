@@ -193,14 +193,16 @@ export class FullBodyActionDirector {
     this.timeSinceLastAction += frameDelta;
 
     // Autonomous Action Spontaneous Selection when idle
+    // Restricted so unprompted arm-raising animations never occur without explicit emotion or speech
     if (!this.currentAction && !isWalking && !isSpeaking && state === 'IDLE') {
       if (this.timeSinceLastAction >= this.nextIdleActionDelay) {
         this.timeSinceLastAction = 0;
-        this.nextIdleActionDelay = 22.0 + Math.random() * 25.0;
+        // Longer natural cooldown to prevent frequent periodic loops
+        this.nextIdleActionDelay = 38.0 + Math.random() * 32.0;
 
-        // Choose action that fits current emotion naturally
+        // Choose action that strictly fits current emotional state
         if (emotion === 'HAPPY') {
-          this.triggerAction(Math.random() > 0.4 ? 'LAUGH_REACTION' : 'CONFIDENT_HIP_REST');
+          this.triggerAction('LAUGH_REACTION');
         } else if (emotion === 'CURIOUS') {
           this.triggerAction('CURIOUS_LEAN');
         } else if (emotion === 'AFFECTIONATE') {
@@ -220,10 +222,8 @@ export class FullBodyActionDirector {
         } else if (emotion === 'ANGRY') {
           this.triggerAction('ANGRY_STANCE');
         } else {
-          // Neutral calm, graceful living posture
-          const choices: FullBodyActionType[] = ['CALM_SETTLE', 'CONFIDENT_HIP_REST', 'CURIOUS_LEAN'];
-          const picked = choices[Math.floor(Math.random() * choices.length)];
-          this.triggerAction(picked);
+          // Neutral baseline living posture: peaceful settling only, arms remain naturally by side
+          this.triggerAction('CALM_SETTLE');
         }
       }
     }

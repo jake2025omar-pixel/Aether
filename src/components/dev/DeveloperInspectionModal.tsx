@@ -41,7 +41,7 @@ const FULL_BODY_ACTIONS: { id: FullBodyActionType; label: string; desc: string }
 ];
 
 const ANIME_FACIAL_STYLES: { id: AnimeExpressionStyle; label: string; tag: string }[] = [
-  { id: 'PLAYFUL_WINK', label: 'Playful Wink', tag: 'Wink + Fang Smirk' },
+  { id: 'PLAYFUL_WINK', label: 'Playful Smirk', tag: 'Joyful + Fang Smirk' },
   { id: 'MISCHIEVOUS_SMIRK', label: 'Mischievous Smirk', tag: 'Asymmetric Grin' },
   { id: 'SHY_BLUSH_LOOK_AWAY', label: 'Shy / Blush', tag: 'Gaze Down-Away' },
   { id: 'SURPRISE_EYE_WIDEN', label: 'Eye Widen Shock', tag: 'Expanded Sclera' },

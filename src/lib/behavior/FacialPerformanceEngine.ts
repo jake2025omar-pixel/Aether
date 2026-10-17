@@ -238,8 +238,10 @@ export class FacialPerformanceEngine {
     switch (this.currentStyle) {
       case 'PLAYFUL_WINK': {
         const winkProgress = Math.sin(Math.min((this.styleTimer / 1.6) * Math.PI, Math.PI));
-        targetVrm.blinkLeft = 0.95 * winkProgress;
-        targetMorphs.Fcl_EYE_Close_L = 0.95 * winkProgress;
+        // Single-eye winking removed per explicit user requirement; keep lively joyful expression with fang smirk
+        targetVrm.blinkLeft = 0;
+        targetVrm.blinkRight = 0;
+        targetVrm.happy = 0.40 * winkProgress;
         targetMorphs.Fcl_BRW_Fun = 0.55 * winkProgress;
         targetMorphs.Fcl_MTH_SkinFung_R = 0.65 * winkProgress; // Cheek fang smirk
         targetMorphs.Fcl_MTH_Fun = 0.45 * winkProgress;
@@ -343,6 +345,30 @@ export class FacialPerformanceEngine {
       this.speechVowelPhase = 0;
     }
 
+    // 3.5 Realistic Eye Closure Decoupling:
+    // When closing the eyes, smoothly suppress conflicting eyelid morphs (such as happy eye arches,
+    // eye widening, or double-close morphs). This prevents mesh tearing, inverted geometry,
+    // and polygon intersecting at the eyelid seams, creating realistic and clean eye closures.
+    const blinkWeight = THREE.MathUtils.clamp(targetVrm.blink || 0, 0, 1);
+    if (blinkWeight > 0.01) {
+      const openRatio = Math.max(0, 1.0 - blinkWeight * 1.15);
+      targetVrm.happy *= openRatio;
+      targetVrm.surprised *= openRatio;
+      targetVrm.relaxed *= openRatio;
+
+      targetMorphs.Fcl_EYE_Joy_L = (targetMorphs.Fcl_EYE_Joy_L || 0) * openRatio;
+      targetMorphs.Fcl_EYE_Joy_R = (targetMorphs.Fcl_EYE_Joy_R || 0) * openRatio;
+      targetMorphs.Fcl_EYE_Spread = (targetMorphs.Fcl_EYE_Spread || 0) * openRatio;
+      targetMorphs.Fcl_EYE_Surprised = (targetMorphs.Fcl_EYE_Surprised || 0) * openRatio;
+      targetMorphs.Fcl_EYE_Angry = (targetMorphs.Fcl_EYE_Angry || 0) * openRatio;
+      targetMorphs.Fcl_EYE_Sorrow = (targetMorphs.Fcl_EYE_Sorrow || 0) * openRatio;
+
+      // Because VRM expression 'blink' already drives eyelid closure via Fcl_EYE_Close,
+      // prevent Fcl_EYE_Close_L/R in directMorphs from double-stacking and pushing eyelids past cheeks
+      targetMorphs.Fcl_EYE_Close_L = Math.max(0, (targetMorphs.Fcl_EYE_Close_L || 0) - blinkWeight);
+      targetMorphs.Fcl_EYE_Close_R = Math.max(0, (targetMorphs.Fcl_EYE_Close_R || 0) - blinkWeight);
+    }
+
     // 4. Smooth Damping to Prevent Facial Jitter or Snapping
     const dampRate = 9.0;
     for (const key of Object.keys(this.vrmPresets) as (keyof typeof this.vrmPresets)[]) {
@@ -360,7 +386,9 @@ export class FacialPerformanceEngine {
 
     for (const key of Object.keys(this.directMorphs)) {
       const tgt = targetMorphs[key] || 0;
-      this.directMorphs[key] = THREE.MathUtils.damp(this.directMorphs[key], tgt, dampRate, frameDelta);
+      // When closing eyes, damp eye morphs quickly so conflicting shapes don't lag or tear
+      const rate = (key.startsWith('Fcl_EYE_') && blinkWeight > 0.05) ? 28.0 : dampRate;
+      this.directMorphs[key] = THREE.MathUtils.damp(this.directMorphs[key], tgt, rate, frameDelta);
       if (tgt === 0 && this.directMorphs[key] < 0.005) {
         this.directMorphs[key] = 0;
       }
