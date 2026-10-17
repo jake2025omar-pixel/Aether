@@ -10,6 +10,7 @@ export type FullBodyActionType =
   | 'LAUGH_REACTION'
   | 'THINKING_CONTEMPLATION'
   | 'AFFECTIONATE_REACH'
+  | 'ROMANTIC_GESTURE'
   | 'SURPRISED_RECOIL'
   | 'CONFIDENT_HIP_REST'
   | 'EXPLANATORY_GESTURE'
@@ -88,6 +89,7 @@ export class FullBodyActionDirector {
     LAUGH_REACTION: 15,
     THINKING_CONTEMPLATION: 18,
     AFFECTIONATE_REACH: 14,
+    ROMANTIC_GESTURE: 16,
     SURPRISED_RECOIL: 16,
     CONFIDENT_HIP_REST: 20,
     EXPLANATORY_GESTURE: 10,
@@ -135,6 +137,9 @@ export class FullBodyActionDirector {
         break;
       case 'AFFECTIONATE_REACH':
         this.actionDuration = 3.6;
+        break;
+      case 'ROMANTIC_GESTURE':
+        this.actionDuration = 3.8;
         break;
       case 'SURPRISED_RECOIL':
         this.actionDuration = 2.8;
@@ -356,6 +361,29 @@ export class FullBodyActionDirector {
           head: new THREE.Vector3(0.06 * envelope, 0, -0.08 * envelope), // Warm tilt
           torso: new THREE.Vector3(0.07 * envelope, 0, 0), // Gentle lean towards camera
           shoulders: { leftZ: 0, rightZ: 0.02 * envelope },
+          facialStyle: 'AFFECTIONATE_TENDER',
+        };
+      }
+
+      case 'ROMANTIC_GESTURE': {
+        // Modest romantic acknowledgement: one hand rests near the heart
+        // while the other offers an open, welcoming palm. No clothing lift,
+        // exposure, or sexualized body control is involved.
+        return {
+          ...DEFAULT_OFFSETS,
+          rightUpperArm: new THREE.Vector3(0.22 * envelope, -0.16 * envelope, -0.28 * envelope),
+          rightLowerArm: new THREE.Vector3(0, 0.42 * envelope, 0),
+          rightHand: new THREE.Vector3(0.10 * envelope, 0, 0),
+          rightHandPose: 'CHEST_HEART',
+
+          leftUpperArm: new THREE.Vector3(0.06 * envelope, 0.06 * envelope, 0.08 * envelope),
+          leftLowerArm: new THREE.Vector3(0, -0.16 * envelope, 0),
+          leftHand: new THREE.Vector3(0.04 * envelope, 0, 0),
+          leftHandPose: 'OPEN_PALM',
+
+          head: new THREE.Vector3(0.04 * envelope, -0.05 * envelope, -0.07 * envelope),
+          torso: new THREE.Vector3(0.025 * envelope, 0, 0),
+          shoulders: { leftZ: 0.02 * envelope, rightZ: 0.03 * envelope },
           facialStyle: 'AFFECTIONATE_TENDER',
         };
       }

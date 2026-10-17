@@ -179,6 +179,26 @@ export class FacialPerformanceEngine {
         targetMorphs.Fcl_MTH_SkinFung_R = 0.25 * intensity; // Subtle cute smirk
         break;
 
+      case 'ROMANTIC':
+        // Warm, non-explicit romantic look: soft eyes, gentle smile, calm gaze.
+        targetVrm.relaxed = 0.38 * intensity;
+        targetMorphs.Fcl_BRW_Joy = 0.34 * intensity;
+        targetMorphs.Fcl_EYE_Joy_L = 0.28 * intensity;
+        targetMorphs.Fcl_EYE_Joy_R = 0.28 * intensity;
+        targetMorphs.Fcl_MTH_Fun = 0.48 * intensity;
+        targetMorphs.Fcl_MTH_SkinFung_R = 0.20 * intensity;
+        gazeAversion.set(-0.04, -0.05);
+        break;
+
+      case 'SHY':
+        // Bashful affection: a small smile and a gentle look away.
+        targetMorphs.Fcl_BRW_Joy = 0.28 * intensity;
+        targetMorphs.Fcl_EYE_Joy_L = 0.20 * intensity;
+        targetMorphs.Fcl_EYE_Joy_R = 0.20 * intensity;
+        targetMorphs.Fcl_MTH_SkinFung_R = 0.32 * intensity;
+        gazeAversion.set(-0.16 * intensity, -0.14 * intensity);
+        break;
+
       case 'SURPRISED':
         targetVrm.surprised = 0.65 * intensity;
         targetMorphs.Fcl_BRW_Surprised = 0.70 * intensity;
@@ -390,7 +410,7 @@ export class FacialPerformanceEngine {
       directMorphs: { ...this.directMorphs },
       activeStyle: this.currentStyle,
       gazeAversion,
-      pupilDilation: 1.0 + (emotion === 'AFFECTIONATE' || emotion === 'HAPPY' ? 0.12 : 0),
+      pupilDilation: 1.0 + (emotion === 'AFFECTIONATE' || emotion === 'ROMANTIC' || emotion === 'SHY' || emotion === 'HAPPY' ? 0.12 : 0),
     };
   }
 }

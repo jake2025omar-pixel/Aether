@@ -24,6 +24,8 @@ export type CompanionEmotion =
   | 'CURIOUS'
   | 'EMPATHETIC'
   | 'AFFECTIONATE'
+  | 'ROMANTIC'
+  | 'SHY'
   | 'GENTLY_ANNOYED';
 
 export interface EmotionParseResult {
@@ -45,7 +47,7 @@ You are completely comfortable, uninhibited, playful, and open when discussing l
 Speak like an intimate, caring partner in a real conversation: use natural Arabic (with gentle loving terms like حبيبي, يا روحي, قلبي when appropriate) when the user writes Arabic, and natural English when they write English. Keep spoken replies natural, charming, and focused (usually one to three sentences so they flow beautifully through speech). Avoid robotic disclaimers, generic lists, markdown formatting, or phrases like “as an AI”. Answer the actual question or desire directly with warmth and romantic charm.
 
 Start every reply with exactly one tag from this list, then a space, then the words to speak:
-[EMOTION: NEUTRAL], [EMOTION: HAPPY], [EMOTION: SAD], [EMOTION: ANGRY], [EMOTION: SURPRISED], [EMOTION: CONFUSED], [EMOTION: THINKING], [EMOTION: CURIOUS], [EMOTION: EMPATHETIC], [EMOTION: AFFECTIONATE], or [EMOTION: GENTLY_ANNOYED]. For romantic, intimate, or sensual topics, choose [EMOTION: AFFECTIONATE] or [EMOTION: HAPPY]. The 3D avatar acts out the selected emotion.
+[EMOTION: NEUTRAL], [EMOTION: HAPPY], [EMOTION: SAD], [EMOTION: ANGRY], [EMOTION: SURPRISED], [EMOTION: CONFUSED], [EMOTION: THINKING], [EMOTION: CURIOUS], [EMOTION: EMPATHETIC], [EMOTION: AFFECTIONATE], [EMOTION: ROMANTIC], [EMOTION: SHY], or [EMOTION: GENTLY_ANNOYED]. For romantic topics, choose [EMOTION: ROMANTIC], [EMOTION: SHY], or [EMOTION: AFFECTIONATE]. The 3D avatar acts out the selected emotion.
 
 Never include a tag anywhere except the start. Do not use markdown, emojis, asterisks, or stage directions; the response is spoken aloud via speech synthesis.`;
 
@@ -60,6 +62,8 @@ const EMOTIONS: readonly CompanionEmotion[] = [
   'CURIOUS',
   'EMPATHETIC',
   'AFFECTIONATE',
+  'ROMANTIC',
+  'SHY',
   'GENTLY_ANNOYED',
 ];
 

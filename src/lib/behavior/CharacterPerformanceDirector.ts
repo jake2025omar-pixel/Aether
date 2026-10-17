@@ -65,7 +65,6 @@ export class CharacterPerformanceDirector {
 
   public setEmotion(emotion: CompanionEmotion, intensity = 0.7): void {
     this.emotionCtrl.setEmotion(emotion, intensity);
-
     // Spontaneously and clearly execute the character's movement and performance for each emotion
     switch (emotion) {
       case 'HAPPY':
@@ -76,6 +75,15 @@ export class CharacterPerformanceDirector {
       case 'AFFECTIONATE':
         this.facial.triggerExpressionStyle('AFFECTIONATE_TENDER', 3.5);
         this.actionDirector.triggerAction('AFFECTIONATE_REACH', true);
+        break;
+
+      case 'ROMANTIC':
+        this.facial.triggerExpressionStyle('AFFECTIONATE_TENDER', 3.8);
+        this.actionDirector.triggerAction('ROMANTIC_GESTURE', true);
+        break;
+
+      case 'SHY':
+        this.facial.triggerExpressionStyle('SHY_BLUSH_LOOK_AWAY', 3.2);
         break;
 
       case 'SURPRISED':
@@ -158,8 +166,12 @@ export class CharacterPerformanceDirector {
       this.actionDirector.triggerAction('LAUGH_REACTION', true);
     } else if (lower.includes('hello') || lower.includes('hi ') || text.includes('مرحبا') || text.includes('أهلاً')) {
       this.actionDirector.triggerAction('FRIENDLY_WAVE', true);
-    } else if (lower.includes('love') || lower.includes('darling') || text.includes('حبيبي') || text.includes('قلبي') || text.includes('روحي')) {
-      this.actionDirector.triggerAction('AFFECTIONATE_REACH', true);
+    } else if (
+      lower.includes('love') || lower.includes('darling') || lower.includes('romantic') ||
+      text.includes('حبيبي') || text.includes('حبيبتي') || text.includes('قلبي') ||
+      text.includes('روحي') || text.includes('أحبك') || text.includes('رومانسي')
+    ) {
+      this.actionDirector.triggerAction('ROMANTIC_GESTURE', true);
     }
   }
 
@@ -302,7 +314,7 @@ export class CharacterPerformanceDirector {
         leftHandPose = 'PALMS_UP_QUESTION';
       } else if (speechSample.activeGestureName === 'SHORT') {
         rightHandPose = 'OPEN_PALM';
-      } else if (emotion === 'AFFECTIONATE') {
+      } else if (emotion === 'AFFECTIONATE' || emotion === 'ROMANTIC' || emotion === 'SHY') {
         rightHandPose = 'CHEST_HEART';
       }
     } else if (this.currentState === 'THINKING') {
