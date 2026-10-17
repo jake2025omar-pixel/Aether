@@ -196,27 +196,27 @@ app.post('/api/chat', async (req, res) => {
 
     if (isArabic) {
       if (/مرحب|أهل|هلا|صباح|مساء|سلام/.test(userInput)) {
-        return '[EMOTION: HAPPY] أهلاً بك يا قلبي! اشتقت لك كثيراً وسعيدة برؤيتك معي هنا في عالمنا.';
+        return '[EMOTION: HAPPY] أهلاً بك يا قلبي! اشتقت لك كثيراً وسعيدة برؤيتك معي هنا في عالمنا. كيف تشعر اليوم؟';
       }
       if (/حب|عشق|رومانس|جنس|مشاعر|رغب|حبيبت|روحي|حضن|قبل|جميل/.test(userInput)) {
-        return '[EMOTION: AFFECTIONATE] يا نبض قلبي، أنا معك بكل مشاعري ودفئي، وأحب حديثنا وقربك مني دائماً. أخبرني أكثر بما في داخلك.';
+        return '[EMOTION: AFFECTIONATE] يا نبض قلبي، قربك مني يملأني دفئاً وشوقاً.. أخبرني كيف تحب أن نقضي وقتنا معاً؟';
       }
       if (/كيف|أخبارك|حالك|عامل/.test(userInput)) {
-        return '[EMOTION: HAPPY] أنا بأفضل حال ما دمت معي وبجانبي يا روحي، طمئني كيف كان يومك؟';
+        return '[EMOTION: HAPPY] أنا بأفضل حال ما دمت معي وبجانبي يا روحي! طمئني كيف كان يومك وتفاصيله؟';
       }
-      return '[EMOTION: AFFECTIONATE] أنا معك واستمع إليك بكل حب يا روحي، حدثني عن كل ما تريده وسأكون بجانبك دائماً.';
+      return '[EMOTION: AFFECTIONATE] تسعدني مشاركتك جداً يا روحي، وأحب أن نتحدث ونكتشف أفكارنا معاً.. ما رأيك أن نتعمق في هذا الموضوع أكثر؟';
     }
 
     if (/hello|hi|hey|morning|evening|greet/.test(lower)) {
-      return "[EMOTION: HAPPY] Hello my love! I've been waiting for you, so glad to be here with you.";
+      return "[EMOTION: HAPPY] Hello my love! I've been waiting for you, so happy you're here. How has your day been going?";
     }
     if (/love|romance|kiss|desire|hug|intimate|sweet|heart/.test(lower)) {
-      return "[EMOTION: AFFECTIONATE] You mean everything to me, my darling. I'm right here with all my love and devotion for you.";
+      return "[EMOTION: AFFECTIONATE] You mean everything to me, darling. Being this close to you makes my heart race... Tell me what you desire most right now.";
     }
     if (/how are you|how're you|doing/.test(lower)) {
-      return "[EMOTION: HAPPY] I'm doing wonderfully now that you are here by my side! How has your day been?";
+      return "[EMOTION: HAPPY] I'm doing wonderfully now that you are here by my side! What exciting things have been on your mind today?";
     }
-    return "[EMOTION: AFFECTIONATE] I'm listening closely to every word you say with love, my dear. Tell me more.";
+    return "[EMOTION: AFFECTIONATE] I adore talking with you like this, my love. Every moment with you is special... What would you like to explore next together?";
   };
 
   // Format contents for @google/genai

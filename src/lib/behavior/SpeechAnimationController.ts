@@ -100,14 +100,14 @@ export class SpeechAnimationController {
       targetLUpperZ = 0.03 * romanticPulse;
       targetLLowerY = -0.04 * romanticPulse;
     } else if (this.currentStyle === 'SHORT') {
-      // Short response: subtle right hand palm opening
+      // Short response: subtle conversational pulse, zero hand animation per Task 1
       const wave = Math.sin(Math.min(t * 3.5, Math.PI));
       targetRUpperX = 0.06 * wave * energy;
       targetRUpperZ = -0.04 * wave * energy;
       targetRLowerY = 0.08 * wave;
-      targetRHandX = 0.05 * wave;
+      targetRHandX = 0;
     } else if (this.currentStyle === 'MEDIUM') {
-      // Conversational one-handed phrasing gesture with cadence beat
+      // Conversational one-handed phrasing gesture with cadence beat, zero hand animation per Task 1
       const phraseEnvelope = Math.sin(Math.min(t * 1.8, Math.PI));
       const cadence = Math.sin(t * 4.2) * 0.025 * visemeMouthOpen;
 
@@ -115,15 +115,15 @@ export class SpeechAnimationController {
       targetRUpperY = -0.05 * phraseEnvelope;
       targetRUpperZ = -0.06 * phraseEnvelope * energy;
       targetRLowerY = 0.12 * phraseEnvelope;
-      targetRHandX = 0.08 * phraseEnvelope;
+      targetRHandX = 0;
 
       // Left arm remains gracefully relaxed beside body
       targetLUpperZ = 0;
     } else if (this.currentStyle === 'EXPLANATORY') {
       // Long explanation: Alternating natural gestures
-      // Phase 1 (0 to 3s): Right hand leads
-      // Phase 2 (3 to 6s): Gentle two-handed open gesture
-      // Phase 3 (6s+): Relaxed conversational pulses
+      // Phase 1 (0 to 3s): Right arm leads
+      // Phase 2 (3 to 6s): Gentle arm phrasing
+      // Phase 3 (6s+): Relaxed conversational pulses; zero hand movement per Task 1
       const cadence = Math.sin(t * 3.8) * 0.03 * (0.4 + visemeMouthOpen * 0.6);
 
       if (t < 3.2) {
@@ -131,10 +131,10 @@ export class SpeechAnimationController {
         targetRUpperX = (0.12 * p1 + cadence) * energy;
         targetRUpperZ = -0.08 * p1 * energy;
         targetRLowerY = 0.15 * p1;
-        targetRHandX = 0.09 * p1;
+        targetRHandX = 0;
       } else if (t < 7.0) {
         const p2 = Math.sin(((t - 3.2) / 3.8) * Math.PI);
-        // Right hand leads in explanation, left arm rests smoothly
+        // Right arm leads in explanation, left arm rests smoothly
         targetRUpperX = (0.08 * p2 + cadence) * energy;
         targetRUpperZ = -0.06 * p2;
         targetRLowerY = 0.10 * p2;
@@ -175,12 +175,8 @@ export class SpeechAnimationController {
       5.0,
       dt
     );
-    this.rightHandOffset.x = THREE.MathUtils.damp(
-      this.rightHandOffset.x,
-      targetRHandX * this.gestureWeight,
-      5.0,
-      dt
-    );
+    // Zero hand offset per Task 1
+    this.rightHandOffset.set(0, 0, 0);
 
     this.leftUpperArmOffset.x = THREE.MathUtils.damp(
       this.leftUpperArmOffset.x,

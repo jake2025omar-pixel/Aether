@@ -94,7 +94,7 @@ function curlThumb(joints: InternalHandJoints, tuckRad: number, proximalCurl: nu
   joints['thumbDistal'].set(0, 0, curlSign * distalCurl);
 }
 
-function computePresetJoints(preset: HandPosePreset, isLeft: boolean, time = 0): InternalHandJoints {
+export function computePresetJoints(preset: HandPosePreset, isLeft: boolean, time = 0): InternalHandJoints {
   const joints = createEmptyJoints();
   const splaySign = isLeft ? -1 : 1;
 

@@ -363,10 +363,10 @@ export class FacialPerformanceEngine {
       targetMorphs.Fcl_EYE_Angry = (targetMorphs.Fcl_EYE_Angry || 0) * openRatio;
       targetMorphs.Fcl_EYE_Sorrow = (targetMorphs.Fcl_EYE_Sorrow || 0) * openRatio;
 
-      // Because VRM expression 'blink' already drives eyelid closure via Fcl_EYE_Close,
-      // prevent Fcl_EYE_Close_L/R in directMorphs from double-stacking and pushing eyelids past cheeks
-      targetMorphs.Fcl_EYE_Close_L = Math.max(0, (targetMorphs.Fcl_EYE_Close_L || 0) - blinkWeight);
-      targetMorphs.Fcl_EYE_Close_R = Math.max(0, (targetMorphs.Fcl_EYE_Close_R || 0) - blinkWeight);
+      // Because VRM expression 'blink' already drives symmetrical eyelid closure via Fcl_EYE_Close across all primitives,
+      // eliminate any conflicting direct close morphs to prevent polygon tearing and double-closing
+      targetMorphs.Fcl_EYE_Close_L = 0;
+      targetMorphs.Fcl_EYE_Close_R = 0;
     }
 
     // 4. Smooth Damping to Prevent Facial Jitter or Snapping

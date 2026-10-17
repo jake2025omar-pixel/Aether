@@ -7,6 +7,7 @@ import {
   CharacterPerformanceDirector,
   FullBodyActionType,
   AnimeExpressionStyle,
+  computePresetJoints,
 } from '../../lib/behavior';
 
 const FINGER_BONE_NAMES = [
@@ -64,8 +65,8 @@ export class CompanionRig {
   private vrmLeftFingerRest: Record<string, THREE.Euler> = {};
   private vrmRightFingerRest: Record<string, THREE.Euler> = {};
 
-  // Face Mesh for Direct Morph Targets (57 blendshapes)
-  private vrmFaceMesh: THREE.Mesh | null = null;
+  // Face Meshes for Direct Morph Targets (57 blendshapes across all submesh primitives)
+  private vrmFaceMeshes: THREE.Mesh[] = [];
 
   // Stored Rest Rotations & Positions
   private readonly vrmHipsRestPosition = new THREE.Vector3(0, 0.9100833, 0);
@@ -166,12 +167,13 @@ export class CompanionRig {
         if (this.vrmRightFingers[joint]) this.vrmRightFingerRest[joint] = this.vrmRightFingers[joint]!.rotation.clone();
       }
 
-      // 4. Find Face Mesh for Direct Morph Targets (57 blendshapes)
+      // 4. Find Face Meshes for Direct Morph Targets (57 blendshapes across all submesh primitives)
+      this.vrmFaceMeshes = [];
       vrm.scene.traverse((obj) => {
         if ((obj as THREE.Mesh).isMesh) {
           const mesh = obj as THREE.Mesh;
-          if (mesh.morphTargetDictionary && (mesh.name === 'Face' || 'Fcl_BRW_Joy' in mesh.morphTargetDictionary)) {
-            this.vrmFaceMesh = mesh;
+          if (mesh.morphTargetDictionary && (mesh.name.includes('Face') || 'Fcl_BRW_Joy' in mesh.morphTargetDictionary)) {
+            this.vrmFaceMeshes.push(mesh);
           }
         }
       });
@@ -234,6 +236,22 @@ export class CompanionRig {
     if (rightHand) {
       rightHand.rotation.set(0.05, 0, -0.05);
       this.rightHandRest.copy(rightHand.rotation);
+    }
+
+    // Initialize anatomical relaxed cascade for all 30 finger bones
+    const relaxedLeft = computePresetJoints('RELAXED', true, 0);
+    const relaxedRight = computePresetJoints('RELAXED', false, 0);
+    for (const joint of FINGER_BONE_NAMES) {
+      if (this.vrmLeftFingers[joint]) {
+        const e = relaxedLeft[joint];
+        this.vrmLeftFingerRest[joint] = new THREE.Euler(e.x, e.y, e.z);
+        this.vrmLeftFingers[joint]!.rotation.copy(this.vrmLeftFingerRest[joint]);
+      }
+      if (this.vrmRightFingers[joint]) {
+        const e = relaxedRight[joint];
+        this.vrmRightFingerRest[joint] = new THREE.Euler(e.x, e.y, e.z);
+        this.vrmRightFingers[joint]!.rotation.copy(this.vrmRightFingerRest[joint]);
+      }
     }
   }
 
@@ -488,6 +506,23 @@ export class CompanionRig {
         }
       }
 
+      // Look-At Target - Synchronously evaluated BEFORE update so eye bones update in the exact same frame.
+      // During blinks/eye closures, smoothly center gaze to neutral forward eye-level to prevent iris/cornea clipping.
+      if (this.vrmInstance.lookAt && this.motionEnabled) {
+        const blinkAmount = frame.facial.vrmPresets.blink || 0;
+        if (blinkAmount > 0.05) {
+          const neutralEyeLevel = new THREE.Vector3(
+            this.root.position.x,
+            this.root.position.y + 1.45,
+            this.root.position.z + 3.2
+          );
+          const centeredGazeTarget = frame.lookAtTarget.clone().lerp(neutralEyeLevel, Math.min(1.0, blinkAmount * 1.2));
+          this.vrmInstance.lookAt.lookAt(centeredGazeTarget);
+        } else {
+          this.vrmInstance.lookAt.lookAt(frame.lookAtTarget);
+        }
+      }
+
       if (this.motionEnabled) {
         this.vrmInstance.update(frameDelta);
       } else {
@@ -498,30 +533,17 @@ export class CompanionRig {
       this.root.position.set(0, 0, 0);
       this.root.rotation.y = 0;
 
-      // Look-At Target - Smoothly center gaze during blinks to prevent iris/cornea clipping through closed eyelids
-      if (this.vrmInstance.lookAt && this.motionEnabled) {
-        const blinkAmount = frame.facial.vrmPresets.blink || 0;
-        if (blinkAmount > 0.2) {
-          const neutralEyeLevel = new THREE.Vector3(
-            this.root.position.x,
-            this.root.position.y + 1.45,
-            this.root.position.z + 3.2
-          );
-          const centeredGazeTarget = frame.lookAtTarget.clone().lerp(neutralEyeLevel, Math.min(1.0, blinkAmount * 0.9));
-          this.vrmInstance.lookAt.lookAt(centeredGazeTarget);
-        } else {
-          this.vrmInstance.lookAt.lookAt(frame.lookAtTarget);
-        }
-      }
-
-      // Direct Morph Targets on Face Mesh (57 blendshapes)
-      if (this.vrmFaceMesh?.morphTargetDictionary && this.vrmFaceMesh.morphTargetInfluences) {
-        const dict = this.vrmFaceMesh.morphTargetDictionary;
-        const influences = this.vrmFaceMesh.morphTargetInfluences;
-        for (const [morphName, weight] of Object.entries(frame.facial.directMorphs)) {
-          const idx = dict[morphName];
-          if (typeof idx === 'number') {
-            influences[idx] = weight * motion;
+      // Direct Morph Targets on Face Meshes (applied across all face primitives/submeshes)
+      if (this.vrmFaceMeshes.length > 0) {
+        for (const faceMesh of this.vrmFaceMeshes) {
+          if (!faceMesh.morphTargetDictionary || !faceMesh.morphTargetInfluences) continue;
+          const dict = faceMesh.morphTargetDictionary;
+          const influences = faceMesh.morphTargetInfluences;
+          for (const [morphName, weight] of Object.entries(frame.facial.directMorphs)) {
+            const idx = dict[morphName];
+            if (typeof idx === 'number') {
+              influences[idx] = weight * motion;
+            }
           }
         }
       }
@@ -637,9 +659,8 @@ export class CompanionRig {
         this.vrmRightLowerArm.rotation.y = THREE.MathUtils.damp(this.vrmRightLowerArm.rotation.y, targetRLowerY, 5.5, frameDelta);
       }
       if (this.vrmRightHand) {
-        const targetRHandX = this.rightHandRest.x +
-          (frame.speech.rightArm.hand.x * (1 - actionWeight) + actionOffsets.rightHand.x * actionWeight) * motion;
-        this.vrmRightHand.rotation.x = THREE.MathUtils.damp(this.vrmRightHand.rotation.x, targetRHandX, 5.5, frameDelta);
+        // Zero animated hand movement per Task 1: preserve neutral authored rest pose
+        this.vrmRightHand.rotation.copy(this.rightHandRest);
       }
 
       // Left Arm - Stably and naturally rests beside body without periodic twitches
@@ -661,32 +682,23 @@ export class CompanionRig {
         this.vrmLeftLowerArm.rotation.y = THREE.MathUtils.damp(this.vrmLeftLowerArm.rotation.y, targetLLowerY, 5.5, frameDelta);
       }
       if (this.vrmLeftHand) {
-        const targetLHandX = this.leftHandRest.x +
-          (frame.speech.leftArm.hand.x * (1 - actionWeight) + actionOffsets.leftHand.x * actionWeight) * motion;
-        this.vrmLeftHand.rotation.x = THREE.MathUtils.damp(this.vrmLeftHand.rotation.x, targetLHandX, 5.5, frameDelta);
+        // Zero animated hand movement per Task 1: preserve neutral authored rest pose
+        this.vrmLeftHand.rotation.copy(this.leftHandRest);
       }
 
-      // 30 Finger Bones (Detailed hand poses & natural articulateness)
-      const leftHands = frame.hands.left;
-      const rightHands = frame.hands.right;
-
+      // 30 Finger Bones: Kept visually attached and anchored at the model's neutral authored rest pose
+      // with zero procedural finger animation, gestures, or articulation routines
       for (const joint of FINGER_BONE_NAMES) {
         const lBone = this.vrmLeftFingers[joint];
         if (lBone) {
-          const rot = (leftHands as any)[joint];
-          if (rot) {
-            const rest = this.vrmLeftFingerRest[joint] || new THREE.Euler();
-            lBone.rotation.set(rest.x + rot.x * motion, rest.y + rot.y * motion, rest.z + rot.z * motion);
-          }
+          const rest = this.vrmLeftFingerRest[joint] || new THREE.Euler();
+          lBone.rotation.copy(rest);
         }
 
         const rBone = this.vrmRightFingers[joint];
         if (rBone) {
-          const rot = (rightHands as any)[joint];
-          if (rot) {
-            const rest = this.vrmRightFingerRest[joint] || new THREE.Euler();
-            rBone.rotation.set(rest.x + rot.x * motion, rest.y + rot.y * motion, rest.z + rot.z * motion);
-          }
+          const rest = this.vrmRightFingerRest[joint] || new THREE.Euler();
+          rBone.rotation.copy(rest);
         }
       }
 
