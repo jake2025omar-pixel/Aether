@@ -60,154 +60,18 @@ export class SpeechAnimationController {
       this.speechTime += dt;
     }
 
-    // Target arm rotations based on style and timing
     const t = this.speechTime;
-    let targetRUpperX = 0;
-    let targetRUpperY = 0;
-    let targetRUpperZ = 0;
-    let targetRLowerY = 0;
-    let targetRHandX = 0;
+    // Conversational rhythm cadences for speech
+    const speechCadence = Math.sin(t * 3.8) * 0.02 * (0.4 + visemeMouthOpen * 0.6);
 
-    let targetLUpperX = 0;
-    let targetLUpperY = 0;
-    let targetLUpperZ = 0;
-    let targetLLowerY = 0;
-    let targetLHandX = 0;
-
-    // Emotion Energy Scale
-    let energy = 1.0;
-    if (emotion === 'HAPPY' || emotion === 'CURIOUS') {
-      energy = 1.25;
-    } else if (emotion === 'SAD') {
-      energy = 0.35;
-    } else if (emotion === 'ANGRY') {
-      energy = 1.3;
-    } else if (emotion === 'AFFECTIONATE') {
-      energy = 0.75;
-    }
-
-    if (emotion === 'AFFECTIONATE') {
-      // Intimate, affectionate gesture: Hand softly drawn towards heart / chest with open palm towards the partner
-      const romanticPulse = Math.sin(Math.min(t * 1.6, Math.PI));
-      const heartbeatCadence = Math.sin(t * 2.5) * 0.012;
-      targetRUpperX = (0.14 * romanticPulse + heartbeatCadence) * emotionIntensity;
-      targetRUpperY = -0.10 * romanticPulse;
-      targetRUpperZ = -0.12 * romanticPulse * emotionIntensity;
-      targetRLowerY = 0.22 * romanticPulse;
-      targetRHandX = 0.10 * romanticPulse;
-
-      // Subtle warm lean with left arm relaxing closer
-      targetLUpperZ = 0.03 * romanticPulse;
-      targetLLowerY = -0.04 * romanticPulse;
-    } else if (this.currentStyle === 'SHORT') {
-      // Short response: subtle conversational pulse, zero hand animation per Task 1
-      const wave = Math.sin(Math.min(t * 3.5, Math.PI));
-      targetRUpperX = 0.06 * wave * energy;
-      targetRUpperZ = -0.04 * wave * energy;
-      targetRLowerY = 0.08 * wave;
-      targetRHandX = 0;
-    } else if (this.currentStyle === 'MEDIUM') {
-      // Conversational one-handed phrasing gesture with cadence beat, zero hand animation per Task 1
-      const phraseEnvelope = Math.sin(Math.min(t * 1.8, Math.PI));
-      const cadence = Math.sin(t * 4.2) * 0.025 * visemeMouthOpen;
-
-      targetRUpperX = (0.09 * phraseEnvelope + cadence) * energy;
-      targetRUpperY = -0.05 * phraseEnvelope;
-      targetRUpperZ = -0.06 * phraseEnvelope * energy;
-      targetRLowerY = 0.12 * phraseEnvelope;
-      targetRHandX = 0;
-
-      // Left arm remains gracefully relaxed beside body
-      targetLUpperZ = 0;
-    } else if (this.currentStyle === 'EXPLANATORY') {
-      // Long explanation: Alternating natural gestures
-      // Phase 1 (0 to 3s): Right arm leads
-      // Phase 2 (3 to 6s): Gentle arm phrasing
-      // Phase 3 (6s+): Relaxed conversational pulses; zero hand movement per Task 1
-      const cadence = Math.sin(t * 3.8) * 0.03 * (0.4 + visemeMouthOpen * 0.6);
-
-      if (t < 3.2) {
-        const p1 = Math.sin((t / 3.2) * Math.PI);
-        targetRUpperX = (0.12 * p1 + cadence) * energy;
-        targetRUpperZ = -0.08 * p1 * energy;
-        targetRLowerY = 0.15 * p1;
-        targetRHandX = 0;
-      } else if (t < 7.0) {
-        const p2 = Math.sin(((t - 3.2) / 3.8) * Math.PI);
-        // Right arm leads in explanation, left arm rests smoothly
-        targetRUpperX = (0.08 * p2 + cadence) * energy;
-        targetRUpperZ = -0.06 * p2;
-        targetRLowerY = 0.10 * p2;
-
-        targetLUpperX = 0.03 * p2 * energy;
-        targetLUpperZ = 0;
-        targetLLowerY = 0;
-      } else {
-        // Sustained gentle speaking cadence
-        const p3 = 0.5 + 0.5 * Math.sin(t * 1.5);
-        targetRUpperX = (0.06 * p3 + cadence) * energy;
-        targetRUpperZ = -0.04 * p3;
-      }
-    }
-
-    // Apply smooth springs
-    this.rightUpperArmOffset.x = THREE.MathUtils.damp(
-      this.rightUpperArmOffset.x,
-      targetRUpperX * this.gestureWeight,
-      5.0,
-      dt
-    );
-    this.rightUpperArmOffset.y = THREE.MathUtils.damp(
-      this.rightUpperArmOffset.y,
-      targetRUpperY * this.gestureWeight,
-      5.0,
-      dt
-    );
-    this.rightUpperArmOffset.z = THREE.MathUtils.damp(
-      this.rightUpperArmOffset.z,
-      targetRUpperZ * this.gestureWeight,
-      5.0,
-      dt
-    );
-    this.rightLowerArmOffset.y = THREE.MathUtils.damp(
-      this.rightLowerArmOffset.y,
-      targetRLowerY * this.gestureWeight,
-      5.0,
-      dt
-    );
-    // Zero hand offset per Task 1
+    // Keep arm and hand offsets strictly zero so speech never moves or raises hands
+    this.rightUpperArmOffset.set(0, 0, 0);
+    this.rightLowerArmOffset.set(0, 0, 0);
     this.rightHandOffset.set(0, 0, 0);
 
-    this.leftUpperArmOffset.x = THREE.MathUtils.damp(
-      this.leftUpperArmOffset.x,
-      targetLUpperX * this.gestureWeight,
-      5.0,
-      dt
-    );
-    this.leftUpperArmOffset.y = THREE.MathUtils.damp(
-      this.leftUpperArmOffset.y,
-      targetLUpperY * this.gestureWeight,
-      5.0,
-      dt
-    );
-    this.leftUpperArmOffset.z = THREE.MathUtils.damp(
-      this.leftUpperArmOffset.z,
-      targetLUpperZ * this.gestureWeight,
-      5.0,
-      dt
-    );
-    this.leftLowerArmOffset.y = THREE.MathUtils.damp(
-      this.leftLowerArmOffset.y,
-      targetLLowerY * this.gestureWeight,
-      5.0,
-      dt
-    );
-    this.leftHandOffset.x = THREE.MathUtils.damp(
-      this.leftHandOffset.x,
-      targetLHandX * this.gestureWeight,
-      5.0,
-      dt
-    );
+    this.leftUpperArmOffset.set(0, 0, 0);
+    this.leftLowerArmOffset.set(0, 0, 0);
+    this.leftHandOffset.set(0, 0, 0);
 
     return {
       leftArm: {
@@ -221,9 +85,9 @@ export class SpeechAnimationController {
         hand: this.rightHandOffset.clone(),
       },
       torsoAccent: new THREE.Vector3(
-        targetRUpperX * 0.15 * this.gestureWeight,
+        speechCadence * 0.15 * this.gestureWeight,
         0,
-        -targetRUpperZ * 0.1 * this.gestureWeight
+        0
       ),
       headAccent: new THREE.Vector3(
         Math.sin(t * 3.8) * 0.015 * this.gestureWeight,

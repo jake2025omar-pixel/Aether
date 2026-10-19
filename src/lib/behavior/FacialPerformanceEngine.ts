@@ -160,31 +160,35 @@ export class FacialPerformanceEngine {
     // 1. Emotion Baseline Mapping
     const intensity = THREE.MathUtils.clamp(emotionIntensity, 0.2, 1.0);
 
+    // Keep compound full-face VRM presets (Fcl_ALL_*) zero so they never distort eyelids or collide with visemes
+    targetVrm.happy = 0;
+    targetVrm.relaxed = 0;
+    targetVrm.surprised = 0;
+    targetVrm.sad = 0;
+    targetVrm.angry = 0;
+
     switch (emotion) {
       case 'HAPPY':
-        targetVrm.happy = 0.55 * intensity;
-        targetMorphs.Fcl_BRW_Joy = 0.45 * intensity;
+        targetMorphs.Fcl_BRW_Joy = 0.50 * intensity;
         targetMorphs.Fcl_EYE_Joy_L = 0.35 * intensity;
         targetMorphs.Fcl_EYE_Joy_R = 0.35 * intensity;
-        targetMorphs.Fcl_MTH_Joy = 0.40 * intensity;
+        targetMorphs.Fcl_MTH_Joy = 0.45 * intensity;
         break;
 
       case 'AFFECTIONATE':
         // Warm, romantic expression: soft joyful eyes, gentle smile, slight fang smirk
-        targetVrm.relaxed = 0.35 * intensity;
-        targetMorphs.Fcl_BRW_Joy = 0.30 * intensity;
-        targetMorphs.Fcl_EYE_Joy_L = 0.25 * intensity;
-        targetMorphs.Fcl_EYE_Joy_R = 0.25 * intensity;
+        targetMorphs.Fcl_BRW_Joy = 0.35 * intensity;
+        targetMorphs.Fcl_EYE_Joy_L = 0.28 * intensity;
+        targetMorphs.Fcl_EYE_Joy_R = 0.28 * intensity;
         targetMorphs.Fcl_MTH_Fun = 0.45 * intensity;
         targetMorphs.Fcl_MTH_SkinFung_R = 0.25 * intensity; // Subtle cute smirk
         break;
 
       case 'ROMANTIC':
         // Warm, non-explicit romantic look: soft eyes, gentle smile, calm gaze.
-        targetVrm.relaxed = 0.38 * intensity;
-        targetMorphs.Fcl_BRW_Joy = 0.34 * intensity;
-        targetMorphs.Fcl_EYE_Joy_L = 0.28 * intensity;
-        targetMorphs.Fcl_EYE_Joy_R = 0.28 * intensity;
+        targetMorphs.Fcl_BRW_Joy = 0.38 * intensity;
+        targetMorphs.Fcl_EYE_Joy_L = 0.30 * intensity;
+        targetMorphs.Fcl_EYE_Joy_R = 0.30 * intensity;
         targetMorphs.Fcl_MTH_Fun = 0.48 * intensity;
         targetMorphs.Fcl_MTH_SkinFung_R = 0.20 * intensity;
         gazeAversion.set(-0.04, -0.05);
@@ -200,15 +204,13 @@ export class FacialPerformanceEngine {
         break;
 
       case 'SURPRISED':
-        targetVrm.surprised = 0.65 * intensity;
         targetMorphs.Fcl_BRW_Surprised = 0.70 * intensity;
-        targetMorphs.Fcl_EYE_Spread = 0.60 * intensity; // Eyes widen visibly!
+        targetMorphs.Fcl_EYE_Spread = 0.65 * intensity; // Eyes widen visibly!
         targetMorphs.Fcl_MTH_Surprised = 0.45 * intensity;
         break;
 
       case 'SAD':
       case 'EMPATHETIC':
-        targetVrm.sad = 0.50 * intensity;
         targetMorphs.Fcl_BRW_Sorrow = 0.55 * intensity;
         targetMorphs.Fcl_EYE_Sorrow = 0.40 * intensity;
         targetMorphs.Fcl_MTH_Sorrow = 0.35 * intensity;
@@ -216,7 +218,6 @@ export class FacialPerformanceEngine {
         break;
 
       case 'ANGRY':
-        targetVrm.angry = 0.60 * intensity;
         targetMorphs.Fcl_BRW_Angry = 0.65 * intensity;
         targetMorphs.Fcl_EYE_Angry = 0.45 * intensity;
         break;
@@ -225,8 +226,6 @@ export class FacialPerformanceEngine {
         // Cute anime pout
         targetMorphs.Fcl_BRW_Angry = 0.25 * intensity;
         targetMorphs.Fcl_MTH_Small = 0.55 * intensity; // Pouted lips
-        targetMorphs.Fcl_EYE_Close_L = 0.15;
-        targetMorphs.Fcl_EYE_Close_R = 0.15;
         break;
 
       case 'CONFUSED':
@@ -246,7 +245,6 @@ export class FacialPerformanceEngine {
 
       case 'NEUTRAL':
       default:
-        targetVrm.relaxed = 0.15;
         targetMorphs.Fcl_MTH_Fun = 0.12; // Natural resting friendly expression
         break;
     }
@@ -255,10 +253,8 @@ export class FacialPerformanceEngine {
     switch (this.currentStyle) {
       case 'PLAYFUL_WINK': {
         const winkProgress = Math.sin(Math.min((this.styleTimer / 1.6) * Math.PI, Math.PI));
-        // Single-eye winking removed per explicit user requirement; keep lively joyful expression with fang smirk
         targetVrm.blinkLeft = 0;
         targetVrm.blinkRight = 0;
-        targetVrm.happy = 0.40 * winkProgress;
         targetMorphs.Fcl_BRW_Fun = 0.55 * winkProgress;
         targetMorphs.Fcl_MTH_SkinFung_R = 0.65 * winkProgress; // Cheek fang smirk
         targetMorphs.Fcl_MTH_Fun = 0.45 * winkProgress;
@@ -270,14 +266,11 @@ export class FacialPerformanceEngine {
         targetMorphs.Fcl_MTH_SkinFung_R = 0.75 * smirkProg;
         targetMorphs.Fcl_BRW_Fun = 0.45 * smirkProg;
         targetMorphs.Fcl_EYE_Joy_R = 0.35 * smirkProg;
-        targetVrm.relaxed = 0.30 * smirkProg;
         break;
       }
 
       case 'SHY_BLUSH_LOOK_AWAY': {
         const shyProg = Math.sin(Math.min((this.styleTimer / 2.8) * Math.PI, Math.PI));
-        targetMorphs.Fcl_EYE_Close_L = 0.35 * shyProg;
-        targetMorphs.Fcl_EYE_Close_R = 0.35 * shyProg;
         targetMorphs.Fcl_BRW_Joy = 0.35 * shyProg;
         targetMorphs.Fcl_MTH_SkinFung_R = 0.45 * shyProg;
         gazeAversion.set(-0.25 * shyProg, -0.22 * shyProg); // Look shyly down and away
@@ -289,18 +282,16 @@ export class FacialPerformanceEngine {
         targetMorphs.Fcl_EYE_Spread = 0.85 * shockProg;
         targetMorphs.Fcl_BRW_Surprised = 0.80 * shockProg;
         targetMorphs.Fcl_MTH_Surprised = 0.60 * shockProg;
-        targetVrm.surprised = 0.75 * shockProg;
         break;
       }
 
       case 'LAUGHTER_BURST': {
         const laughProg = Math.sin(Math.min((this.styleTimer / 3.0) * Math.PI, Math.PI));
         const laughFlutter = Math.abs(Math.sin(time * 12.0)) * 0.25;
-        targetMorphs.Fcl_EYE_Joy_L = 0.85 * laughProg;
-        targetMorphs.Fcl_EYE_Joy_R = 0.85 * laughProg;
+        targetMorphs.Fcl_EYE_Joy_L = 0.75 * laughProg;
+        targetMorphs.Fcl_EYE_Joy_R = 0.75 * laughProg;
         targetMorphs.Fcl_MTH_Joy = 0.80 * laughProg;
         targetMorphs.Fcl_MTH_A = (0.35 + laughFlutter) * laughProg;
-        targetVrm.happy = 0.85 * laughProg;
         break;
       }
 
@@ -324,7 +315,6 @@ export class FacialPerformanceEngine {
       case 'SLEEPY_DROOP': {
         targetMorphs.Fcl_EYE_Close_L = 0.55;
         targetMorphs.Fcl_EYE_Close_R = 0.55;
-        targetVrm.relaxed = 0.60;
         break;
       }
 
@@ -333,15 +323,12 @@ export class FacialPerformanceEngine {
         break;
     }
 
-    // 3. Speech viseme ownership. While speaking, the audio envelope is the
-    // only owner of mouth shapes. Emotion styles such as sleepy, laugh, pout,
-    // and tender smile may still drive the eyes/brows, but must not stack
-    // mouth morphs on top of the measured speech aperture.
+    // 3. Speech viseme exclusive ownership. While speaking, the speech viseme
+    // controller is the sole owner of mouth aperture and jaw shapes. Emotion styles
+    // (such as sleepy, laugh, pout, and smile) may still expressively drive the
+    // eyes/brows/head, but must not overwrite or blend conflicting mouth shapes.
     const speechActive = state === 'SPEAKING' || visemeMouthOpen > 0.02;
     if (speechActive) {
-      targetVrm.happy = 0;
-      targetVrm.sad = 0;
-      targetVrm.surprised = 0;
       targetMorphs.Fcl_MTH_SkinFung_R = 0;
       targetMorphs.Fcl_MTH_SkinFung_L = 0;
       targetMorphs.Fcl_MTH_Fun = 0;
@@ -349,42 +336,36 @@ export class FacialPerformanceEngine {
       targetMorphs.Fcl_MTH_Sorrow = 0;
       targetMorphs.Fcl_MTH_Surprised = 0;
       targetMorphs.Fcl_MTH_Small = 0;
+      targetMorphs.Fcl_MTH_A = 0;
+      targetMorphs.Fcl_MTH_I = 0;
+      targetMorphs.Fcl_MTH_U = 0;
+      targetMorphs.Fcl_MTH_E = 0;
+      targetMorphs.Fcl_MTH_O = 0;
     }
 
-    // Audio-driven mouth Blend Shapes. There is intentionally no independent
-    // yawn/vowel oscillator or mouth transform here.
-    // Drive only anchored mouth Blend Shapes from the measured speech
-    // envelope. Do not synthesize an independent vowel oscillator: it drifts
-    // from the audio and looks like random lip motion.
+    // Audio-driven mouth Blend Shapes via authoritative VRM 1.0 Expression Presets
     if (visemeMouthOpen > 0.02) {
       const mouthDrive = THREE.MathUtils.clamp(visemeMouthOpen, 0, 1);
-
-      // A scalar audio envelope cannot identify phonemes. Use one stable
-      // primary aperture and restrained companion shapes instead of guessing
-      // vowels with unrelated time-based oscillation.
-      targetVrm.aa = mouthDrive * 0.58;
-      targetVrm.ih = mouthDrive * 0.10;
-      targetVrm.oh = mouthDrive * 0.16;
-      targetVrm.ee = mouthDrive * 0.06;
-      targetVrm.ou = mouthDrive * 0.04;
-
-      targetMorphs.Fcl_MTH_A = mouthDrive * 0.72;
-      targetMorphs.Fcl_MTH_I = mouthDrive * 0.12;
-      targetMorphs.Fcl_MTH_O = mouthDrive * 0.20;
-      targetMorphs.Fcl_MTH_E = mouthDrive * 0.08;
-      targetMorphs.Fcl_MTH_U = mouthDrive * 0.05;
+      targetVrm.aa = mouthDrive * 0.72;
+      targetVrm.ih = mouthDrive * 0.16;
+      targetVrm.oh = mouthDrive * 0.24;
+      targetVrm.ee = mouthDrive * 0.10;
+      targetVrm.ou = mouthDrive * 0.08;
+    } else {
+      targetVrm.aa = 0;
+      targetVrm.ih = 0;
+      targetVrm.oh = 0;
+      targetVrm.ee = 0;
+      targetVrm.ou = 0;
     }
 
-    // 3.5 Realistic Eye Closure Decoupling:
-    // When closing the eyes, smoothly suppress conflicting eyelid morphs (such as happy eye arches,
+    // 3.5 Anatomical Eye Closure Decoupling:
+    // When closing the eyes, smoothly suppress all conflicting eyelid morphs (such as happy eye arches,
     // eye widening, or double-close morphs). This prevents mesh tearing, inverted geometry,
     // and polygon intersecting at the eyelid seams, creating realistic and clean eye closures.
     const blinkWeight = THREE.MathUtils.clamp(targetVrm.blink || 0, 0, 1);
-    if (blinkWeight > 0.01) {
-      const openRatio = Math.max(0, 1.0 - blinkWeight * 1.15);
-      targetVrm.happy *= openRatio;
-      targetVrm.surprised *= openRatio;
-      targetVrm.relaxed *= openRatio;
+    if (blinkWeight > 0.001) {
+      const openRatio = Math.max(0, 1.0 - blinkWeight * 1.5);
 
       targetMorphs.Fcl_EYE_Joy_L = (targetMorphs.Fcl_EYE_Joy_L || 0) * openRatio;
       targetMorphs.Fcl_EYE_Joy_R = (targetMorphs.Fcl_EYE_Joy_R || 0) * openRatio;
@@ -392,8 +373,9 @@ export class FacialPerformanceEngine {
       targetMorphs.Fcl_EYE_Surprised = (targetMorphs.Fcl_EYE_Surprised || 0) * openRatio;
       targetMorphs.Fcl_EYE_Angry = (targetMorphs.Fcl_EYE_Angry || 0) * openRatio;
       targetMorphs.Fcl_EYE_Sorrow = (targetMorphs.Fcl_EYE_Sorrow || 0) * openRatio;
+      targetMorphs.Fcl_EYE_Fun = (targetMorphs.Fcl_EYE_Fun || 0) * openRatio;
 
-      // Because VRM expression 'blink' already drives symmetrical eyelid closure via Fcl_EYE_Close across all primitives,
+      // Because VRM expression 'blink' drives symmetrical eyelid closure via Fcl_EYE_Close across all primitives,
       // eliminate any conflicting direct close morphs to prevent polygon tearing and double-closing
       targetMorphs.Fcl_EYE_Close_L = 0;
       targetMorphs.Fcl_EYE_Close_R = 0;
@@ -404,7 +386,6 @@ export class FacialPerformanceEngine {
     for (const key of Object.keys(this.vrmPresets) as (keyof typeof this.vrmPresets)[]) {
       if (key === 'blink' || key === 'blinkLeft' || key === 'blinkRight') {
         // Blinking is computed with precise anatomical sine/cosine curve in EyeBehaviorController.
-        // Applying slow damping (dampRate = 9) drags and glitches eyelid closure.
         this.vrmPresets[key] = THREE.MathUtils.clamp(targetVrm[key] || 0, 0, 1);
       } else {
         this.vrmPresets[key] = THREE.MathUtils.damp(this.vrmPresets[key], targetVrm[key], dampRate, frameDelta);
@@ -416,11 +397,15 @@ export class FacialPerformanceEngine {
 
     for (const key of Object.keys(this.directMorphs)) {
       const tgt = targetMorphs[key] || 0;
-      // When closing eyes, damp eye morphs quickly so conflicting shapes don't lag or tear
-      const rate = (key.startsWith('Fcl_EYE_') && blinkWeight > 0.05) ? 28.0 : dampRate;
-      this.directMorphs[key] = THREE.MathUtils.damp(this.directMorphs[key], tgt, rate, frameDelta);
-      if (tgt === 0 && this.directMorphs[key] < 0.005) {
-        this.directMorphs[key] = 0;
+      // When closing eyes, eye morphs must instantly match openRatio so they never lag and tear against blink
+      if (key.startsWith('Fcl_EYE_') && blinkWeight > 0.01) {
+        this.directMorphs[key] = tgt;
+      } else {
+        const rate = (key.startsWith('Fcl_EYE_') && blinkWeight > 0.05) ? 35.0 : dampRate;
+        this.directMorphs[key] = THREE.MathUtils.damp(this.directMorphs[key], tgt, rate, frameDelta);
+        if (tgt === 0 && this.directMorphs[key] < 0.005) {
+          this.directMorphs[key] = 0;
+        }
       }
     }
 

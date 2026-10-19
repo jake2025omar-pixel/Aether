@@ -540,6 +540,10 @@ export class CompanionRig {
           const dict = faceMesh.morphTargetDictionary;
           const influences = faceMesh.morphTargetInfluences;
           for (const [morphName, weight] of Object.entries(frame.facial.directMorphs)) {
+            // While speaking, speech viseme presets exclusively own mouth and jaw apertures
+            if (this.displayedViseme > 0.02 && morphName.startsWith('Fcl_MTH_')) {
+              continue;
+            }
             const idx = dict[morphName];
             if (typeof idx === 'number') {
               influences[idx] = weight * motion;
@@ -784,12 +788,10 @@ export class CompanionRig {
     }
     if (!this.isVrm) {
       if (this.proceduralRightArm) {
-        this.proceduralRightArm.rotation.z = this.rightArmRest.z + (frame.speech.rightArm.upperArm.z + this.animationFrame.arms.right + frame.action.offsets.rightUpperArm.z) * motion;
-        this.proceduralRightArm.rotation.x = this.rightArmRest.x + (frame.speech.rightArm.upperArm.x + frame.action.offsets.rightUpperArm.x) * motion;
+        this.proceduralRightArm.rotation.copy(this.rightArmRest);
       }
       if (this.proceduralLeftArm) {
-        this.proceduralLeftArm.rotation.z = this.leftArmRest.z + (frame.speech.leftArm.upperArm.z + this.animationFrame.arms.left + frame.action.offsets.leftUpperArm.z) * motion;
-        this.proceduralLeftArm.rotation.x = this.leftArmRest.x + (frame.speech.leftArm.upperArm.x + frame.action.offsets.leftUpperArm.x) * motion;
+        this.proceduralLeftArm.rotation.copy(this.leftArmRest);
       }
     }
 

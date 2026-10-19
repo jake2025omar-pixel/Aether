@@ -26,6 +26,7 @@ class CompanionVoiceService {
   private recognition: any = null;
   private isListening = false;
   private visemeInterval: number | null = null;
+  private visemeRafId: number | null = null;
   private currentPlaybackHandlers: VoicePlaybackHandlers | null = null;
   private activeSource: AudioBufferSourceNode | null = null;
   private activeAbortController: AbortController | null = null;
@@ -349,8 +350,9 @@ class CompanionVoiceService {
 
     const audioContext = this.getAudioContext();
     if (!audioContext) {
-      // Fallback to speech synthesis if AudioContext is unavailable
-      this.speakWithBrowserSynthesis(text, this.playbackId, handlers);
+      handlers.onError?.('unavailable');
+      handlers.onViseme(0);
+      handlers.onEnd();
       return;
     }
 
@@ -371,6 +373,10 @@ class CompanionVoiceService {
     const finishPlayback = () => {
       if (!isCurrentPlayback() || completed) return;
       completed = true;
+      if (this.visemeRafId !== null) {
+        cancelAnimationFrame(this.visemeRafId);
+        this.visemeRafId = null;
+      }
       if (this.visemeInterval !== null) {
         window.clearInterval(this.visemeInterval);
         this.visemeInterval = null;
@@ -386,22 +392,25 @@ class CompanionVoiceService {
       try {
         if (audioContext.state === 'suspended') await audioContext.resume();
 
+        // Strictly lock Korean voice configuration to 'Kore'
         const response = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({
             text: text.slice(0, 4_000),
-            voice: 'Achernar',
+            voice: 'Kore',
             emotion: options.emotion || 'NEUTRAL',
             adultContentConsent: options.adultContentConsent,
           }),
         });
 
         if (!response.ok) {
-          // If server TTS is temporarily unavailable, fall back to browser speech synthesis
+          const errData = await response.json().catch(() => ({}));
+          console.warn('[AetherAI Voice] Gemini TTS returned non-OK status:', response.status, errData);
           if (isCurrentPlayback()) {
-            this.speakWithBrowserSynthesis(text, playbackId, handlers);
+            handlers.onError?.(response.status === 429 ? 'rate-limit' : 'unavailable');
+            finishPlayback();
           }
           return;
         }
@@ -416,10 +425,11 @@ class CompanionVoiceService {
         const analyser = audioContext.createAnalyser();
         const gain = audioContext.createGain();
         const waveform = new Uint8Array(analyser.fftSize);
+        const frequencyData = new Uint8Array(analyser.frequencyBinCount);
 
         analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.32;
-        analyser.minDecibels = -80;
+        analyser.smoothingTimeConstant = 0.28;
+        analyser.minDecibels = -75;
         analyser.maxDecibels = -10;
 
         source.buffer = audioBuffer;
@@ -431,33 +441,65 @@ class CompanionVoiceService {
         source.onended = finishPlayback;
         handlers.onStart();
 
-        this.visemeInterval = window.setInterval(() => {
+        // Phoneme-aligned real-time lip-sync loop driven by display refresh clock
+        const updateVisemes = () => {
           if (!isCurrentPlayback()) return;
+          analyser.getByteFrequencyData(frequencyData);
           analyser.getByteTimeDomainData(waveform);
+
           let sumSquares = 0;
-          for (const sample of waveform) {
-            const centered = (sample - 128) / 128;
+          for (let i = 0; i < waveform.length; i++) {
+            const centered = (waveform[i] - 128) / 128;
             sumSquares += centered * centered;
           }
           const rms = Math.sqrt(sumSquares / waveform.length);
-          // Use the measured audio envelope only. The gate removes analyser
-          // noise; attack/release keeps the lips readable without popping.
-          const gated = Math.max(0, rms - 0.018);
-          const target = Math.max(0, Math.min(0.86, gated * 6.8));
-          const response = target > smoothedLevel ? 0.52 : 0.24;
-          smoothedLevel += (target - smoothedLevel) * response;
-          handlers.onViseme(smoothedLevel < 0.012 ? 0 : smoothedLevel);
-        }, 32);
 
+          // Vocal tract formant resonance band (vowel phonemes: ~280Hz to 2300Hz, bins 3 to 25)
+          let formantSum = 0;
+          const minBin = 3;
+          const maxBin = Math.min(25, frequencyData.length);
+          for (let i = minBin; i < maxBin; i++) {
+            formantSum += frequencyData[i];
+          }
+          const avgFormant = formantSum / (maxBin - minBin) / 255;
+
+          // High frequency friction / sibilance band (~4000Hz to 8000Hz, bins 42 to 85)
+          let sibilanceSum = 0;
+          const sibMin = Math.min(42, frequencyData.length);
+          const sibMax = Math.min(85, frequencyData.length);
+          for (let i = sibMin; i < sibMax; i++) {
+            sibilanceSum += frequencyData[i];
+          }
+          const avgSibilance = sibilanceSum / Math.max(1, sibMax - sibMin) / 255;
+
+          // Gate noise floor, accentuate vowels, and moderate mouth openness on closed sibilants
+          const energyGate = Math.max(0, rms - 0.016);
+          const vowelWeight = Math.max(0, avgFormant - 0.07);
+          const consonantClosure = Math.max(0, avgSibilance - 0.15) * 0.22;
+
+          const rawTarget = Math.max(
+            0,
+            Math.min(0.86, energyGate * 4.4 + vowelWeight * 0.68 - consonantClosure)
+          );
+
+          // Natural vocal response: quick attack for vowel onsets, smooth decay to prevent jaw snapping
+          const attackSpeed = 0.52;
+          const decaySpeed = 0.24;
+          const response = rawTarget > smoothedLevel ? attackSpeed : decaySpeed;
+          smoothedLevel += (rawTarget - smoothedLevel) * response;
+          const finalMouthVal = smoothedLevel < 0.014 ? 0 : smoothedLevel;
+
+          handlers.onViseme(finalMouthVal);
+          this.visemeRafId = requestAnimationFrame(updateVisemes);
+        };
+
+        this.visemeRafId = requestAnimationFrame(updateVisemes);
         source.start(0);
       } catch (error: unknown) {
         if (!isCurrentPlayback()) return;
-        if (controller.signal.aborted && !timedOut) {
-          finishPlayback();
-          return;
-        }
-        // Seamless fallback to browser speech synthesis
-        this.speakWithBrowserSynthesis(text, playbackId, handlers);
+        const isAbort = controller.signal.aborted;
+        handlers.onError?.(isAbort && timedOut ? 'timeout' : 'unavailable');
+        finishPlayback();
       } finally {
         window.clearTimeout(timeoutId);
       }
@@ -469,6 +511,10 @@ class CompanionVoiceService {
    */
   public stopSpeaking(): void {
     this.playbackId += 1;
+    if (this.visemeRafId !== null) {
+      cancelAnimationFrame(this.visemeRafId);
+      this.visemeRafId = null;
+    }
     if (this.visemeInterval !== null) {
       window.clearInterval(this.visemeInterval);
       this.visemeInterval = null;

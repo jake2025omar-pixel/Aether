@@ -301,26 +301,9 @@ export class CharacterPerformanceDirector {
     );
 
     // 12. Hand & Finger Articulation Layering
-    // Decide active hand poses: choreographed action takes highest priority, then speech gestures, then relaxed
-    let leftHandPose: HandPosePreset = 'RELAXED';
-    let rightHandPose: HandPosePreset = 'RELAXED';
-
-    if (actionSample.isActionActive) {
-      leftHandPose = actionSample.offsets.leftHandPose;
-      rightHandPose = actionSample.offsets.rightHandPose;
-    } else if (isSpeaking) {
-      if (speechSample.activeGestureName === 'EXPLANATORY') {
-        rightHandPose = 'OPEN_PALM';
-        leftHandPose = 'PALMS_UP_QUESTION';
-      } else if (speechSample.activeGestureName === 'SHORT') {
-        rightHandPose = 'OPEN_PALM';
-      } else if (emotion === 'AFFECTIONATE' || emotion === 'ROMANTIC' || emotion === 'SHY') {
-        rightHandPose = 'CHEST_HEART';
-      }
-    } else if (this.currentState === 'THINKING') {
-      rightHandPose = 'CHIN_TOUCH';
-      leftHandPose = 'RELAXED';
-    }
+    // Keep both hands strictly anchored in stable, natural neutral RELAXED pose per contract
+    const leftHandPose: HandPosePreset = 'RELAXED';
+    const rightHandPose: HandPosePreset = 'RELAXED';
 
     this.hands.setLeftPose(leftHandPose);
     this.hands.setRightPose(rightHandPose);

@@ -1,11 +1,16 @@
 export type CompanionTtsVoice = 'Achernar' | 'Kore';
 export type TtsFailureReason = 'not-configured' | 'timeout' | 'network' | 'invalid-audio' | 'unavailable';
 
-const TTS_MODEL = 'gemini-3.8-flash-tts';
+const CANDIDATE_TTS_MODELS = [
+  'gemini-2.5-flash-preview-tts',
+  'gemini-3.1-flash-tts-preview',
+  'gemini-3.8-flash-lite-tts',
+  'gemini-3.8-flash-tts',
+];
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_TEXT_LENGTH = 4_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX_REQUESTS = 18;
+const RATE_LIMIT_MAX_REQUESTS = 45;
 const UPSTREAM_TIMEOUT_MS = 45_000;
 
 const SUPPORTED_VOICES = new Set<CompanionTtsVoice>(['Achernar', 'Kore']);
@@ -128,7 +133,7 @@ export async function handleGeminiTtsRequest(
   const voice: CompanionTtsVoice = typeof requestedVoice === 'string'
     && SUPPORTED_VOICES.has(requestedVoice as CompanionTtsVoice)
     ? requestedVoice as CompanionTtsVoice
-    : 'Achernar';
+    : 'Kore';
 
   const requestedEmotion = typeof payload.emotion === 'string' && SUPPORTED_EMOTIONS.has(payload.emotion)
     ? payload.emotion
@@ -146,44 +151,62 @@ export async function handleGeminiTtsRequest(
   const timeoutId = setTimeout(() => controller.abort(), upstreamTimeoutMs);
 
   try {
-    const upstream = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        model: TTS_MODEL,
-        store: false,
-        input: [{
-          type: 'user_input',
-          content: [{
-            type: 'text',
-            text,
-            annotations: [{
-              type: 'speech_metadata',
-              style: speechStyleByEmotion[requestedEmotion],
-            }],
-          }],
-        }],
-        response_format: { type: 'audio' },
-        generation_config: { speech_config: [{ voice }] },
-      }),
-      signal: controller.signal,
-    });
+    const candidateTtsModels = CANDIDATE_TTS_MODELS;
+    let audio: Uint8Array | null = null;
+    let lastStatus = 502;
 
-    if (!upstream.ok) {
-      return jsonResponse(
-        { error: upstream.status === 429 ? 'Speech service is busy. Please try again shortly.' : 'Speech service is temporarily unavailable.' },
-        upstream.status === 429 ? 429 : 502,
-      );
+    for (const model of candidateTtsModels) {
+      if (controller.signal.aborted) break;
+      try {
+        const upstream = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            model,
+            store: false,
+            input: [{
+              type: 'user_input',
+              content: [{
+                type: 'text',
+                text,
+                annotations: [{
+                  type: 'speech_metadata',
+                  style: speechStyleByEmotion[requestedEmotion],
+                }],
+              }],
+            }],
+            response_format: { type: 'audio' },
+            generation_config: { speech_config: [{ voice }] },
+          }),
+          signal: controller.signal,
+        });
+
+        lastStatus = upstream.status;
+        if (!upstream.ok) {
+          console.warn(`[AetherAI TTS] Model ${model} returned status ${upstream.status}`);
+          continue;
+        }
+
+        const result: unknown = await upstream.json();
+        const encoded = findAudioData(result);
+        const decoded = encoded ? decodeBase64Audio(encoded) : null;
+        if (decoded && isWav(decoded)) {
+          audio = decoded;
+          break;
+        }
+      } catch (err: unknown) {
+        console.warn(`[AetherAI TTS] Model ${model} attempt threw:`, err);
+      }
     }
 
-    const result: unknown = await upstream.json();
-    const encoded = findAudioData(result);
-    const audio = encoded ? decodeBase64Audio(encoded) : null;
-    if (!audio || !isWav(audio)) {
-      return jsonResponse({ error: 'Speech service returned invalid audio.' }, 502);
+    if (!audio) {
+      return jsonResponse(
+        { error: lastStatus === 429 ? 'Speech service is busy. Please try again shortly.' : 'Speech service is temporarily unavailable.' },
+        lastStatus === 429 ? 429 : 502,
+      );
     }
 
     return new Response(audio.buffer as ArrayBuffer, {

@@ -9,14 +9,15 @@ import { handleGeminiTtsRequest } from './server/geminiTts';
 
 dotenv.config();
 
-const PRIMARY_GEMINI_MODEL = 'gemini-3.8-flash';
+const PRIMARY_GEMINI_MODEL = 'gemini-3.1-flash-lite';
 const CANDIDATE_MODELS = [
-  'gemini-3.8-flash',
-  'gemini-flash-latest',
   'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-flash-latest',
+  'gemini-3.8-flash',
 ];
 
-// Track models that have hit temporary quota or demand limits (e.g. 503 / 429) to avoid latency
+// Track models that have hit temporary upstream quota or demand limits (e.g. 503 / 429)
 const modelCooldowns = new Map<string, number>();
 
 function isModelCoolingDown(model: string): boolean {
@@ -29,8 +30,13 @@ function isModelCoolingDown(model: string): boolean {
   return true;
 }
 
+function areAllModelsCoolingDown(): boolean {
+  return CANDIDATE_MODELS.every((m) => isModelCoolingDown(m));
+}
+
 function markModelRateLimited(model: string) {
-  modelCooldowns.set(model, Date.now() + 2 * 60 * 1000);
+  // Short 15-second cooldown to avoid persistent lockouts
+  modelCooldowns.set(model, Date.now() + 15 * 1000);
 }
 
 function isTemporaryOverload(errStr: string): boolean {
@@ -43,9 +49,7 @@ function isTemporaryOverload(errStr: string): boolean {
     lower.includes('high demand') ||
     lower.includes('unavailable') ||
     lower.includes('overloaded') ||
-    lower.includes('spikes in demand') ||
-    lower.includes('aborted') ||
-    lower.includes('timeout')
+    lower.includes('spikes in demand')
   );
 }
 
@@ -249,6 +253,8 @@ app.post('/api/chat', async (req, res) => {
 
   const clientAi = ai;
 
+  const ignoreCooldown = areAllModelsCoolingDown();
+
   if (stream) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -257,7 +263,7 @@ app.post('/api/chat', async (req, res) => {
     let streamSucceeded = false;
     for (const model of CANDIDATE_MODELS) {
       if (isClientDisconnected) break;
-      if (isModelCoolingDown(model)) continue;
+      if (!ignoreCooldown && isModelCoolingDown(model)) continue;
       try {
         const responseStream = await clientAi.models.generateContentStream({
           model,
@@ -285,6 +291,7 @@ app.post('/api/chat', async (req, res) => {
         break;
       } catch (err: unknown) {
         const errStr = String(err instanceof Error ? err.message : err);
+        console.warn(`[AetherAI Server] Stream attempt for ${model} failed: ${errStr}`);
         if (isTemporaryOverload(errStr)) {
           markModelRateLimited(model);
         }
@@ -298,11 +305,14 @@ app.post('/api/chat', async (req, res) => {
       res.end();
     }
   } else {
+    let lastError: string | null = null;
     for (const model of CANDIDATE_MODELS) {
       if (isClientDisconnected || providerAbortController.signal.aborted) break;
-      if (isModelCoolingDown(model)) continue;
+      if (!ignoreCooldown && isModelCoolingDown(model)) continue;
+
       const attemptController = new AbortController();
-      const attemptTimeout = setTimeout(() => attemptController.abort(), 4500);
+      // Allow 16 seconds per attempt to comfortably handle LLM response generation
+      const attemptTimeout = setTimeout(() => attemptController.abort(), 16000);
       const onAbort = () => attemptController.abort();
       providerAbortController.signal.addEventListener('abort', onAbort, { once: true });
 
@@ -318,7 +328,10 @@ app.post('/api/chat', async (req, res) => {
           },
         });
 
-        const generatedText = response.text || '';
+        const candidateParts = response.candidates?.[0]?.content?.parts;
+        const textFromParts = candidateParts?.map((p: any) => p.text || '').join('') || '';
+        const generatedText = (response.text || textFromParts || '').trim();
+
         if (generatedText) {
           clearTimeout(attemptTimeout);
           providerAbortController.signal.removeEventListener('abort', onAbort);
@@ -329,6 +342,8 @@ app.post('/api/chat', async (req, res) => {
         }
       } catch (err: unknown) {
         const errStr = String(err instanceof Error ? err.message : err);
+        lastError = errStr;
+        console.warn(`[AetherAI Server] GenerateContent attempt for ${model} failed: ${errStr}`);
         if (isTemporaryOverload(errStr)) {
           markModelRateLimited(model);
         }
@@ -338,12 +353,14 @@ app.post('/api/chat', async (req, res) => {
       }
     }
 
-    // Graceful fallback response if all models are temporarily busy
+    // Graceful fallback response if all upstream models are temporarily busy
+    console.warn(`[AetherAI Server] All candidate models exhausted; serving companion fallback. Last error: ${lastError}`);
     const fallbackText = getLocalCompanionFallback(trimmedMessage);
     return res.json({
       text: fallbackText,
       model: 'local-fallback',
       isFallback: true,
+      lastError: lastError ? String(lastError).slice(0, 200) : undefined,
     });
   }
 });

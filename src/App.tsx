@@ -16,6 +16,7 @@ import {
   CompanionState,
   CompanionEmotion,
   parseCompanionResponse,
+  COMPANION_DISPLAY_NAME,
 } from './lib/companionPersonality';
 import { companionVoice } from './lib/companionVoice';
 
@@ -179,13 +180,33 @@ export default function App() {
 
       let rawAnswer = '';
       if (!res.ok) {
+        let errMessage = '';
+        try {
+          const errData = await res.json();
+          errMessage = errData.error || '';
+        } catch {
+          // ignore
+        }
         const isArabic = /[\u0600-\u06FF]/.test(query);
-        rawAnswer = isArabic
-          ? '[EMOTION: HAPPY] أهلاً بك يا قلبي! أنا معك واستمع إليك بكل حب، كيف يمكنني مساعدتك الآن؟'
-          : "[EMOTION: HAPPY] Hello my love! I'm right here with you listening closely. How can I help you right now?";
-      } else {
-        const data = await res.json();
-        rawAnswer = data.text || '';
+        const fallbackMsg = res.status === 429
+          ? (isArabic ? 'خوادم الذكاء الاصطناعي مشغولة حالياً، يرجى الانتظار بضع ثوانٍ.' : 'AI servers are temporarily busy. Please wait a moment.')
+          : res.status === 403
+            ? (isArabic ? 'موافقة البالغين مطلوبة لمتابعة المحادثة.' : 'Adult consent is required to continue.')
+            : (isArabic ? (errMessage || 'حدث تأخير في الاستجابة، يرجى المحاولة ثانية.') : (errMessage || 'Service temporarily unavailable. Please retry.'));
+        setVoiceError(fallbackMsg);
+        setCompanionState('TECHNICAL_ERROR');
+        setCompanionEmotion('CONFUSED');
+        return;
+      }
+
+      const data = await res.json();
+      rawAnswer = data.text || '';
+      if (!rawAnswer.trim()) {
+        const isArabic = /[\u0600-\u06FF]/.test(query);
+        setVoiceError(isArabic ? 'لم يتم استلام استجابة واضحة، يرجى إعادة المحاولة.' : 'No response received. Please try again.');
+        setCompanionState('TECHNICAL_ERROR');
+        setCompanionEmotion('CONFUSED');
+        return;
       }
 
       // Parse emotion tag and clean spoken text
@@ -201,11 +222,12 @@ export default function App() {
         ],
       }));
 
+      // Immediately display response in HUD subtitle bubble
+      setCurrentSpeechText(cleanText);
+
       // Speak response through TTS with live lip sync visemes
-      setCurrentSpeechText(null);
       companionVoice.speak(cleanText, {
         onStart: () => {
-          setCurrentSpeechText(cleanText);
           setCompanionState('SPEAKING');
         },
         onViseme: (mouthVal) => {

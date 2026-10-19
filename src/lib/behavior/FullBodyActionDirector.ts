@@ -247,13 +247,15 @@ export class FullBodyActionDirector {
 
     switch (action) {
       case 'HEAD_SCRATCH': {
-        // Head tilts into position with shoulder lift; zero hand movement per Task 1
+        // Head tilts into position with subtle shoulder lift; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.85 * envelope, -0.65 * envelope, -0.90 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 1.25 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
           leftHand: new THREE.Vector3(),
           leftHandPose: 'RELAXED',
           head: new THREE.Vector3(0.08 * envelope, -0.12 * envelope, -0.15 * envelope), // Tilts toward shoulder
@@ -264,33 +266,35 @@ export class FullBodyActionDirector {
       }
 
       case 'FRIENDLY_WAVE': {
-        // Arm raises in greeting while hands remain neutral per Task 1
+        // Welcoming greeting through cheerful head nod and shoulder accent; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.65 * envelope, -0.30 * envelope, -1.35 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.95 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
           leftHand: new THREE.Vector3(),
           leftHandPose: 'RELAXED',
           head: new THREE.Vector3(0.05 * envelope, 0, 0.04 * envelope),
           torso: new THREE.Vector3(-0.02 * envelope, 0, -0.02 * envelope),
-          shoulders: { leftZ: 0, rightZ: 0.08 * envelope },
+          shoulders: { leftZ: 0, rightZ: 0.04 * envelope },
           facialStyle: 'LAUGHTER_BURST',
         };
       }
 
       case 'EXPRESSIVE_SHRUG': {
-        // Both shoulders lift, head tilts; zero hand movement per Task 1
+        // Both shoulders lift, head tilts; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          leftUpperArm: new THREE.Vector3(0.12 * envelope, 0.15 * envelope, 0.20 * envelope),
-          leftLowerArm: new THREE.Vector3(0, -0.45 * envelope, 0),
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
           leftHand: new THREE.Vector3(),
           leftHandPose: 'RELAXED',
 
-          rightUpperArm: new THREE.Vector3(0.12 * envelope, -0.15 * envelope, -0.20 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.45 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
 
@@ -302,17 +306,17 @@ export class FullBodyActionDirector {
       }
 
       case 'LAUGH_REACTION': {
-        // Torso bounces, head tips, arms move with laughter; zero hand movement per Task 1
+        // Torso bounces, head tips, shoulders cadence; stable neutral arm and hand pose
         const laughBounce = Math.sin(time * 16.0) * 0.035 * envelope;
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.55 * envelope, -0.35 * envelope, -0.45 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.85 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
 
-          leftUpperArm: new THREE.Vector3(0.08 * envelope, 0, 0.05 * envelope),
-          leftLowerArm: new THREE.Vector3(0, -0.15 * envelope, 0),
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
           leftHand: new THREE.Vector3(),
           leftHandPose: 'RELAXED',
 
@@ -324,16 +328,16 @@ export class FullBodyActionDirector {
       }
 
       case 'THINKING_CONTEMPLATION': {
-        // Inquisitive thinking posture; zero hand movement per Task 1
+        // Inquisitive thinking posture: thoughtful head tilt and gaze; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.48 * envelope, -0.25 * envelope, -0.42 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.92 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
 
-          leftUpperArm: new THREE.Vector3(0.10 * envelope, 0.15 * envelope, 0.10 * envelope),
-          leftLowerArm: new THREE.Vector3(0, -0.35 * envelope, 0),
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
           leftHand: new THREE.Vector3(),
           leftHandPose: 'RELAXED',
 
@@ -345,16 +349,16 @@ export class FullBodyActionDirector {
       }
 
       case 'AFFECTIONATE_REACH': {
-        // Leans gently forward, extends right arm toward user; zero hand movement per Task 1
+        // Leans gently forward toward user; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.35 * envelope, -0.12 * envelope, -0.38 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.52 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
-          rightHandPose: 'OPEN_PALM',
+          rightHandPose: 'RELAXED',
 
-          leftUpperArm: new THREE.Vector3(0.08 * envelope, 0, 0.05 * envelope),
-          leftLowerArm: new THREE.Vector3(0, -0.12 * envelope, 0),
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
           leftHand: new THREE.Vector3(),
           leftHandPose: 'RELAXED',
 
@@ -366,20 +370,18 @@ export class FullBodyActionDirector {
       }
 
       case 'ROMANTIC_GESTURE': {
-        // Modest romantic acknowledgement: one hand rests near the heart
-        // while the other offers an open, welcoming palm. No clothing lift,
-        // exposure, or sexualized body control is involved.
+        // Modest romantic posture: gentle head angle and warm expression; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.22 * envelope, -0.16 * envelope, -0.28 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.42 * envelope, 0),
-          rightHand: new THREE.Vector3(0.10 * envelope, 0, 0),
-          rightHandPose: 'CHEST_HEART',
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
+          rightHand: new THREE.Vector3(),
+          rightHandPose: 'RELAXED',
 
-          leftUpperArm: new THREE.Vector3(0.06 * envelope, 0.06 * envelope, 0.08 * envelope),
-          leftLowerArm: new THREE.Vector3(0, -0.16 * envelope, 0),
-          leftHand: new THREE.Vector3(0.04 * envelope, 0, 0),
-          leftHandPose: 'OPEN_PALM',
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
+          leftHand: new THREE.Vector3(),
+          leftHandPose: 'RELAXED',
 
           head: new THREE.Vector3(0.04 * envelope, -0.05 * envelope, -0.07 * envelope),
           torso: new THREE.Vector3(0.025 * envelope, 0, 0),
@@ -389,16 +391,16 @@ export class FullBodyActionDirector {
       }
 
       case 'SURPRISED_RECOIL': {
-        // Torso recoils back, arms lift slightly, wide eyes; zero hand movement per Task 1
+        // Torso recoils back, wide eyes; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          leftUpperArm: new THREE.Vector3(0.32 * envelope, 0.15 * envelope, 0.18 * envelope),
-          leftLowerArm: new THREE.Vector3(0, -0.55 * envelope, 0),
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
           leftHand: new THREE.Vector3(),
           leftHandPose: 'RELAXED',
 
-          rightUpperArm: new THREE.Vector3(0.32 * envelope, -0.15 * envelope, -0.18 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.55 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
 
@@ -410,16 +412,16 @@ export class FullBodyActionDirector {
       }
 
       case 'CONFIDENT_HIP_REST': {
-        // Confident weight shift, head tilt with smirk; zero hand movement per Task 1
+        // Confident weight shift, head tilt with smirk; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.15 * envelope, -0.22 * envelope, -0.45 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.75 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
 
-          leftUpperArm: new THREE.Vector3(0.05 * envelope, 0, 0.05 * envelope),
-          leftLowerArm: new THREE.Vector3(0, -0.10 * envelope, 0),
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
           leftHand: new THREE.Vector3(),
           leftHandPose: 'RELAXED',
 
@@ -431,16 +433,16 @@ export class FullBodyActionDirector {
       }
 
       case 'EXPLANATORY_GESTURE': {
-        // Conversational arm phrasing; zero hand movement per Task 1
+        // Conversational head and torso phrasing; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.32 * envelope, -0.15 * envelope, -0.42 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.65 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
 
-          leftUpperArm: new THREE.Vector3(0.10 * envelope, 0.10 * envelope, 0.08 * envelope),
-          leftLowerArm: new THREE.Vector3(0, -0.25 * envelope, 0),
+          leftUpperArm: new THREE.Vector3(),
+          leftLowerArm: new THREE.Vector3(),
           leftHand: new THREE.Vector3(),
           leftHandPose: 'RELAXED',
 
@@ -452,11 +454,11 @@ export class FullBodyActionDirector {
       }
 
       case 'CURIOUS_LEAN': {
-        // Inquisitive forward lean, curious tilt, left arm steady and relaxed; zero hand movement per Task 1
+        // Inquisitive forward lean, curious tilt; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.28 * envelope, -0.12 * envelope, -0.48 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.58 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
 
@@ -473,11 +475,11 @@ export class FullBodyActionDirector {
       }
 
       case 'EMPATHETIC_COMFORT': {
-        // Compassionate forward lean, caring expression; zero hand movement per Task 1
+        // Compassionate forward lean, caring expression; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.25 * envelope, -0.15 * envelope, -0.38 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.72 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
 
@@ -494,11 +496,11 @@ export class FullBodyActionDirector {
       }
 
       case 'SAD_PENSIVE': {
-        // Gentle downcast posture, shoulders softening downwards; zero hand movement per Task 1
+        // Gentle downcast posture, shoulders softening downwards; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.10 * envelope, 0, -0.12 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.28 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
 
@@ -515,11 +517,11 @@ export class FullBodyActionDirector {
       }
 
       case 'ANGRY_STANCE': {
-        // Assertive firm posture, head high; zero hand movement per Task 1
+        // Assertive firm posture, head high; stable neutral arm and hand pose
         return {
           ...DEFAULT_OFFSETS,
-          rightUpperArm: new THREE.Vector3(0.18 * envelope, -0.25 * envelope, -0.48 * envelope),
-          rightLowerArm: new THREE.Vector3(0, 0.80 * envelope, 0),
+          rightUpperArm: new THREE.Vector3(),
+          rightLowerArm: new THREE.Vector3(),
           rightHand: new THREE.Vector3(),
           rightHandPose: 'RELAXED',
 

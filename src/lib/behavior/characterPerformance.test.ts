@@ -226,7 +226,7 @@ console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
   assert.equal(unified.emotion, 'AFFECTIONATE');
   assert.ok(unified.respiration.lungVolume > 0);
   assert.ok(unified.eye.attentionFocus > 0);
-  assert.ok(unified.hands.rightPose === 'CHEST_HEART' || unified.hands.rightPose === 'OPEN_PALM');
+  assert.ok(unified.hands.rightPose === 'RELAXED', 'Hand pose must remain stable natural neutral RELAXED pose');
   assert.ok(unified.lookAtTarget instanceof THREE.Vector3);
 
   console.log('✓ Test 6 Passed: Master Character Performance Director coordinates all systems seamlessly');
