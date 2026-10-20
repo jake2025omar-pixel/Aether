@@ -1,6 +1,6 @@
-/**
- * Aether Companion Voice System (Speech-to-Text, Text-to-Speech, and Lip Sync Visemes)
- */
+import { PhoneticLipSyncEngine, VisemeFrame } from './phonemeLipSync';
+
+export type { VisemeFrame };
 
 export interface SpeechRecognitionHandlers {
   onStart?: () => void;
@@ -13,7 +13,7 @@ export interface SpeechRecognitionHandlers {
 export interface VoicePlaybackHandlers {
   onStart: () => void;
   onEnd: () => void;
-  onViseme: (mouthOpen: number) => void;
+  onViseme: (mouthOpen: number, visemes?: VisemeFrame) => void;
   onError?: (reason: string) => void;
 }
 
@@ -274,18 +274,9 @@ class CompanionVoiceService {
       utterance.voice = matchingVoice;
     }
 
+    const timeline = PhoneticLipSyncEngine.buildTimeline(text);
     const words = text.match(/\S+/gu) || [];
-    const segments = words.map((word) => {
-      const letters = word.replace(/[^\p{L}\p{N}]/gu, '');
-      const syllables = isArabic
-        ? Math.max(1, Math.min(4, Math.ceil([...letters].length / 3)))
-        : Math.max(1, Math.min(4, (letters.match(/[aeiouy]/gi) || []).length));
-      return { word, syllables };
-    });
-
-    const totalSyllables = segments.reduce((sum, item) => sum + item.syllables, 0);
-    const estimatedSeconds = Math.max(1.0, (words.length * 0.42) / (utterance.rate || 1.0));
-    const syllableCadence = (estimatedSeconds / Math.max(1, totalSyllables)) * 1000;
+    const estimatedSeconds = Math.max(1.0, (words.length * 0.44) / (utterance.rate || 1.0));
     let fallbackSpeechStartedAt = 0;
 
     utterance.onstart = () => {
@@ -293,17 +284,21 @@ class CompanionVoiceService {
       fallbackSpeechStartedAt = performance.now();
       handlers.onStart();
 
-        this.visemeInterval = window.setInterval(() => {
-          if (!isCurrentPlayback()) return;
-          const elapsedMs = performance.now() - fallbackSpeechStartedAt;
-          const syllablePhase = (elapsedMs / Math.max(1, syllableCadence)) % 1;
-          const envelope = syllablePhase < 0.14
-            ? syllablePhase / 0.14
-            : syllablePhase > 0.86
-              ? (1 - syllablePhase) / 0.14
-              : 1;
-          handlers.onViseme(Math.max(0, Math.min(0.62, 0.08 + envelope * 0.50)));
-        }, Math.max(30, Math.min(80, Math.round(syllableCadence * 0.25))));
+      this.visemeInterval = window.setInterval(() => {
+        if (!isCurrentPlayback()) return;
+        const elapsedMs = performance.now() - fallbackSpeechStartedAt;
+        const totalMs = estimatedSeconds * 1000;
+        const progress = Math.min(0.999, elapsedMs / totalMs);
+
+        // Syllabic envelope with momentary closures between syllables
+        const syllableCadence = 140; // ms per syllable
+        const syllablePhase = (elapsedMs / syllableCadence) % 1;
+        const dip = syllablePhase < 0.12 ? syllablePhase / 0.12 : syllablePhase > 0.88 ? (1 - syllablePhase) / 0.12 : 1.0;
+        const pseudoRms = 0.09 * dip;
+
+        const frame = PhoneticLipSyncEngine.sample(timeline, progress, pseudoRms);
+        handlers.onViseme(frame.mouthOpen, frame);
+      }, 35);
     };
 
     const cleanup = () => {
@@ -313,7 +308,7 @@ class CompanionVoiceService {
         this.visemeInterval = null;
       }
       this.currentUtterance = null;
-      handlers.onViseme(0);
+      handlers.onViseme(0, { mouthOpen: 0, aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
       handlers.onEnd();
     };
 
@@ -441,7 +436,11 @@ class CompanionVoiceService {
         source.onended = finishPlayback;
         handlers.onStart();
 
-        // Phoneme-aligned real-time lip-sync loop driven by display refresh clock
+        const timeline = PhoneticLipSyncEngine.buildTimeline(text);
+        const audioDuration = Math.max(0.2, audioBuffer.duration);
+        let audioStartTime = audioContext.currentTime;
+
+        // Phoneme-aligned real-time lip-sync loop driven by audio playback clock
         const updateVisemes = () => {
           if (!isCurrentPlayback()) return;
           analyser.getByteFrequencyData(frequencyData);
@@ -472,29 +471,25 @@ class CompanionVoiceService {
           }
           const avgSibilance = sibilanceSum / Math.max(1, sibMax - sibMin) / 255;
 
-          // Gate noise floor, accentuate vowels, and moderate mouth openness on closed sibilants
-          const energyGate = Math.max(0, rms - 0.016);
-          const vowelWeight = Math.max(0, avgFormant - 0.07);
-          const consonantClosure = Math.max(0, avgSibilance - 0.15) * 0.22;
+          // Calculate precise timeline progress from audio context playback clock
+          const elapsed = audioContext.currentTime - audioStartTime;
+          const progress = Math.min(0.999, Math.max(0, elapsed / audioDuration));
 
-          const rawTarget = Math.max(
-            0,
-            Math.min(0.86, energyGate * 4.4 + vowelWeight * 0.68 - consonantClosure)
+          const visemeFrame = PhoneticLipSyncEngine.sample(
+            timeline,
+            progress,
+            rms,
+            avgFormant,
+            avgSibilance
           );
 
-          // Natural vocal response: quick attack for vowel onsets, smooth decay to prevent jaw snapping
-          const attackSpeed = 0.52;
-          const decaySpeed = 0.24;
-          const response = rawTarget > smoothedLevel ? attackSpeed : decaySpeed;
-          smoothedLevel += (rawTarget - smoothedLevel) * response;
-          const finalMouthVal = smoothedLevel < 0.014 ? 0 : smoothedLevel;
-
-          handlers.onViseme(finalMouthVal);
+          handlers.onViseme(visemeFrame.mouthOpen, visemeFrame);
           this.visemeRafId = requestAnimationFrame(updateVisemes);
         };
 
         this.visemeRafId = requestAnimationFrame(updateVisemes);
         source.start(0);
+        audioStartTime = audioContext.currentTime;
       } catch (error: unknown) {
         if (!isCurrentPlayback()) return;
         const isAbort = controller.signal.aborted;
@@ -534,7 +529,7 @@ class CompanionVoiceService {
       this.currentUtterance = null;
     }
     if (handlers) {
-      handlers.onViseme(0);
+      handlers.onViseme(0, { mouthOpen: 0, aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
       handlers.onEnd();
     }
   }

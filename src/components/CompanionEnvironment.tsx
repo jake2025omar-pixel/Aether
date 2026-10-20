@@ -2,10 +2,13 @@ import React from 'react';
 import { RoomEnvironment3D } from './room/RoomEnvironment3D';
 import { CompanionState, CompanionEmotion } from '../lib/companionPersonality';
 
+import { VisemeFrame } from '../lib/phonemeLipSync';
+
 interface CompanionEnvironmentProps {
   companionState: CompanionState;
   companionEmotion: CompanionEmotion;
   visemeMouthOpen: number;
+  visemeFrame?: VisemeFrame | null;
   companionModelUrl?: string | null;
   roomModelUrl?: string | null;
   onStartInteraction?: () => void;
@@ -16,6 +19,7 @@ export const CompanionEnvironment: React.FC<CompanionEnvironmentProps> = ({
   companionState,
   companionEmotion,
   visemeMouthOpen,
+  visemeFrame,
   companionModelUrl,
   roomModelUrl,
   onStartInteraction,
@@ -28,6 +32,7 @@ export const CompanionEnvironment: React.FC<CompanionEnvironmentProps> = ({
         companionState={companionState}
         companionEmotion={companionEmotion}
         visemeMouthOpen={visemeMouthOpen}
+        visemeFrame={visemeFrame}
         companionModelUrl={companionModelUrl}
         roomModelUrl={roomModelUrl}
         onCompanionClick={onStartInteraction}

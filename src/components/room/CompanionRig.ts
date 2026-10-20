@@ -9,6 +9,7 @@ import {
   AnimeExpressionStyle,
   computePresetJoints,
 } from '../../lib/behavior';
+import { VisemeFrame } from '../../lib/phonemeLipSync';
 
 const FINGER_BONE_NAMES = [
   'thumbMetacarpal',
@@ -119,6 +120,7 @@ export class CompanionRig {
   private motionEnabled = true;
   private targetViseme: number = 0; // 0 to 1
   private displayedViseme: number = 0;
+  private currentVisemeFrame: VisemeFrame | null = null;
 
   constructor(vrm?: VRM | null) {
     this.root = new THREE.Group();
@@ -450,10 +452,12 @@ export class CompanionRig {
     }
   }
 
-  public setViseme(mouthOpen: number): void {
+  public setViseme(mouthOpen: number, visemeFrame?: VisemeFrame | null): void {
     this.targetViseme = Math.max(0, Math.min(1, mouthOpen));
+    this.currentVisemeFrame = visemeFrame || null;
     if (mouthOpen === 0 && this.displayedViseme < 0.08) {
       this.displayedViseme = 0;
+      this.currentVisemeFrame = null;
       if (this.isVrm && this.vrmInstance?.expressionManager) {
         this.vrmInstance.expressionManager.setValue('aa', 0);
         this.vrmInstance.expressionManager.setValue('oh', 0);
@@ -482,8 +486,8 @@ export class CompanionRig {
     // 1. Semantic Orchestrator
     this.animationFrame = this.animationOrchestrator.update(frameDelta, elapsedTime);
 
-    // 2. Viseme Smoothing
-    this.displayedViseme = THREE.MathUtils.damp(this.displayedViseme, this.targetViseme, 18, frameDelta);
+    // 2. Viseme Smoothing: snappy responsiveness for syllables and closures
+    this.displayedViseme = THREE.MathUtils.damp(this.displayedViseme, this.targetViseme, 32, frameDelta);
     if (this.targetViseme === 0 && this.displayedViseme < 0.005) this.displayedViseme = 0;
 
     // 3. Central Character Performance Director Frame
@@ -493,7 +497,8 @@ export class CompanionRig {
       elapsedTime,
       cameraTarget,
       this.root.position,
-      this.displayedViseme
+      this.displayedViseme,
+      this.currentVisemeFrame
     );
 
     // 4. VRM Character Kinematics & Full-Body Performance

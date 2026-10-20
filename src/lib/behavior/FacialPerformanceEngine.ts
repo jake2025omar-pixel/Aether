@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CompanionEmotion, CompanionState } from '../companionPersonality';
+import { VisemeFrame } from '../phonemeLipSync';
 
 export type AnimeExpressionStyle =
   | 'NATURAL'
@@ -98,7 +99,8 @@ export class FacialPerformanceEngine {
     state: CompanionState,
     visemeMouthOpen: number,
     eyeBlink: number,
-    eyeSquint: number
+    eyeSquint: number,
+    visemeFrame?: VisemeFrame | null
   ): FacialPerformanceSample {
     const frameDelta = Math.min(Math.max(dt, 0), 0.05);
 
@@ -344,13 +346,33 @@ export class FacialPerformanceEngine {
     }
 
     // Audio-driven mouth Blend Shapes via authoritative VRM 1.0 Expression Presets
-    if (visemeMouthOpen > 0.02) {
+    if (visemeFrame && visemeMouthOpen > 0.008) {
+      targetVrm.aa = THREE.MathUtils.clamp(visemeFrame.aa, 0, 1);
+      targetVrm.ih = THREE.MathUtils.clamp(visemeFrame.ih, 0, 1);
+      targetVrm.oh = THREE.MathUtils.clamp(visemeFrame.oh, 0, 1);
+      targetVrm.ee = THREE.MathUtils.clamp(visemeFrame.ee, 0, 1);
+      targetVrm.ou = THREE.MathUtils.clamp(visemeFrame.ou, 0, 1);
+    } else if (visemeMouthOpen > 0.02) {
+      // Dynamic fallback vowel modulation to prevent static wide mouth gap
       const mouthDrive = THREE.MathUtils.clamp(visemeMouthOpen, 0, 1);
-      targetVrm.aa = mouthDrive * 0.72;
-      targetVrm.ih = mouthDrive * 0.16;
-      targetVrm.oh = mouthDrive * 0.24;
-      targetVrm.ee = mouthDrive * 0.10;
-      targetVrm.ou = mouthDrive * 0.08;
+      const phase = (time * 8.2) % (Math.PI * 2);
+      const isClosureDip = Math.sin(phase) < -0.65;
+      if (isClosureDip) {
+        targetVrm.aa = 0;
+        targetVrm.ih = 0;
+        targetVrm.oh = 0;
+        targetVrm.ee = 0;
+        targetVrm.ou = 0;
+      } else {
+        const vowelA = Math.max(0, Math.sin(phase));
+        const vowelI = Math.max(0, Math.cos(phase * 1.3));
+        const vowelO = Math.max(0, -Math.cos(phase));
+        targetVrm.aa = mouthDrive * vowelA * 0.75;
+        targetVrm.ih = mouthDrive * vowelI * 0.60;
+        targetVrm.oh = mouthDrive * vowelO * 0.50;
+        targetVrm.ee = mouthDrive * 0.15;
+        targetVrm.ou = mouthDrive * 0.10;
+      }
     } else {
       targetVrm.aa = 0;
       targetVrm.ih = 0;
@@ -387,6 +409,13 @@ export class FacialPerformanceEngine {
       if (key === 'blink' || key === 'blinkLeft' || key === 'blinkRight') {
         // Blinking is computed with precise anatomical sine/cosine curve in EyeBehaviorController.
         this.vrmPresets[key] = THREE.MathUtils.clamp(targetVrm[key] || 0, 0, 1);
+      } else if (key === 'aa' || key === 'ih' || key === 'ou' || key === 'ee' || key === 'oh') {
+        // High-speed responsiveness for speech visemes to articulate crisp phonemes and close between syllables
+        const speechRate = targetVrm[key] < this.vrmPresets[key] ? 32.0 : 38.0;
+        this.vrmPresets[key] = THREE.MathUtils.damp(this.vrmPresets[key], targetVrm[key], speechRate, frameDelta);
+        if (targetVrm[key] === 0 && this.vrmPresets[key] < 0.005) {
+          this.vrmPresets[key] = 0;
+        }
       } else {
         this.vrmPresets[key] = THREE.MathUtils.damp(this.vrmPresets[key], targetVrm[key], dampRate, frameDelta);
         if (targetVrm[key] === 0 && this.vrmPresets[key] < 0.005) {

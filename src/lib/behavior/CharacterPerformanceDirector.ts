@@ -11,6 +11,7 @@ import { FingerHandController, DualHandFingerSample, HandPosePreset } from './Fi
 import { LocomotionController, LocomotionSample } from './LocomotionController';
 import { FacialPerformanceEngine, FacialPerformanceSample, AnimeExpressionStyle } from './FacialPerformanceEngine';
 import { FullBodyActionDirector, FullBodyActionSample, FullBodyActionType } from './FullBodyActionDirector';
+import { VisemeFrame } from '../phonemeLipSync';
 
 export interface UnifiedPerformanceFrame {
   timestamp: number;
@@ -200,7 +201,8 @@ export class CharacterPerformanceDirector {
     elapsedTime: number,
     targetCameraPos: THREE.Vector3,
     avatarRootPos: THREE.Vector3,
-    visemeMouthOpen: number
+    visemeMouthOpen: number,
+    visemeFrame?: VisemeFrame | null
   ): UnifiedPerformanceFrame {
     const frameDelta = Math.min(Math.max(dt, 0), 0.05);
 
@@ -297,7 +299,8 @@ export class CharacterPerformanceDirector {
       this.currentState,
       visemeMouthOpen,
       eyeSample.leftBlink,
-      eyeSample.squint
+      eyeSample.squint,
+      visemeFrame
     );
 
     // 12. Hand & Finger Articulation Layering

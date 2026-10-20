@@ -19,6 +19,7 @@ import {
   COMPANION_DISPLAY_NAME,
 } from './lib/companionPersonality';
 import { companionVoice } from './lib/companionVoice';
+import { VisemeFrame } from './lib/phonemeLipSync';
 
 const pathToView = (path: string): NavDestination => {
   const clean = path.replace(/\/$/, '') || '/';
@@ -80,6 +81,7 @@ export default function App() {
   const [companionState, setCompanionState] = useState<CompanionState>('IDLE');
   const [companionEmotion, setCompanionEmotion] = useState<CompanionEmotion>('NEUTRAL');
   const [visemeMouthOpen, setVisemeMouthOpen] = useState<number>(0);
+  const [visemeFrame, setVisemeFrame] = useState<VisemeFrame | null>(null);
   const [currentSpeechText, setCurrentSpeechText] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [interimTranscript, setInterimTranscript] = useState<string | null>(null);
@@ -159,7 +161,7 @@ export default function App() {
       }));
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 35000);
+      const timeoutId = setTimeout(() => controller.abort(), 55000);
 
       let res: Response;
       try {
@@ -230,12 +232,14 @@ export default function App() {
         onStart: () => {
           setCompanionState('SPEAKING');
         },
-        onViseme: (mouthVal) => {
+        onViseme: (mouthVal, frame) => {
           setVisemeMouthOpen(mouthVal);
+          setVisemeFrame(frame || null);
         },
         onEnd: () => {
           setCompanionState('IDLE');
           setVisemeMouthOpen(0);
+          setVisemeFrame(null);
           setCurrentSpeechText(null);
         },
         onError: (reason) => {
@@ -256,6 +260,7 @@ export default function App() {
       setCompanionState('TECHNICAL_ERROR');
       setCompanionEmotion('CONFUSED');
       setVisemeMouthOpen(0);
+      setVisemeFrame(null);
       const isAbort = err instanceof Error && err.name === 'AbortError';
       const isArabic = /[\u0600-\u06FF]/.test(query);
       const errMsg = isAbort
@@ -289,6 +294,7 @@ export default function App() {
       setCurrentSpeechText(null);
       setCompanionState('IDLE');
       setVisemeMouthOpen(0);
+      setVisemeFrame(null);
     }
 
     // If currently listening, stop
@@ -354,6 +360,7 @@ export default function App() {
     setCurrentSpeechText(null);
     setCompanionState('IDLE');
     setVisemeMouthOpen(0);
+    setVisemeFrame(null);
   }, []);
 
   if (!adultConsentGranted) {
@@ -369,6 +376,7 @@ export default function App() {
             companionState={companionState}
             companionEmotion={companionEmotion}
             visemeMouthOpen={visemeMouthOpen}
+            visemeFrame={visemeFrame}
             onStartInteraction={handleToggleVoice}
             companionModelUrl={primaryCharacterUrl}
             roomModelUrl={primaryEnvironmentUrl}

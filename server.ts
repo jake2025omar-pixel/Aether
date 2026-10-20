@@ -9,10 +9,10 @@ import { handleGeminiTtsRequest } from './server/geminiTts';
 
 dotenv.config();
 
-const PRIMARY_GEMINI_MODEL = 'gemini-3.1-flash-lite';
+const PRIMARY_GEMINI_MODEL = 'gemini-2.5-flash';
 const CANDIDATE_MODELS = [
-  'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
+  'gemini-3.1-flash-lite',
   'gemini-flash-latest',
   'gemini-3.8-flash',
 ];
@@ -80,10 +80,10 @@ app.use((req, res, next) => {
 // Security: Enforce strict payload body limit to prevent memory exhaustion DoS
 app.use(express.json({ limit: '64kb' }));
 
-// In-memory sliding rate limiter for AI Chat requests (35 requests / minute / IP)
+// In-memory sliding rate limiter for AI Chat requests (300 requests / minute / IP)
 const rateLimitMap = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX_REQUESTS = 35;
+const RATE_LIMIT_MAX_REQUESTS = 300;
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now();
@@ -147,8 +147,13 @@ app.post('/api/chat', async (req, res) => {
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
 
   if (isRateLimited(clientIp)) {
-    return res.status(429).json({
-      error: 'Too many requests. Please wait a moment before sending another message.',
+    const rawMsg = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    const fallbackText = getLocalCompanionFallback(rawMsg);
+    return res.json({
+      text: fallbackText,
+      model: 'local-fallback',
+      isFallback: true,
+      rateLimited: true,
     });
   }
 
@@ -184,12 +189,6 @@ app.post('/api/chat', async (req, res) => {
   req.once('aborted', () => {
     isClientDisconnected = true;
     providerAbortController.abort();
-  });
-  res.once('close', () => {
-    if (!res.writableEnded) {
-      isClientDisconnected = true;
-      providerAbortController.abort();
-    }
   });
 
   const defaultSystemInstruction = AETHER_COMPANION_SYSTEM_PROMPT;
@@ -311,8 +310,8 @@ app.post('/api/chat', async (req, res) => {
       if (!ignoreCooldown && isModelCoolingDown(model)) continue;
 
       const attemptController = new AbortController();
-      // Allow 16 seconds per attempt to comfortably handle LLM response generation
-      const attemptTimeout = setTimeout(() => attemptController.abort(), 16000);
+      // Allow 30 seconds per attempt to comfortably handle LLM response generation under load
+      const attemptTimeout = setTimeout(() => attemptController.abort(), 30000);
       const onAbort = () => attemptController.abort();
       providerAbortController.signal.addEventListener('abort', onAbort, { once: true });
 
@@ -335,6 +334,7 @@ app.post('/api/chat', async (req, res) => {
         if (generatedText) {
           clearTimeout(attemptTimeout);
           providerAbortController.signal.removeEventListener('abort', onAbort);
+          if (res.headersSent || res.writableEnded) return;
           return res.json({
             text: generatedText,
             model,
@@ -343,6 +343,10 @@ app.post('/api/chat', async (req, res) => {
       } catch (err: unknown) {
         const errStr = String(err instanceof Error ? err.message : err);
         lastError = errStr;
+        if (isClientDisconnected || providerAbortController.signal.aborted) {
+          console.log(`[AetherAI Server] Request canceled by client during ${model}`);
+          break;
+        }
         console.warn(`[AetherAI Server] GenerateContent attempt for ${model} failed: ${errStr}`);
         if (isTemporaryOverload(errStr)) {
           markModelRateLimited(model);
@@ -351,6 +355,10 @@ app.post('/api/chat', async (req, res) => {
         clearTimeout(attemptTimeout);
         providerAbortController.signal.removeEventListener('abort', onAbort);
       }
+    }
+
+    if (isClientDisconnected || res.headersSent || res.writableEnded) {
+      return;
     }
 
     // Graceful fallback response if all upstream models are temporarily busy

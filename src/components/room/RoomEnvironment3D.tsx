@@ -7,11 +7,13 @@ import { CompanionState, CompanionEmotion, COMPANION_DISPLAY_NAME } from '../../
 import { dispose3DResource, loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
 import { FurnitureLayoutEngine } from '../../lib/environment/FurnitureLayoutEngine';
 import { Mic, Volume2, Sparkles, Brain } from 'lucide-react';
+import { VisemeFrame } from '../../lib/phonemeLipSync';
 
 export interface RoomEnvironment3DProps {
   companionState: CompanionState;
   companionEmotion: CompanionEmotion;
   visemeMouthOpen: number;
+  visemeFrame?: VisemeFrame | null;
   companionModelUrl?: string | null;
   roomModelUrl?: string | null;
   onCompanionClick?: () => void;
@@ -78,6 +80,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   companionState,
   companionEmotion,
   visemeMouthOpen,
+  visemeFrame,
   companionModelUrl,
   roomModelUrl,
   onCompanionClick,
@@ -95,6 +98,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   const stateRef = useRef(companionState);
   const emotionRef = useRef(companionEmotion);
   const visemeRef = useRef(visemeMouthOpen);
+  const visemeFrameRef = useRef<VisemeFrame | null | undefined>(visemeFrame);
   const motionEnabledRef = useRef(true);
   const targetLookPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.25, 2.7));
   const interactionClickRef = useRef<((clientX: number, clientY: number) => boolean) | null>(null);
@@ -103,6 +107,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   stateRef.current = companionState;
   emotionRef.current = companionEmotion;
   visemeRef.current = visemeMouthOpen;
+  visemeFrameRef.current = visemeFrame;
 
   // Sync Emotion & Visemes to 3D Companion Rig
   useEffect(() => {
@@ -113,9 +118,9 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
   useEffect(() => {
     if (companionRigRef.current) {
-      companionRigRef.current.setViseme(visemeMouthOpen);
+      companionRigRef.current.setViseme(visemeMouthOpen, visemeFrame);
     }
-  }, [visemeMouthOpen]);
+  }, [visemeMouthOpen, visemeFrame]);
 
   useEffect(() => {
     if (companionRigRef.current) {
@@ -487,7 +492,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       }
       scene.add(rig.root);
       rig.setEmotion(emotionRef.current);
-      rig.setViseme(visemeRef.current);
+      rig.setViseme(visemeRef.current, visemeFrameRef.current);
       rig.setState(stateRef.current);
       rig.setMotionEnabled(motionEnabledRef.current);
     };
@@ -514,7 +519,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         }
         scene.add(rig.root);
         rig.setEmotion(emotionRef.current);
-        rig.setViseme(visemeRef.current);
+        rig.setViseme(visemeRef.current, visemeFrameRef.current);
         rig.setState(stateRef.current);
         rig.setMotionEnabled(motionEnabledRef.current);
       }).catch(() => {
