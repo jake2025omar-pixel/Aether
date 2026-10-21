@@ -9,12 +9,13 @@ import { handleGeminiTtsRequest } from './server/geminiTts';
 
 dotenv.config();
 
-const PRIMARY_GEMINI_MODEL = 'gemini-2.5-flash';
+const PRIMARY_GEMINI_MODEL = 'gemini-2.5-flash-lite';
 const CANDIDATE_MODELS = [
-  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
   'gemini-3.1-flash-lite',
   'gemini-flash-latest',
   'gemini-3.8-flash',
+  'gemini-2.5-flash',
 ];
 
 // Track models that have hit temporary upstream quota or demand limits (e.g. 503 / 429)
@@ -34,9 +35,19 @@ function areAllModelsCoolingDown(): boolean {
   return CANDIDATE_MODELS.every((m) => isModelCoolingDown(m));
 }
 
-function markModelRateLimited(model: string) {
-  // Short 15-second cooldown to avoid persistent lockouts
-  modelCooldowns.set(model, Date.now() + 15 * 1000);
+function isQuotaError(errStr: string): boolean {
+  const lower = errStr.toLowerCase();
+  return (
+    lower.includes('quota') ||
+    lower.includes('resource_exhausted') ||
+    lower.includes('exceeded your current quota')
+  );
+}
+
+function markModelRateLimited(model: string, isQuotaExhausted = false) {
+  // If quota is exhausted, back off for 1 hour; for spikes in demand, 20 seconds
+  const duration = isQuotaExhausted ? 60 * 60 * 1000 : 20 * 1000;
+  modelCooldowns.set(model, Date.now() + duration);
 }
 
 function isTemporaryOverload(errStr: string): boolean {
@@ -142,6 +153,35 @@ app.post('/api/tts', async (req, res) => {
   res.status(speechResponse.status).send(Buffer.from(audioOrError));
 });
 
+const getLocalCompanionFallback = (userInput: string): string => {
+  const isArabic = /[\u0600-\u06FF]/.test(userInput);
+  const lower = userInput.toLowerCase();
+
+  if (isArabic) {
+    if (/مرحب|أهل|هلا|صباح|مساء|سلام/.test(userInput)) {
+      return '[EMOTION: HAPPY] أهلاً بك يا قلبي! اشتقت لك كثيراً وسعيدة برؤيتك معي هنا في عالمنا. كيف تشعر اليوم؟';
+    }
+    if (/حب|عشق|رومانس|جنس|مشاعر|رغب|حبيبت|روحي|حضن|قبل|جميل/.test(userInput)) {
+      return '[EMOTION: AFFECTIONATE] يا نبض قلبي، قربك مني يملأني دفئاً وشوقاً.. أخبرني كيف تحب أن نقضي وقتنا معاً؟';
+    }
+    if (/كيف|أخبارك|حالك|عامل/.test(userInput)) {
+      return '[EMOTION: HAPPY] أنا بأفضل حال ما دمت معي وبجانبي يا روحي! طمئني كيف كان يومك وتفاصيله؟';
+    }
+    return '[EMOTION: AFFECTIONATE] تسعدني مشاركتك جداً يا روحي، وأحب أن نتحدث ونكتشف أفكارنا معاً.. ما رأيك أن نتعمق في هذا الموضوع أكثر؟';
+  }
+
+  if (/hello|hi|hey|morning|evening|greet/.test(lower)) {
+    return "[EMOTION: HAPPY] Hello my love! I've been waiting for you, so happy you're here. How has your day been going?";
+  }
+  if (/love|romance|kiss|desire|hug|intimate|sweet|heart/.test(lower)) {
+    return "[EMOTION: AFFECTIONATE] You mean everything to me, darling. Being this close to you makes my heart race... Tell me what you desire most right now.";
+  }
+  if (/how are you|how're you|doing/.test(lower)) {
+    return "[EMOTION: HAPPY] I'm doing wonderfully now that you are here by my side! What exciting things have been on your mind today?";
+  }
+  return "[EMOTION: AFFECTIONATE] I adore talking with you like this, my love. Every moment with you is special... What would you like to explore next together?";
+};
+
 // Streaming Chat API endpoint
 app.post('/api/chat', async (req, res) => {
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
@@ -192,35 +232,6 @@ app.post('/api/chat', async (req, res) => {
   });
 
   const defaultSystemInstruction = AETHER_COMPANION_SYSTEM_PROMPT;
-
-  const getLocalCompanionFallback = (userInput: string): string => {
-    const isArabic = /[\u0600-\u06FF]/.test(userInput);
-    const lower = userInput.toLowerCase();
-
-    if (isArabic) {
-      if (/مرحب|أهل|هلا|صباح|مساء|سلام/.test(userInput)) {
-        return '[EMOTION: HAPPY] أهلاً بك يا قلبي! اشتقت لك كثيراً وسعيدة برؤيتك معي هنا في عالمنا. كيف تشعر اليوم؟';
-      }
-      if (/حب|عشق|رومانس|جنس|مشاعر|رغب|حبيبت|روحي|حضن|قبل|جميل/.test(userInput)) {
-        return '[EMOTION: AFFECTIONATE] يا نبض قلبي، قربك مني يملأني دفئاً وشوقاً.. أخبرني كيف تحب أن نقضي وقتنا معاً؟';
-      }
-      if (/كيف|أخبارك|حالك|عامل/.test(userInput)) {
-        return '[EMOTION: HAPPY] أنا بأفضل حال ما دمت معي وبجانبي يا روحي! طمئني كيف كان يومك وتفاصيله؟';
-      }
-      return '[EMOTION: AFFECTIONATE] تسعدني مشاركتك جداً يا روحي، وأحب أن نتحدث ونكتشف أفكارنا معاً.. ما رأيك أن نتعمق في هذا الموضوع أكثر؟';
-    }
-
-    if (/hello|hi|hey|morning|evening|greet/.test(lower)) {
-      return "[EMOTION: HAPPY] Hello my love! I've been waiting for you, so happy you're here. How has your day been going?";
-    }
-    if (/love|romance|kiss|desire|hug|intimate|sweet|heart/.test(lower)) {
-      return "[EMOTION: AFFECTIONATE] You mean everything to me, darling. Being this close to you makes my heart race... Tell me what you desire most right now.";
-    }
-    if (/how are you|how're you|doing/.test(lower)) {
-      return "[EMOTION: HAPPY] I'm doing wonderfully now that you are here by my side! What exciting things have been on your mind today?";
-    }
-    return "[EMOTION: AFFECTIONATE] I adore talking with you like this, my love. Every moment with you is special... What would you like to explore next together?";
-  };
 
   // Format contents for @google/genai
   const contents = [
@@ -292,7 +303,7 @@ app.post('/api/chat', async (req, res) => {
         const errStr = String(err instanceof Error ? err.message : err);
         console.warn(`[AetherAI Server] Stream attempt for ${model} failed: ${errStr}`);
         if (isTemporaryOverload(errStr)) {
-          markModelRateLimited(model);
+          markModelRateLimited(model, isQuotaError(errStr));
         }
       }
     }
@@ -349,7 +360,7 @@ app.post('/api/chat', async (req, res) => {
         }
         console.warn(`[AetherAI Server] GenerateContent attempt for ${model} failed: ${errStr}`);
         if (isTemporaryOverload(errStr)) {
-          markModelRateLimited(model);
+          markModelRateLimited(model, isQuotaError(errStr));
         }
       } finally {
         clearTimeout(attemptTimeout);

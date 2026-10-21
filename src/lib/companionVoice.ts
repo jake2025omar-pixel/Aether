@@ -405,7 +405,26 @@ class CompanionVoiceService {
           console.warn('[AetherAI Voice] Gemini TTS returned non-OK status:', response.status, errData);
           if (isCurrentPlayback()) {
             handlers.onError?.(response.status === 429 ? 'rate-limit' : 'unavailable');
-            finishPlayback();
+            // Animate companion's speech articulation across reading duration so text remains fully readable
+            handlers.onStart();
+            const timeline = PhoneticLipSyncEngine.buildTimeline(text);
+            const readingDurationMs = Math.max(4500, Math.min(10000, text.length * 68));
+            const startMs = performance.now();
+
+            this.visemeInterval = window.setInterval(() => {
+              if (!isCurrentPlayback()) return;
+              const elapsedMs = performance.now() - startMs;
+              if (elapsedMs >= readingDurationMs) {
+                finishPlayback();
+                return;
+              }
+              const progress = Math.min(0.999, elapsedMs / readingDurationMs);
+              const syllablePhase = (elapsedMs / 140) % 1;
+              const dip = syllablePhase < 0.12 ? syllablePhase / 0.12 : syllablePhase > 0.88 ? (1 - syllablePhase) / 0.12 : 1.0;
+              const pseudoRms = 0.08 * dip;
+              const frame = PhoneticLipSyncEngine.sample(timeline, progress, pseudoRms);
+              handlers.onViseme(frame.mouthOpen, frame);
+            }, 35);
           }
           return;
         }

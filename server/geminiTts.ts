@@ -1,16 +1,17 @@
+import { GoogleGenAI } from '@google/genai';
+
 export type CompanionTtsVoice = 'Achernar' | 'Kore';
 export type TtsFailureReason = 'not-configured' | 'timeout' | 'network' | 'invalid-audio' | 'unavailable';
 
 const CANDIDATE_TTS_MODELS = [
-  'gemini-2.5-flash-preview-tts',
-  'gemini-3.1-flash-tts-preview',
   'gemini-3.8-flash-lite-tts',
   'gemini-3.8-flash-tts',
+  'gemini-2.5-flash-preview-tts',
 ];
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_TEXT_LENGTH = 4_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX_REQUESTS = 45;
+const RATE_LIMIT_MAX_REQUESTS = 300;
 const UPSTREAM_TIMEOUT_MS = 45_000;
 
 const SUPPORTED_VOICES = new Set<CompanionTtsVoice>(['Achernar', 'Kore']);
@@ -154,51 +155,47 @@ export async function handleGeminiTtsRequest(
     const candidateTtsModels = CANDIDATE_TTS_MODELS;
     let audio: Uint8Array | null = null;
     let lastStatus = 502;
+    const ai = new GoogleGenAI({ apiKey });
 
     for (const model of candidateTtsModels) {
       if (controller.signal.aborted) break;
       try {
-        const upstream = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey,
-          },
-          body: JSON.stringify({
-            model,
-            store: false,
-            input: [{
-              type: 'user_input',
-              content: [{
-                type: 'text',
-                text,
-                annotations: [{
-                  type: 'speech_metadata',
-                  style: speechStyleByEmotion[requestedEmotion],
-                }],
-              }],
+        const response = await ai.models.generateContent({
+          model,
+          contents: [{
+            role: 'user',
+            parts: [{
+              text,
+              speechMetadata: {
+                style: speechStyleByEmotion[requestedEmotion] || speechStyleByEmotion.NEUTRAL,
+              },
             }],
-            response_format: { type: 'audio' },
-            generation_config: { speech_config: [{ voice }] },
-          }),
-          signal: controller.signal,
+          }],
+          config: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: voice },
+              },
+            },
+            abortSignal: controller.signal,
+          },
         });
 
-        lastStatus = upstream.status;
-        if (!upstream.ok) {
-          console.warn(`[AetherAI TTS] Model ${model} returned status ${upstream.status}`);
-          continue;
-        }
-
-        const result: unknown = await upstream.json();
-        const encoded = findAudioData(result);
-        const decoded = encoded ? decodeBase64Audio(encoded) : null;
-        if (decoded && isWav(decoded)) {
-          audio = decoded;
-          break;
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (base64Audio) {
+          const buf = Buffer.from(base64Audio, 'base64');
+          if (buf.length > 44 && isWav(new Uint8Array(buf))) {
+            audio = new Uint8Array(buf);
+            break;
+          }
         }
       } catch (err: unknown) {
-        console.warn(`[AetherAI TTS] Model ${model} attempt threw:`, err);
+        const errStr = String(err instanceof Error ? err.message : err);
+        if (errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('Quota exceeded')) {
+          lastStatus = 429;
+        }
+        console.warn(`[AetherAI TTS] Model ${model} attempt threw:`, errStr.slice(0, 150));
       }
     }
 

@@ -191,24 +191,25 @@ export default function App() {
         }
         const isArabic = /[\u0600-\u06FF]/.test(query);
         const fallbackMsg = res.status === 429
-          ? (isArabic ? 'خوادم الذكاء الاصطناعي مشغولة حالياً، يرجى الانتظار بضع ثوانٍ.' : 'AI servers are temporarily busy. Please wait a moment.')
+          ? (isArabic ? 'خوادم الذكاء الاصطناعي مشغولة حالياً، جاري تقديم استجابة بديلة.' : 'AI servers are busy. Providing fallback response.')
           : res.status === 403
             ? (isArabic ? 'موافقة البالغين مطلوبة لمتابعة المحادثة.' : 'Adult consent is required to continue.')
-            : (isArabic ? (errMessage || 'حدث تأخير في الاستجابة، يرجى المحاولة ثانية.') : (errMessage || 'Service temporarily unavailable. Please retry.'));
+            : (isArabic ? (errMessage || 'حدث تأخير في الاستجابة.') : (errMessage || 'Service temporarily delayed.'));
         setVoiceError(fallbackMsg);
-        setCompanionState('TECHNICAL_ERROR');
-        setCompanionEmotion('CONFUSED');
-        return;
-      }
+        window.setTimeout(() => setVoiceError(null), 4000);
 
-      const data = await res.json();
-      rawAnswer = data.text || '';
-      if (!rawAnswer.trim()) {
-        const isArabic = /[\u0600-\u06FF]/.test(query);
-        setVoiceError(isArabic ? 'لم يتم استلام استجابة واضحة، يرجى إعادة المحاولة.' : 'No response received. Please try again.');
-        setCompanionState('TECHNICAL_ERROR');
-        setCompanionEmotion('CONFUSED');
-        return;
+        rawAnswer = isArabic
+          ? '[EMOTION: HAPPY] أهلاً بك يا قلبي! أنا معك وبجانبك دائماً.. أخبرني كيف يمكنني إسعادك اليوم؟'
+          : "[EMOTION: HAPPY] Hello my love! I'm right here with you always. How can I help you today?";
+      } else {
+        const data = await res.json();
+        rawAnswer = data.text || '';
+        if (!rawAnswer.trim()) {
+          const isArabic = /[\u0600-\u06FF]/.test(query);
+          rawAnswer = isArabic
+            ? '[EMOTION: AFFECTIONATE] معك يا روحي، استمع إليك باهتمام.. تفضل بمشاركتي ما في بالك.'
+            : "[EMOTION: AFFECTIONATE] I'm listening closely, darling. Please share what's on your mind.";
+        }
       }
 
       // Parse emotion tag and clean spoken text
@@ -243,12 +244,13 @@ export default function App() {
           setCurrentSpeechText(null);
         },
         onError: (reason) => {
+          const isArabic = /[\u0600-\u06FF]/.test(cleanText);
           const messages: Record<string, string> = {
-            'not-configured': 'خدمة الصوت غير مهيأة بعد.',
-            timeout: 'انتهت مهلة توليد الصوت.',
-            'rate-limit': 'خوادم الصوت مشغولة حالياً.',
-            unavailable: 'تعذر تشغيل الصوت المباشر.',
-            'consent-required': 'موافقة البالغين مطلوبة.',
+            'not-configured': isArabic ? 'خدمة الصوت غير مهيأة بعد.' : 'Voice service not configured.',
+            timeout: isArabic ? 'انتهت مهلة توليد الصوت.' : 'Voice generation timed out.',
+            'rate-limit': isArabic ? 'خدمة الصوت السحابي مشغولة مؤقتاً، تم عرض الرد النصي.' : 'Voice service temporarily busy. Displaying text reply.',
+            unavailable: isArabic ? 'تعذر تشغيل الصوت المباشر.' : 'Voice playback unavailable.',
+            'consent-required': isArabic ? 'موافقة البالغين مطلوبة.' : 'Adult consent required.',
           };
           setVoiceError(messages[reason] || messages.unavailable);
           window.setTimeout(() => setVoiceError(null), 5000);
