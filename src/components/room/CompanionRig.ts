@@ -486,8 +486,8 @@ export class CompanionRig {
     // 1. Semantic Orchestrator
     this.animationFrame = this.animationOrchestrator.update(frameDelta, elapsedTime);
 
-    // 2. Viseme Smoothing: snappy responsiveness for syllables and closures
-    this.displayedViseme = THREE.MathUtils.damp(this.displayedViseme, this.targetViseme, 32, frameDelta);
+    // 2. Viseme Smoothing: smooth, prominent responsiveness for syllables and closures
+    this.displayedViseme = THREE.MathUtils.damp(this.displayedViseme, this.targetViseme, 22, frameDelta);
     if (this.targetViseme === 0 && this.displayedViseme < 0.005) this.displayedViseme = 0;
 
     // 3. Central Character Performance Director Frame

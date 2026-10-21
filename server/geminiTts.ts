@@ -21,6 +21,7 @@ const SUPPORTED_EMOTIONS = new Set([
 ]);
 
 const recentRequestsByIp = new Map<string, number[]>();
+const ttsAudioCache = new Map<string, Uint8Array>();
 
 const speechStyleByEmotion: Record<string, string> = {
   NEUTRAL: 'Consistently soft, warm, calm, and clear; unhurried and conversational, without theatrical emphasis.',
@@ -142,6 +143,20 @@ export async function handleGeminiTtsRequest(
 
   if (!apiKey?.trim()) return jsonResponse({ error: 'Speech service is not configured on the server.' }, 503);
 
+  const cacheKey = `${voice}_${requestedEmotion}_${text.trim()}`;
+  const cachedAudio = ttsAudioCache.get(cacheKey);
+  if (cachedAudio && isWav(cachedAudio)) {
+    return new Response(cachedAudio.buffer as ArrayBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'audio/wav',
+        'Content-Length': String(cachedAudio.byteLength),
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+  }
+
   const clientIp = request.headers.get('CF-Connecting-IP')
     || request.headers.get('X-Client-IP')
     || 'unknown';
@@ -165,7 +180,7 @@ export async function handleGeminiTtsRequest(
           contents: [{
             role: 'user',
             parts: [{
-              text,
+              text: text.startsWith('Repeat exactly:') ? text : `Repeat exactly: ${text}`,
               speechMetadata: {
                 style: speechStyleByEmotion[requestedEmotion] || speechStyleByEmotion.NEUTRAL,
               },
@@ -187,6 +202,11 @@ export async function handleGeminiTtsRequest(
           const buf = Buffer.from(base64Audio, 'base64');
           if (buf.length > 44 && isWav(new Uint8Array(buf))) {
             audio = new Uint8Array(buf);
+            ttsAudioCache.set(cacheKey, audio);
+            if (ttsAudioCache.size > 200) {
+              const oldestKey = ttsAudioCache.keys().next().value;
+              if (oldestKey) ttsAudioCache.delete(oldestKey);
+            }
             break;
           }
         }

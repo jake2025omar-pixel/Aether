@@ -256,9 +256,9 @@ export class PhoneticLipSyncEngine {
       return { mouthOpen: 0, aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
     }
 
-    // Compute dynamic speech amplitude scalar from RMS
-    const energy = audioRms - noiseFloor;
-    const amp = Math.min(1.0, Math.max(0.18, energy * 5.2));
+    // Compute dynamic speech amplitude scalar from RMS with distinct, prominent visibility
+    const energy = Math.max(0, audioRms - noiseFloor);
+    const amp = Math.min(1.0, Math.max(0.45, energy * 12.0));
 
     // Acoustic formant modulation
     let aa = segment.aa * amp;

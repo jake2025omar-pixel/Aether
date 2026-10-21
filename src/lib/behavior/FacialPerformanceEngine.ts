@@ -345,40 +345,42 @@ export class FacialPerformanceEngine {
       targetMorphs.Fcl_MTH_O = 0;
     }
 
-    // Audio-driven mouth Blend Shapes via authoritative VRM 1.0 Expression Presets
-    if (visemeFrame && visemeMouthOpen > 0.008) {
-      targetVrm.aa = THREE.MathUtils.clamp(visemeFrame.aa, 0, 1);
-      targetVrm.ih = THREE.MathUtils.clamp(visemeFrame.ih, 0, 1);
-      targetVrm.oh = THREE.MathUtils.clamp(visemeFrame.oh, 0, 1);
-      targetVrm.ee = THREE.MathUtils.clamp(visemeFrame.ee, 0, 1);
-      targetVrm.ou = THREE.MathUtils.clamp(visemeFrame.ou, 0, 1);
-    } else if (visemeMouthOpen > 0.02) {
-      // Dynamic fallback vowel modulation to prevent static wide mouth gap
-      const mouthDrive = THREE.MathUtils.clamp(visemeMouthOpen, 0, 1);
-      const phase = (time * 8.2) % (Math.PI * 2);
-      const isClosureDip = Math.sin(phase) < -0.65;
-      if (isClosureDip) {
-        targetVrm.aa = 0;
-        targetVrm.ih = 0;
-        targetVrm.oh = 0;
-        targetVrm.ee = 0;
-        targetVrm.ou = 0;
+    // Audio-driven mouth Blend Shapes via authoritative VRM 1.0 Expression Presets and direct mesh blendshapes
+    const driveOpen = THREE.MathUtils.clamp(visemeMouthOpen, 0, 1);
+    if (driveOpen > 0.015) {
+      if (visemeFrame && visemeFrame.mouthOpen > 0.01) {
+        // Phoneme-shaped articulation amplified clearly to prominent visible range (0.65 - 0.90)
+        const boost = Math.min(1.5, Math.max(1.1, 0.75 / Math.max(0.1, visemeFrame.mouthOpen)));
+        targetVrm.aa = THREE.MathUtils.clamp(visemeFrame.aa * boost, 0, 1);
+        targetVrm.ih = THREE.MathUtils.clamp(visemeFrame.ih * boost, 0, 1);
+        targetVrm.oh = THREE.MathUtils.clamp(visemeFrame.oh * boost, 0, 1);
+        targetVrm.ee = THREE.MathUtils.clamp(visemeFrame.ee * boost, 0, 1);
+        targetVrm.ou = THREE.MathUtils.clamp(visemeFrame.ou * boost, 0, 1);
       } else {
-        const vowelA = Math.max(0, Math.sin(phase));
-        const vowelI = Math.max(0, Math.cos(phase * 1.3));
-        const vowelO = Math.max(0, -Math.cos(phase));
-        targetVrm.aa = mouthDrive * vowelA * 0.75;
-        targetVrm.ih = mouthDrive * vowelI * 0.60;
-        targetVrm.oh = mouthDrive * vowelO * 0.50;
-        targetVrm.ee = mouthDrive * 0.15;
-        targetVrm.ou = mouthDrive * 0.10;
+        targetVrm.aa = driveOpen * 0.85;
+        targetVrm.oh = driveOpen * 0.35;
+        targetVrm.ih = driveOpen * 0.25;
+        targetVrm.ee = driveOpen * 0.18;
+        targetVrm.ou = driveOpen * 0.14;
       }
+
+      // Sync direct morph targets for VRM meshes that use direct morph keys (e.g. VRoid Fcl_MTH_*)
+      targetMorphs.Fcl_MTH_A = targetVrm.aa;
+      targetMorphs.Fcl_MTH_I = targetVrm.ih;
+      targetMorphs.Fcl_MTH_U = targetVrm.ou;
+      targetMorphs.Fcl_MTH_E = targetVrm.ee;
+      targetMorphs.Fcl_MTH_O = targetVrm.oh;
     } else {
       targetVrm.aa = 0;
       targetVrm.ih = 0;
       targetVrm.oh = 0;
       targetVrm.ee = 0;
       targetVrm.ou = 0;
+      targetMorphs.Fcl_MTH_A = 0;
+      targetMorphs.Fcl_MTH_I = 0;
+      targetMorphs.Fcl_MTH_U = 0;
+      targetMorphs.Fcl_MTH_E = 0;
+      targetMorphs.Fcl_MTH_O = 0;
     }
 
     // 3.5 Anatomical Eye Closure Decoupling:
@@ -410,8 +412,8 @@ export class FacialPerformanceEngine {
         // Blinking is computed with precise anatomical sine/cosine curve in EyeBehaviorController.
         this.vrmPresets[key] = THREE.MathUtils.clamp(targetVrm[key] || 0, 0, 1);
       } else if (key === 'aa' || key === 'ih' || key === 'ou' || key === 'ee' || key === 'oh') {
-        // High-speed responsiveness for speech visemes to articulate crisp phonemes and close between syllables
-        const speechRate = targetVrm[key] < this.vrmPresets[key] ? 32.0 : 38.0;
+        // High responsiveness for speech visemes with clear visible syllable articulation
+        const speechRate = targetVrm[key] < this.vrmPresets[key] ? 20.0 : 24.0;
         this.vrmPresets[key] = THREE.MathUtils.damp(this.vrmPresets[key], targetVrm[key], speechRate, frameDelta);
         if (targetVrm[key] === 0 && this.vrmPresets[key] < 0.005) {
           this.vrmPresets[key] = 0;

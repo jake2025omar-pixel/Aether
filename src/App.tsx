@@ -244,15 +244,19 @@ export default function App() {
           setCurrentSpeechText(null);
         },
         onError: (reason) => {
+          if (reason === 'rate-limit' || reason === 'unavailable') {
+            // Avoid showing distracting error toast when upstream voice quota is on cooldown;
+            // companion gracefully continues with visual speech and lip-sync performance.
+            console.info('[Aether Voice] Cloud voice quota resting; presenting via visual phonetic articulation.');
+            return;
+          }
           const isArabic = /[\u0600-\u06FF]/.test(cleanText);
           const messages: Record<string, string> = {
             'not-configured': isArabic ? 'خدمة الصوت غير مهيأة بعد.' : 'Voice service not configured.',
             timeout: isArabic ? 'انتهت مهلة توليد الصوت.' : 'Voice generation timed out.',
-            'rate-limit': isArabic ? 'خدمة الصوت السحابي مشغولة مؤقتاً، تم عرض الرد النصي.' : 'Voice service temporarily busy. Displaying text reply.',
-            unavailable: isArabic ? 'تعذر تشغيل الصوت المباشر.' : 'Voice playback unavailable.',
             'consent-required': isArabic ? 'موافقة البالغين مطلوبة.' : 'Adult consent required.',
           };
-          setVoiceError(messages[reason] || messages.unavailable);
+          setVoiceError(messages[reason] || (isArabic ? 'خدمة الصوت غير متوفرة حالياً.' : 'Voice service unavailable.'));
           window.setTimeout(() => setVoiceError(null), 5000);
         },
       }, { emotion, adultContentConsent: adultConsentGranted });
