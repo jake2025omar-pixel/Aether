@@ -33,12 +33,9 @@ class CompanionVoiceService {
   private audioContext: AudioContext | null = null;
   private playbackId = 0;
   private muted = false;
-  private cachedVoices: SpeechSynthesisVoice[] = [];
-  private currentUtterance: SpeechSynthesisUtterance | null = null;
 
   constructor() {
     this.initSpeechRecognition();
-    this.initSpeechSynthesis();
   }
 
   private initSpeechRecognition() {
@@ -59,23 +56,11 @@ class CompanionVoiceService {
     }
   }
 
-  private initSpeechSynthesis() {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    this.cachedVoices = window.speechSynthesis.getVoices();
-    window.speechSynthesis.onvoiceschanged = () => {
-      this.cachedVoices = window.speechSynthesis.getVoices();
-    };
-  }
-
   public isSpeechRecognitionSupported(): boolean {
     if (typeof window === 'undefined') return false;
     return Boolean(
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     );
-  }
-
-  public isSpeechSynthesisSupported(): boolean {
-    return typeof window !== 'undefined' && 'speechSynthesis' in window;
   }
 
   public isAudioPlaybackSupported(): boolean {
@@ -240,88 +225,7 @@ class CompanionVoiceService {
     }
   }
 
-  /**
-   * Browser SpeechSynthesis fallback
-   */
-  private speakWithBrowserSynthesis(
-    text: string,
-    playbackId: number,
-    handlers: VoicePlaybackHandlers
-  ): void {
-    if (!this.isSpeechSynthesisSupported()) {
-      handlers.onViseme(0);
-      handlers.onEnd();
-      return;
-    }
 
-    const isCurrentPlayback = () => this.playbackId === playbackId;
-    const isArabic = /[\u0600-\u06FF]/.test(text);
-    const lang = isArabic ? 'ar-SA' : 'en-US';
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    this.currentUtterance = utterance;
-    utterance.lang = lang;
-    utterance.rate = isArabic ? 0.98 : 1.0;
-    utterance.pitch = 1.03;
-
-    const voices = this.cachedVoices.length > 0 ? this.cachedVoices : window.speechSynthesis.getVoices();
-    const language = isArabic ? 'ar' : 'en';
-    const normalizedLang = lang.toLowerCase();
-    const matchingVoice = voices.find((voice) => voice.lang.toLowerCase() === normalizedLang)
-      || voices.find((voice) => voice.lang.toLowerCase().startsWith(`${language}-`))
-      || voices.find((voice) => voice.lang.toLowerCase() === language);
-    if (matchingVoice) {
-      utterance.voice = matchingVoice;
-    }
-
-    const timeline = PhoneticLipSyncEngine.buildTimeline(text);
-    const words = text.match(/\S+/gu) || [];
-    const estimatedSeconds = Math.max(1.0, (words.length * 0.44) / (utterance.rate || 1.0));
-    let fallbackSpeechStartedAt = 0;
-
-    utterance.onstart = () => {
-      if (!isCurrentPlayback()) return;
-      fallbackSpeechStartedAt = performance.now();
-      handlers.onStart();
-
-      this.visemeInterval = window.setInterval(() => {
-        if (!isCurrentPlayback()) return;
-        const elapsedMs = performance.now() - fallbackSpeechStartedAt;
-        const totalMs = estimatedSeconds * 1000;
-        const progress = Math.min(0.999, elapsedMs / totalMs);
-
-        // Syllabic cadence: prominent, clearly visible mouth opening up to 0.85 with natural dips
-        const syllableCadence = 160; // ms per syllable
-        const syllablePhase = (elapsedMs / syllableCadence) % 1;
-        const openCurve = Math.sin(syllablePhase * Math.PI);
-        const pseudoRms = Math.max(0.04, openCurve * 0.22);
-
-        const frame = PhoneticLipSyncEngine.sample(timeline, progress, pseudoRms);
-        handlers.onViseme(frame.mouthOpen, frame);
-      }, 30);
-    };
-
-    const cleanup = () => {
-      if (!isCurrentPlayback()) return;
-      if (this.visemeInterval !== null) {
-        window.clearInterval(this.visemeInterval);
-        this.visemeInterval = null;
-      }
-      this.currentUtterance = null;
-      handlers.onViseme(0, { mouthOpen: 0, aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
-      handlers.onEnd();
-    };
-
-    utterance.onend = cleanup;
-    utterance.onerror = cleanup;
-
-    try {
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      cleanup();
-    }
-  }
 
   /** Requests Gemini TTS and drives lip motion from decoded audio amplitude. */
   public speak(
@@ -402,9 +306,10 @@ class CompanionVoiceService {
 
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
-          console.warn('[AetherAI Voice] Gemini TTS returned non-OK status, activating speech synthesis fallback');
+          console.warn('[AetherAI Voice] Gemini TTS returned non-OK status:', response.status, errData);
           if (isCurrentPlayback()) {
-            this.speakWithBrowserSynthesis(text, playbackId, handlers);
+            handlers.onError?.(response.status === 429 ? 'rate-limit' : 'unavailable');
+            finishPlayback();
           }
           return;
         }
@@ -491,7 +396,9 @@ class CompanionVoiceService {
         audioStartTime = audioContext.currentTime;
       } catch (error: unknown) {
         if (!isCurrentPlayback()) return;
-        this.speakWithBrowserSynthesis(text, playbackId, handlers);
+        const isAbort = controller.signal.aborted;
+        handlers.onError?.(isAbort && timedOut ? 'timeout' : 'unavailable');
+        finishPlayback();
       } finally {
         window.clearTimeout(timeoutId);
       }
@@ -520,10 +427,6 @@ class CompanionVoiceService {
     if (source) {
       source.onended = null;
       try { source.stop(); } catch { /* already stopped */ }
-    }
-    if (this.currentUtterance) {
-      try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
-      this.currentUtterance = null;
     }
     if (handlers) {
       handlers.onViseme(0, { mouthOpen: 0, aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
