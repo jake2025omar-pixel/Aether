@@ -1,12 +1,29 @@
 import { GoogleGenAI } from '@google/genai';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
 
 export type CompanionTtsVoice = 'Achernar' | 'Kore';
 export type TtsFailureReason = 'not-configured' | 'timeout' | 'network' | 'invalid-audio' | 'unavailable';
 
+const CACHE_DIR = path.resolve(process.cwd(), '.cache/tts');
+try {
+  if (!fs.existsSync(CACHE_DIR)) {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+  }
+} catch {
+  // Ignore cache directory creation errors
+}
+
+function getCacheFilePath(key: string): string {
+  const hash = crypto.createHash('sha256').update(key).digest('hex');
+  return path.join(CACHE_DIR, `${hash}.wav`);
+}
+
 const CANDIDATE_TTS_MODELS = [
+  'gemini-3.1-flash-tts-preview',
   'gemini-3.8-flash-lite-tts',
   'gemini-3.8-flash-tts',
-  'gemini-3.1-flash-tts-preview',
   'gemini-2.5-flash-preview-tts',
 ];
 const MAX_BODY_BYTES = 32 * 1024;
@@ -145,7 +162,23 @@ export async function handleGeminiTtsRequest(
   if (!apiKey?.trim()) return jsonResponse({ error: 'Speech service is not configured on the server.' }, 503);
 
   const cacheKey = `${voice}_${requestedEmotion}_${text.trim()}`;
-  const cachedAudio = ttsAudioCache.get(cacheKey);
+  let cachedAudio = ttsAudioCache.get(cacheKey);
+
+  if (!cachedAudio) {
+    const diskPath = getCacheFilePath(cacheKey);
+    try {
+      if (fs.existsSync(diskPath)) {
+        const fileBuf = fs.readFileSync(diskPath);
+        if (fileBuf.length > 44 && isWav(new Uint8Array(fileBuf))) {
+          cachedAudio = new Uint8Array(fileBuf);
+          ttsAudioCache.set(cacheKey, cachedAudio);
+        }
+      }
+    } catch {
+      // Ignore disk read error and fallback to upstream
+    }
+  }
+
   if (cachedAudio && isWav(cachedAudio)) {
     return new Response(cachedAudio.buffer as ArrayBuffer, {
       status: 200,
@@ -175,49 +208,72 @@ export async function handleGeminiTtsRequest(
 
     for (const model of candidateTtsModels) {
       if (controller.signal.aborted) break;
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: [{
-            role: 'user',
-            parts: [{
-              text: text.startsWith('Repeat exactly:') ? text : `Repeat exactly: ${text}`,
-              speechMetadata: {
-                style: speechStyleByEmotion[requestedEmotion] || speechStyleByEmotion.NEUTRAL,
-              },
-            }],
-          }],
-          config: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: voice },
-              },
-            },
-            abortSignal: controller.signal,
+      const supportsSpeechMetadata = model.includes('3.8');
+      const createParts = (includeMetadata: boolean) => [{
+        text: text.startsWith('Repeat exactly:') ? text : `Repeat exactly: ${text}`,
+        ...(includeMetadata ? {
+          speechMetadata: {
+            style: speechStyleByEmotion[requestedEmotion] || speechStyleByEmotion.NEUTRAL,
           },
-        });
+        } : {}),
+      }];
 
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (base64Audio) {
-          const buf = Buffer.from(base64Audio, 'base64');
-          if (buf.length > 44 && isWav(new Uint8Array(buf))) {
-            audio = new Uint8Array(buf);
-            ttsAudioCache.set(cacheKey, audio);
-            if (ttsAudioCache.size > 200) {
-              const oldestKey = ttsAudioCache.keys().next().value;
-              if (oldestKey) ttsAudioCache.delete(oldestKey);
+      let modelSucceeded = false;
+      const attempts = supportsSpeechMetadata ? [true, false] : [false];
+
+      for (const includeMetadata of attempts) {
+        if (modelSucceeded || controller.signal.aborted) break;
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: [{
+              role: 'user',
+              parts: createParts(includeMetadata),
+            }],
+            config: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: voice },
+                },
+              },
+              abortSignal: controller.signal,
+            },
+          });
+
+          const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+          if (base64Audio) {
+            const buf = Buffer.from(base64Audio, 'base64');
+            if (buf.length > 44 && isWav(new Uint8Array(buf))) {
+              audio = new Uint8Array(buf);
+              ttsAudioCache.set(cacheKey, audio);
+              try {
+                fs.promises.writeFile(getCacheFilePath(cacheKey), audio).catch(() => undefined);
+              } catch {
+                // Ignore disk write errors
+              }
+              if (ttsAudioCache.size > 200) {
+                const oldestKey = ttsAudioCache.keys().next().value;
+                if (oldestKey) ttsAudioCache.delete(oldestKey);
+              }
+              modelSucceeded = true;
+              break;
             }
-            break;
           }
+        } catch (err: unknown) {
+          const errStr = String(err instanceof Error ? err.message : err);
+          if (errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('Quota exceeded')) {
+            lastStatus = 429;
+            break; // Do not retry second attempt if quota is exhausted on this model
+          }
+          if (errStr.includes('Speech metadata is not supported') && includeMetadata) {
+            // Automatically fall through to retry without metadata
+            continue;
+          }
+          console.warn(`[AetherAI TTS] Model ${model} attempt threw:`, errStr.slice(0, 150));
         }
-      } catch (err: unknown) {
-        const errStr = String(err instanceof Error ? err.message : err);
-        if (errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('Quota exceeded')) {
-          lastStatus = 429;
-        }
-        console.warn(`[AetherAI TTS] Model ${model} attempt threw:`, errStr.slice(0, 150));
       }
+      if (modelSucceeded) break;
     }
 
     if (!audio) {

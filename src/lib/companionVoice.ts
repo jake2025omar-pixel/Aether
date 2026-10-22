@@ -309,7 +309,28 @@ class CompanionVoiceService {
           console.warn('[AetherAI Voice] Gemini TTS returned non-OK status:', response.status, errData);
           if (isCurrentPlayback()) {
             handlers.onError?.(response.status === 429 ? 'rate-limit' : 'unavailable');
-            finishPlayback();
+            // Animate companion's speaking articulation so character talks throughout the message reading time
+            handlers.onStart();
+            const timeline = PhoneticLipSyncEngine.buildTimeline(text);
+            const words = text.match(/\S+/gu) || [];
+            const estimatedMs = Math.max(4000, Math.min(12000, words.length * 360));
+            const startMs = performance.now();
+
+            this.visemeInterval = window.setInterval(() => {
+              if (!isCurrentPlayback()) return;
+              const elapsedMs = performance.now() - startMs;
+              if (elapsedMs >= estimatedMs) {
+                finishPlayback();
+                return;
+              }
+              const progress = Math.min(0.999, elapsedMs / estimatedMs);
+              const syllableCadence = 160;
+              const phase = (elapsedMs / syllableCadence) % 1;
+              const openCurve = Math.sin(phase * Math.PI);
+              const pseudoRms = Math.max(0.04, openCurve * 0.24);
+              const frame = PhoneticLipSyncEngine.sample(timeline, progress, pseudoRms);
+              handlers.onViseme(frame.mouthOpen, frame);
+            }, 30);
           }
           return;
         }
@@ -398,7 +419,27 @@ class CompanionVoiceService {
         if (!isCurrentPlayback()) return;
         const isAbort = controller.signal.aborted;
         handlers.onError?.(isAbort && timedOut ? 'timeout' : 'unavailable');
-        finishPlayback();
+        handlers.onStart();
+        const timeline = PhoneticLipSyncEngine.buildTimeline(text);
+        const words = text.match(/\S+/gu) || [];
+        const estimatedMs = Math.max(4000, Math.min(12000, words.length * 360));
+        const startMs = performance.now();
+
+        this.visemeInterval = window.setInterval(() => {
+          if (!isCurrentPlayback()) return;
+          const elapsedMs = performance.now() - startMs;
+          if (elapsedMs >= estimatedMs) {
+            finishPlayback();
+            return;
+          }
+          const progress = Math.min(0.999, elapsedMs / estimatedMs);
+          const syllableCadence = 160;
+          const phase = (elapsedMs / syllableCadence) % 1;
+          const openCurve = Math.sin(phase * Math.PI);
+          const pseudoRms = Math.max(0.04, openCurve * 0.24);
+          const frame = PhoneticLipSyncEngine.sample(timeline, progress, pseudoRms);
+          handlers.onViseme(frame.mouthOpen, frame);
+        }, 30);
       } finally {
         window.clearTimeout(timeoutId);
       }

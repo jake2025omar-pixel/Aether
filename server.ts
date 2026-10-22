@@ -9,17 +9,20 @@ import { handleGeminiTtsRequest } from './server/geminiTts';
 
 dotenv.config();
 
-const PRIMARY_GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const PRIMARY_GEMINI_MODEL = 'gemini-3.5-flash';
 const CANDIDATE_MODELS = [
-  'gemini-2.5-flash-lite',
-  'gemini-3.1-flash-lite',
-  'gemini-flash-latest',
-  'gemini-3.8-flash',
+  'gemini-3.5-flash',
   'gemini-2.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
+  'gemini-2.5-flash-lite',
 ];
 
 // Track models that have hit temporary upstream quota or demand limits (e.g. 503 / 429)
-const modelCooldowns = new Map<string, number>();
+const modelCooldowns = new Map<string, number>([
+  ['gemini-2.5-flash-lite', Date.now() + 11 * 3600 * 1000],
+]);
 
 function isModelCoolingDown(model: string): boolean {
   const until = modelCooldowns.get(model);
@@ -45,8 +48,8 @@ function isQuotaError(errStr: string): boolean {
 }
 
 function markModelRateLimited(model: string, isQuotaExhausted = false) {
-  // If quota is exhausted, back off for 1 hour; for spikes in demand, 20 seconds
-  const duration = isQuotaExhausted ? 60 * 60 * 1000 : 20 * 1000;
+  // If quota is exhausted, back off for 12 hours; for temporary demand spikes, 20 seconds
+  const duration = isQuotaExhausted ? 12 * 60 * 60 * 1000 : 20 * 1000;
   modelCooldowns.set(model, Date.now() + duration);
 }
 
@@ -354,8 +357,13 @@ app.post('/api/chat', async (req, res) => {
       } catch (err: unknown) {
         const errStr = String(err instanceof Error ? err.message : err);
         lastError = errStr;
-        if (isClientDisconnected || providerAbortController.signal.aborted) {
-          console.log(`[AetherAI Server] Request canceled by client during ${model}`);
+        if (
+          isClientDisconnected ||
+          providerAbortController.signal.aborted ||
+          attemptController.signal.aborted ||
+          errStr.toLowerCase().includes('abort')
+        ) {
+          console.log(`[AetherAI Server] Request canceled or timed out during ${model}`);
           break;
         }
         console.warn(`[AetherAI Server] GenerateContent attempt for ${model} failed: ${errStr}`);

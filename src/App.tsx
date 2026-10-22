@@ -34,7 +34,14 @@ const viewToPath = (view: NavDestination): string => {
 };
 
 export default function App() {
-  const [adultConsentGranted, setAdultConsentGranted] = useState(false);
+  const [adultConsentGranted, setAdultConsentGranted] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('aether.adult-consent');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
   const [voiceMuted, setVoiceMuted] = useState(() => {
     try {
       return window.localStorage.getItem('aether.voice-muted') === 'true';
@@ -95,6 +102,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [isDevModalOpen, setIsDevModalOpen] = useState(false);
   const recoveryTimerRef = useRef<number | null>(null);
+  const speechTimeoutRef = useRef<number | null>(null);
 
   React.useEffect(() => {
     companionVoice.setMuted(voiceMuted);
@@ -137,6 +145,11 @@ export default function App() {
     // Interrupt any ongoing speech & unlock AudioContext
     companionVoice.stopSpeaking();
     companionVoice.unlockAudio();
+    if (speechTimeoutRef.current !== null) {
+      window.clearTimeout(speechTimeoutRef.current);
+      speechTimeoutRef.current = null;
+    }
+    setCurrentSpeechText(null);
     setVoiceError(null);
     setCompanionState('THINKING');
     setLoading(true);
@@ -225,8 +238,16 @@ export default function App() {
         ],
       }));
 
-      // Immediately display response in HUD subtitle bubble
+      // Immediately display response in HUD subtitle bubble with generous reading time
+      if (speechTimeoutRef.current !== null) {
+        window.clearTimeout(speechTimeoutRef.current);
+      }
       setCurrentSpeechText(cleanText);
+      const readingDurationMs = Math.max(9000, cleanText.length * 110);
+      speechTimeoutRef.current = window.setTimeout(() => {
+        speechTimeoutRef.current = null;
+        setCurrentSpeechText(null);
+      }, readingDurationMs);
 
       // Speak response through TTS with live lip sync visemes
       companionVoice.speak(cleanText, {
@@ -241,7 +262,7 @@ export default function App() {
           setCompanionState('IDLE');
           setVisemeMouthOpen(0);
           setVisemeFrame(null);
-          setCurrentSpeechText(null);
+          // Keep currentSpeechText visible so the user can comfortably read it
         },
         onError: (reason) => {
           if (reason === 'rate-limit' || reason === 'unavailable') {
@@ -370,7 +391,18 @@ export default function App() {
   }, []);
 
   if (!adultConsentGranted) {
-    return <AdultConsentGate onAccept={() => setAdultConsentGranted(true)} />;
+    return (
+      <AdultConsentGate
+        onAccept={() => {
+          setAdultConsentGranted(true);
+          try {
+            window.localStorage.setItem('aether.adult-consent', 'true');
+          } catch {
+            // ignore
+          }
+        }}
+      />
+    );
   }
 
   return (
