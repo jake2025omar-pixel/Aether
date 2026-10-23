@@ -36,6 +36,20 @@ class CompanionVoiceService {
 
   constructor() {
     this.initSpeechRecognition();
+    this.ensureGlobalUnlock();
+  }
+
+  private ensureGlobalUnlock(): void {
+    if (typeof window === 'undefined') return;
+    const unlock = () => {
+      this.unlockAudio();
+      window.removeEventListener('click', unlock, true);
+      window.removeEventListener('touchstart', unlock, true);
+      window.removeEventListener('keydown', unlock, true);
+    };
+    window.addEventListener('click', unlock, { capture: true, once: true });
+    window.addEventListener('touchstart', unlock, { capture: true, once: true });
+    window.addEventListener('keydown', unlock, { capture: true, once: true });
   }
 
   private initSpeechRecognition() {
@@ -79,7 +93,20 @@ class CompanionVoiceService {
   /** Call synchronously from a user gesture so later server audio can autoplay. */
   public unlockAudio(): void {
     const context = this.getAudioContext();
-    if (context?.state === 'suspended') void context.resume().catch(() => undefined);
+    if (!context) return;
+    if (context.state === 'suspended') {
+      void context.resume().catch(() => undefined);
+    }
+    try {
+      // 1-sample buffer played synchronously inside user gesture guarantees audio output permissions
+      const buffer = context.createBuffer(1, 1, 22050);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.start(0);
+    } catch {
+      // ignore
+    }
   }
 
   public setMuted(muted: boolean): void {
@@ -291,13 +318,19 @@ class CompanionVoiceService {
       try {
         if (audioContext.state === 'suspended') await audioContext.resume();
 
+        const cleanText = text
+          .replace(/^\s*(?:repeat\s*exactly|exactly|draft\s*\d*|response)[\s:]*/i, '')
+          .replace(/\[EMOTION:\s*[A-Z_]+\]/gi, '')
+          .replace(/[*_#`~\[\]]/g, '')
+          .trim();
+
         // Strictly lock Korean voice configuration to 'Kore'
         const response = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({
-            text: text.slice(0, 4_000),
+            text: cleanText.slice(0, 4_000),
             voice: 'Kore',
             emotion: options.emotion || 'NEUTRAL',
             adultContentConsent: options.adultContentConsent,
@@ -311,8 +344,8 @@ class CompanionVoiceService {
             handlers.onError?.(response.status === 429 ? 'rate-limit' : 'unavailable');
             // Animate companion's speaking articulation so character talks throughout the message reading time
             handlers.onStart();
-            const timeline = PhoneticLipSyncEngine.buildTimeline(text);
-            const words = text.match(/\S+/gu) || [];
+            const timeline = PhoneticLipSyncEngine.buildTimeline(cleanText);
+            const words = cleanText.match(/\S+/gu) || [];
             const estimatedMs = Math.max(4000, Math.min(12000, words.length * 360));
             const startMs = performance.now();
 
@@ -344,6 +377,7 @@ class CompanionVoiceService {
         const source = audioContext.createBufferSource();
         const analyser = audioContext.createAnalyser();
         const gain = audioContext.createGain();
+        gain.gain.value = 1.0;
         const waveform = new Uint8Array(analyser.fftSize);
         const frequencyData = new Uint8Array(analyser.frequencyBinCount);
 
@@ -357,11 +391,19 @@ class CompanionVoiceService {
         analyser.connect(gain);
         gain.connect(audioContext.destination);
 
+        if (audioContext.state === 'suspended') {
+          try {
+            await audioContext.resume();
+          } catch {
+            // ignore
+          }
+        }
+
         this.activeSource = source;
         source.onended = finishPlayback;
         handlers.onStart();
 
-        const timeline = PhoneticLipSyncEngine.buildTimeline(text);
+        const timeline = PhoneticLipSyncEngine.buildTimeline(cleanText);
         const audioDuration = Math.max(0.2, audioBuffer.duration);
         let audioStartTime = audioContext.currentTime;
 

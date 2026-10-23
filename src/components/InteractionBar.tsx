@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Send, Mic, MicOff, Square, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { COMPANION_DISPLAY_NAME } from '../lib/companionPersonality';
+import { companionVoice } from '../lib/companionVoice';
 
 interface InteractionBarProps {
   onSendMessage: (query: string) => void;
@@ -130,6 +131,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
   const handleSend = () => {
     const message = inputVal.trim();
     if (!message || loading || disabled) return;
+    companionVoice.unlockAudio();
     onSendMessage(message);
     setInputVal('');
   };

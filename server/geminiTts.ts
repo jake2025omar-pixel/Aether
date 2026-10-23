@@ -145,7 +145,12 @@ export async function handleGeminiTtsRequest(
     return jsonResponse({ error: 'Adult access consent is required.' }, 403);
   }
 
-  const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+  const rawText = typeof payload.text === 'string' ? payload.text.trim() : '';
+  const text = rawText
+    .replace(/^\s*(?:repeat\s*exactly|exactly|draft\s*\d*|response)[\s:]*/i, '')
+    .replace(/\[EMOTION:\s*[A-Z_]+\]/gi, '')
+    .replace(/[*_#`~\[\]]/g, '')
+    .trim();
   if (!text) return jsonResponse({ error: 'Speech text is required.' }, 400);
   if (text.length > MAX_TEXT_LENGTH) return jsonResponse({ error: 'Speech text exceeds the 4,000-character limit.' }, 400);
 
@@ -180,7 +185,7 @@ export async function handleGeminiTtsRequest(
   }
 
   if (cachedAudio && isWav(cachedAudio)) {
-    return new Response(cachedAudio.buffer as ArrayBuffer, {
+    return new Response(new Uint8Array(cachedAudio), {
       status: 200,
       headers: {
         'Content-Type': 'audio/wav',
@@ -210,7 +215,7 @@ export async function handleGeminiTtsRequest(
       if (controller.signal.aborted) break;
       const supportsSpeechMetadata = model.includes('3.8');
       const createParts = (includeMetadata: boolean) => [{
-        text: text.startsWith('Repeat exactly:') ? text : `Repeat exactly: ${text}`,
+        text: text,
         ...(includeMetadata ? {
           speechMetadata: {
             style: speechStyleByEmotion[requestedEmotion] || speechStyleByEmotion.NEUTRAL,
@@ -283,7 +288,7 @@ export async function handleGeminiTtsRequest(
       );
     }
 
-    return new Response(audio.buffer as ArrayBuffer, {
+    return new Response(new Uint8Array(audio), {
       status: 200,
       headers: {
         'Content-Type': 'audio/wav',

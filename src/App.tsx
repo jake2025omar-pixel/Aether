@@ -102,7 +102,6 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [isDevModalOpen, setIsDevModalOpen] = useState(false);
   const recoveryTimerRef = useRef<number | null>(null);
-  const speechTimeoutRef = useRef<number | null>(null);
 
   React.useEffect(() => {
     companionVoice.setMuted(voiceMuted);
@@ -145,10 +144,6 @@ export default function App() {
     // Interrupt any ongoing speech & unlock AudioContext
     companionVoice.stopSpeaking();
     companionVoice.unlockAudio();
-    if (speechTimeoutRef.current !== null) {
-      window.clearTimeout(speechTimeoutRef.current);
-      speechTimeoutRef.current = null;
-    }
     setCurrentSpeechText(null);
     setVoiceError(null);
     setCompanionState('THINKING');
@@ -238,21 +233,11 @@ export default function App() {
         ],
       }));
 
-      // Immediately display response in HUD subtitle bubble with generous reading time
-      if (speechTimeoutRef.current !== null) {
-        window.clearTimeout(speechTimeoutRef.current);
-      }
-      setCurrentSpeechText(cleanText);
-      const readingDurationMs = Math.max(9000, cleanText.length * 110);
-      speechTimeoutRef.current = window.setTimeout(() => {
-        speechTimeoutRef.current = null;
-        setCurrentSpeechText(null);
-      }, readingDurationMs);
-
-      // Speak response through TTS with live lip sync visemes
+      // Speak response through TTS with live lip sync visemes (Voice-only mode)
       companionVoice.speak(cleanText, {
         onStart: () => {
           setCompanionState('SPEAKING');
+          setCurrentSpeechText(cleanText);
         },
         onViseme: (mouthVal, frame) => {
           setVisemeMouthOpen(mouthVal);
@@ -262,7 +247,7 @@ export default function App() {
           setCompanionState('IDLE');
           setVisemeMouthOpen(0);
           setVisemeFrame(null);
-          // Keep currentSpeechText visible so the user can comfortably read it
+          setCurrentSpeechText(null);
         },
         onError: (reason) => {
           if (reason === 'rate-limit' || reason === 'unavailable') {
