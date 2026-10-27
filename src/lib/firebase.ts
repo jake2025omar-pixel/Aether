@@ -5,9 +5,14 @@ import { getAuth, GoogleAuthProvider, Auth } from 'firebase/auth';
  * Firebase Client Configuration
  * Client-safe parameters provided via Vite environment variables (VITE_FIREBASE_*).
  */
+const defaultAuthDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '';
+const resolvedAuthDomain = typeof window !== 'undefined' && window.location.host
+  ? window.location.host
+  : defaultAuthDomain;
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
+  authDomain: resolvedAuthDomain || defaultAuthDomain,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
@@ -19,7 +24,7 @@ const firebaseConfig = {
  */
 export const isFirebaseConfigured: boolean = Boolean(
   firebaseConfig.apiKey &&
-  firebaseConfig.authDomain &&
+  (firebaseConfig.authDomain || defaultAuthDomain) &&
   firebaseConfig.projectId
 );
 
@@ -35,6 +40,8 @@ if (isFirebaseConfigured) {
     googleProvider.setCustomParameters({
       prompt: 'select_account',
     });
+    googleProvider.addScope('email');
+    googleProvider.addScope('profile');
   } catch (error) {
     if (import.meta.env.DEV) {
       console.warn('Firebase initialization warning:', error);

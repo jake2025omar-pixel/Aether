@@ -35,7 +35,7 @@ const getGoogleSignInErrorMessage = (error: unknown): string | null => {
     case 'auth/cancelled-popup-request':
       return null;
     case 'auth/unauthorized-domain':
-      return 'This website domain is not authorized in Firebase Authentication. Add it to Authorized domains.';
+      return `This domain (${typeof window !== 'undefined' ? window.location.hostname : 'current domain'}) is not authorized in Firebase Authentication. Please add it to Authorized domains in Firebase Console.`;
     case 'auth/operation-not-allowed':
       return 'Google sign-in is disabled in Firebase Authentication. Enable the Google provider.';
     case 'auth/network-request-failed':
@@ -84,10 +84,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return;
     }
 
-    void getRedirectResult(auth).catch((error: unknown) => {
-      const message = getGoogleSignInErrorMessage(error);
-      if (message) setAuthError(message);
-    });
+    void getRedirectResult(auth)
+      .then((credential) => {
+        if (credential?.user) {
+          setUser(credential.user);
+        }
+      })
+      .catch((error: unknown) => {
+        const message = getGoogleSignInErrorMessage(error);
+        if (message) setAuthError(message);
+      });
 
     const unsubscribe = onAuthStateChanged(
       auth,
@@ -157,20 +163,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     isSigningInRef.current = true;
     setSigningIn(true);
     try {
-      if (shouldUseRedirectSignIn()) {
-        await signInWithRedirect(auth, googleProvider);
-        return;
+      // Prioritize popup authentication to prevent top-level navigation breaks inside iframes
+      const credential = await signInWithPopup(auth, googleProvider);
+      if (credential?.user) {
+        setUser(credential.user);
       }
-
-      await signInWithPopup(auth, googleProvider);
     } catch (error: unknown) {
       const errorCode = (error as { code?: unknown } | null)?.code;
       const errorMessage = (error as { message?: unknown } | null)?.message;
-      const hasPopupAssertionError = typeof errorMessage === 'string'
-        && (errorMessage.includes('Pending promise was never set')
-          || errorMessage.includes('INTERNAL ASSERTION FAILED'));
+      const isPopupBlocked = errorCode === 'auth/popup-blocked';
+      const isTopLevel = typeof window !== 'undefined' && window.self === window.top;
 
-      if (errorCode === 'auth/popup-blocked' || hasPopupAssertionError) {
+      // Only attempt redirect fallback if popup was strictly blocked AND not running in an iframe
+      if (isPopupBlocked && isTopLevel) {
         try {
           await signInWithRedirect(auth, googleProvider);
           return;

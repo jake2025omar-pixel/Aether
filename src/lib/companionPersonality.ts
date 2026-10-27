@@ -75,13 +75,15 @@ const EMOTION_TAG = /^\s*\[EMOTION:\s*([A-Z_]+)\]\s*/i;
 
 /** Parses Gemini's leading emotion tag and returns clean text for display/TTS. */
 export function parseCompanionResponse(rawResponse: string): EmotionParseResult {
-  const match = rawResponse.match(EMOTION_TAG);
+  const sanitized = rawResponse
+    .replace(/^\s*(?:repeat\s*exactly|exactly|egzakly|draft\s*\d*|response)[\s:]*/i, '')
+    .trim();
+  const match = sanitized.match(EMOTION_TAG);
   const candidate = match?.[1]?.toUpperCase() as CompanionEmotion | undefined;
   const emotion = candidate && EMOTIONS.includes(candidate) ? candidate : 'NEUTRAL';
-  const cleanText = rawResponse
+  const cleanText = sanitized
     .replace(EMOTION_TAG, '')
     .replace(/[*_#`~\[\]]/g, '')
-    .replace(/^\s*(?:repeat\s*exactly|exactly|draft\s*\d*|response)[\s:]*/i, '')
     .replace(/\s+/g, ' ')
     .trim();
 

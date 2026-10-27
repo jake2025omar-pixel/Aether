@@ -22,6 +22,70 @@ export interface CompanionSpeechOptions {
   adultContentConsent?: boolean;
 }
 
+export interface ParsedWav {
+  sampleRate: number;
+  channels: number;
+  pcm: Float32Array;
+  duration: number;
+}
+
+export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
+  if (arrayBuffer.byteLength < 44) return null;
+  const view = new DataView(arrayBuffer);
+  // Verify 'RIFF' and 'WAVE' chunk identifiers
+  const isRiff = view.getUint32(0, false) === 0x52494646;
+  const isWave = view.getUint32(8, false) === 0x57415645;
+  if (!isRiff || !isWave) return null;
+
+  let channels = 1;
+  let sampleRate = 24000;
+  let bitsPerSample = 16;
+  let dataOffset = -1;
+  let dataLength = 0;
+
+  let offset = 12;
+  while (offset + 8 <= arrayBuffer.byteLength) {
+    const chunkId = String.fromCharCode(
+      view.getUint8(offset),
+      view.getUint8(offset + 1),
+      view.getUint8(offset + 2),
+      view.getUint8(offset + 3)
+    );
+    const chunkSize = view.getUint32(offset + 4, true);
+    if (chunkId === 'fmt ') {
+      channels = view.getUint16(offset + 10, true);
+      sampleRate = view.getUint32(offset + 12, true);
+      bitsPerSample = view.getUint16(offset + 22, true);
+    } else if (chunkId === 'data') {
+      dataOffset = offset + 8;
+      dataLength = Math.min(chunkSize, arrayBuffer.byteLength - dataOffset);
+      break;
+    }
+    offset += 8 + chunkSize;
+  }
+
+  if (dataOffset === -1 || dataLength <= 0 || bitsPerSample !== 16) {
+    return null;
+  }
+
+  const sampleCount = Math.floor(dataLength / (2 * channels));
+  const pcm = new Float32Array(sampleCount);
+  const step = channels;
+  for (let i = 0; i < sampleCount; i++) {
+    const bytePos = dataOffset + i * 2 * step;
+    if (bytePos + 2 <= arrayBuffer.byteLength) {
+      pcm[i] = view.getInt16(bytePos, true) / 32768.0;
+    }
+  }
+
+  return {
+    sampleRate,
+    channels,
+    pcm,
+    duration: sampleRate > 0 ? sampleCount / sampleRate : 0,
+  };
+}
+
 class CompanionVoiceService {
   private recognition: any = null;
   private isListening = false;
@@ -29,6 +93,9 @@ class CompanionVoiceService {
   private visemeRafId: number | null = null;
   private currentPlaybackHandlers: VoicePlaybackHandlers | null = null;
   private activeSource: AudioBufferSourceNode | null = null;
+  private activeAudioElement: HTMLAudioElement | null = null;
+  private activeAudioUrl: string | null = null;
+  private primedAudioElement: HTMLAudioElement | null = null;
   private activeAbortController: AbortController | null = null;
   private audioContext: AudioContext | null = null;
   private playbackId = 0;
@@ -93,17 +160,34 @@ class CompanionVoiceService {
   /** Call synchronously from a user gesture so later server audio can autoplay. */
   public unlockAudio(): void {
     const context = this.getAudioContext();
-    if (!context) return;
-    if (context.state === 'suspended') {
+    if (context && context.state === 'suspended') {
       void context.resume().catch(() => undefined);
     }
     try {
-      // 1-sample buffer played synchronously inside user gesture guarantees audio output permissions
-      const buffer = context.createBuffer(1, 1, 22050);
-      const source = context.createBufferSource();
-      source.buffer = buffer;
-      source.connect(context.destination);
-      source.start(0);
+      if (context) {
+        const buffer = context.createBuffer(1, 1, 22050);
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(context.destination);
+        source.start(0);
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      if (typeof window !== 'undefined' && typeof window.Audio !== 'undefined') {
+        if (!this.primedAudioElement) {
+          this.primedAudioElement = new Audio();
+        }
+        // Prime HTML5 Audio element inside user gesture to ensure hardware playback rights
+        this.primedAudioElement.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+        const p = this.primedAudioElement.play();
+        if (p) {
+          p.then(() => {
+            this.primedAudioElement?.pause();
+          }).catch(() => undefined);
+        }
+      }
     } catch {
       // ignore
     }
@@ -254,14 +338,34 @@ class CompanionVoiceService {
 
 
 
-  /** Requests Gemini TTS and drives lip motion from decoded audio amplitude. */
+  private quotaCooldownUntil = 0;
+
+  public isQuotaCoolingDown(): boolean {
+    return Date.now() < this.quotaCooldownUntil;
+  }
+
+  public resetQuotaCooldown(): void {
+    this.quotaCooldownUntil = 0;
+  }
+
+  /**
+   * Requests Gemini TTS and plays physical audio while synchronizing lip visemes.
+   * If audio generation, decoding, or browser playback fails, stops immediately
+   * without faking mouth movement or articulate gestures.
+   */
   public speak(
     text: string,
     handlers: VoicePlaybackHandlers,
     options: CompanionSpeechOptions = {},
   ): void {
     this.stopSpeaking();
-    if (!text.trim() || this.muted) {
+    const cleanText = text
+      .replace(/^\s*(?:repeat\s*exactly|exactly|egzakly|draft\s*\d*|response)[\s:]*/i, '')
+      .replace(/\[EMOTION:\s*[A-Z_]+\]/gi, '')
+      .replace(/[*_#`~\[\]]/g, '')
+      .trim();
+
+    if (!cleanText || this.muted) {
       handlers.onViseme(0);
       handlers.onEnd();
       return;
@@ -274,9 +378,8 @@ class CompanionVoiceService {
       return;
     }
 
-    const audioContext = this.getAudioContext();
-    if (!audioContext) {
-      handlers.onError?.('unavailable');
+    if (this.isQuotaCoolingDown()) {
+      handlers.onError?.('quota-exhausted');
       handlers.onViseme(0);
       handlers.onEnd();
       return;
@@ -288,166 +391,175 @@ class CompanionVoiceService {
     this.activeAbortController = controller;
     this.currentPlaybackHandlers = handlers;
     let timedOut = false;
-    let completed = false;
-    let smoothedLevel = 0;
 
-    const timeoutId = window.setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       timedOut = true;
       controller.abort();
     }, 45_000);
 
-    const finishPlayback = () => {
-      if (!isCurrentPlayback() || completed) return;
-      completed = true;
-      if (this.visemeRafId !== null) {
-        cancelAnimationFrame(this.visemeRafId);
-        this.visemeRafId = null;
-      }
-      if (this.visemeInterval !== null) {
-        window.clearInterval(this.visemeInterval);
-        this.visemeInterval = null;
-      }
-      this.activeSource = null;
-      this.activeAbortController = null;
-      this.currentPlaybackHandlers = null;
-      handlers.onViseme(0);
-      handlers.onEnd();
-    };
-
     void (async () => {
       try {
-        if (audioContext.state === 'suspended') await audioContext.resume();
+        // Kokoro-82M Voice: af_kore (matching Kore's warm, natural feminine timbre)
+        const voice = 'af_kore';
 
-        const cleanText = text
-          .replace(/^\s*(?:repeat\s*exactly|exactly|draft\s*\d*|response)[\s:]*/i, '')
-          .replace(/\[EMOTION:\s*[A-Z_]+\]/gi, '')
-          .replace(/[*_#`~\[\]]/g, '')
-          .trim();
-
-        // Strictly lock Korean voice configuration to 'Kore'
         const response = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({
             text: cleanText.slice(0, 4_000),
-            voice: 'Kore',
+            voice,
             emotion: options.emotion || 'NEUTRAL',
             adultContentConsent: options.adultContentConsent,
           }),
         });
 
         if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          console.warn('[AetherAI Voice] Gemini TTS returned non-OK status:', response.status, errData);
-          if (isCurrentPlayback()) {
-            handlers.onError?.(response.status === 429 ? 'rate-limit' : 'unavailable');
-            // Animate companion's speaking articulation so character talks throughout the message reading time
-            handlers.onStart();
-            const timeline = PhoneticLipSyncEngine.buildTimeline(cleanText);
-            const words = cleanText.match(/\S+/gu) || [];
-            const estimatedMs = Math.max(4000, Math.min(12000, words.length * 360));
-            const startMs = performance.now();
-
-            this.visemeInterval = window.setInterval(() => {
-              if (!isCurrentPlayback()) return;
-              const elapsedMs = performance.now() - startMs;
-              if (elapsedMs >= estimatedMs) {
-                finishPlayback();
-                return;
-              }
-              const progress = Math.min(0.999, elapsedMs / estimatedMs);
-              const syllableCadence = 160;
-              const phase = (elapsedMs / syllableCadence) % 1;
-              const openCurve = Math.sin(phase * Math.PI);
-              const pseudoRms = Math.max(0.04, openCurve * 0.24);
-              const frame = PhoneticLipSyncEngine.sample(timeline, progress, pseudoRms);
-              handlers.onViseme(frame.mouthOpen, frame);
-            }, 30);
+          if (!isCurrentPlayback()) return;
+          const status = response.status;
+          if (status === 429) {
+            this.quotaCooldownUntil = Date.now() + 60_000;
           }
+          const reason = status === 429
+            ? 'quota-exhausted'
+            : status === 403
+              ? 'consent-required'
+              : status === 503
+                ? 'not-configured'
+                : 'unavailable';
+          handlers.onError?.(reason);
+          handlers.onViseme(0);
+          handlers.onEnd();
           return;
         }
 
         const encodedAudio = await response.arrayBuffer();
         if (!isCurrentPlayback()) return;
 
-        const audioBuffer = await audioContext.decodeAudioData(encodedAudio.slice(0));
-        if (!isCurrentPlayback()) return;
+        const parsedWav = parseWavPcm(encodedAudio);
+        if (!parsedWav) {
+          if (!isCurrentPlayback()) return;
+          handlers.onError?.('corrupted-audio');
+          handlers.onViseme(0);
+          handlers.onEnd();
+          return;
+        }
 
-        const source = audioContext.createBufferSource();
-        const analyser = audioContext.createAnalyser();
-        const gain = audioContext.createGain();
-        gain.gain.value = 1.0;
-        const waveform = new Uint8Array(analyser.fftSize);
-        const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+        const blob = new Blob([encodedAudio], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        audio.preload = 'auto';
+        audio.volume = 1.0;
+        this.activeAudioElement = audio;
+        this.activeAudioUrl = audioUrl;
 
-        analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.28;
-        analyser.minDecibels = -75;
-        analyser.maxDecibels = -10;
-
-        source.buffer = audioBuffer;
-        source.connect(analyser);
-        analyser.connect(gain);
-        gain.connect(audioContext.destination);
-
-        if (audioContext.state === 'suspended') {
+        let completed = false;
+        const cleanup = () => {
+          if (completed) return;
+          completed = true;
+          if (this.visemeRafId !== null) {
+            cancelAnimationFrame(this.visemeRafId);
+            this.visemeRafId = null;
+          }
+          if (this.activeAudioElement === audio) {
+            this.activeAudioElement = null;
+          }
+          if (this.activeAudioUrl === audioUrl) {
+            this.activeAudioUrl = null;
+          }
+          audio.onended = null;
+          audio.onerror = null;
           try {
-            await audioContext.resume();
+            audio.pause();
           } catch {
             // ignore
           }
+          try {
+            URL.revokeObjectURL(audioUrl);
+          } catch {
+            // ignore
+          }
+        };
+
+        audio.onended = () => {
+          if (!isCurrentPlayback()) {
+            cleanup();
+            return;
+          }
+          cleanup();
+          this.currentPlaybackHandlers = null;
+          handlers.onViseme(0);
+          handlers.onEnd();
+        };
+
+        audio.onerror = () => {
+          if (!isCurrentPlayback()) {
+            cleanup();
+            return;
+          }
+          cleanup();
+          this.currentPlaybackHandlers = null;
+          handlers.onError?.('playback-failed');
+          handlers.onViseme(0);
+          handlers.onEnd();
+        };
+
+        try {
+          await audio.play();
+        } catch (playError) {
+          cleanup();
+          if (!isCurrentPlayback()) return;
+          console.warn('[AetherAI Voice] Audio playback rejected by browser policy:', playError);
+          handlers.onError?.('playback-failed');
+          handlers.onViseme(0);
+          handlers.onEnd();
+          return;
         }
 
-        this.activeSource = source;
-        source.onended = finishPlayback;
+        if (!isCurrentPlayback()) {
+          cleanup();
+          return;
+        }
+
+        // True physical audio playback has started successfully!
         handlers.onStart();
 
         const timeline = PhoneticLipSyncEngine.buildTimeline(cleanText);
-        const audioDuration = Math.max(0.2, audioBuffer.duration);
-        let audioStartTime = audioContext.currentTime;
+        const pcm = parsedWav.pcm;
+        const sampleRate = parsedWav.sampleRate;
+        const audioDuration = Math.max(0.1, parsedWav.duration);
+        const windowSamples = Math.floor(sampleRate * 0.03); // ~30ms analysis window
 
-        // Phoneme-aligned real-time lip-sync loop driven by audio playback clock
         const updateVisemes = () => {
-          if (!isCurrentPlayback()) return;
-          analyser.getByteFrequencyData(frequencyData);
-          analyser.getByteTimeDomainData(waveform);
+          if (!isCurrentPlayback() || audio.paused || audio.ended) return;
+
+          const currentTime = audio.currentTime;
+          const progress = Math.min(0.999, Math.max(0, currentTime / audioDuration));
+          const currentSample = Math.floor(currentTime * sampleRate);
 
           let sumSquares = 0;
-          for (let i = 0; i < waveform.length; i++) {
-            const centered = (waveform[i] - 128) / 128;
-            sumSquares += centered * centered;
-          }
-          const rms = Math.sqrt(sumSquares / waveform.length);
+          const halfWindow = windowSamples >> 1;
+          const startSample = Math.max(0, currentSample - halfWindow);
+          const endSample = Math.min(pcm.length, currentSample + halfWindow);
+          const count = endSample - startSample;
 
-          // Vocal tract formant resonance band (vowel phonemes: ~280Hz to 2300Hz, bins 3 to 25)
-          let formantSum = 0;
-          const minBin = 3;
-          const maxBin = Math.min(25, frequencyData.length);
-          for (let i = minBin; i < maxBin; i++) {
-            formantSum += frequencyData[i];
+          if (count > 0) {
+            for (let i = startSample; i < endSample; i++) {
+              const s = pcm[i];
+              sumSquares += s * s;
+            }
           }
-          const avgFormant = formantSum / (maxBin - minBin) / 255;
+          const rms = count > 0 ? Math.sqrt(sumSquares / count) : 0;
 
-          // High frequency friction / sibilance band (~4000Hz to 8000Hz, bins 42 to 85)
-          let sibilanceSum = 0;
-          const sibMin = Math.min(42, frequencyData.length);
-          const sibMax = Math.min(85, frequencyData.length);
-          for (let i = sibMin; i < sibMax; i++) {
-            sibilanceSum += frequencyData[i];
-          }
-          const avgSibilance = sibilanceSum / Math.max(1, sibMax - sibMin) / 255;
-
-          // Calculate precise timeline progress from audio context playback clock
-          const elapsed = audioContext.currentTime - audioStartTime;
-          const progress = Math.min(0.999, Math.max(0, elapsed / audioDuration));
+          const formant = Math.min(1, rms * 1.6);
+          const sibilance = Math.min(1, rms * 0.8);
 
           const visemeFrame = PhoneticLipSyncEngine.sample(
             timeline,
             progress,
             rms,
-            avgFormant,
-            avgSibilance
+            formant,
+            sibilance
           );
 
           handlers.onViseme(visemeFrame.mouthOpen, visemeFrame);
@@ -455,41 +567,20 @@ class CompanionVoiceService {
         };
 
         this.visemeRafId = requestAnimationFrame(updateVisemes);
-        source.start(0);
-        audioStartTime = audioContext.currentTime;
       } catch (error: unknown) {
         if (!isCurrentPlayback()) return;
         const isAbort = controller.signal.aborted;
         handlers.onError?.(isAbort && timedOut ? 'timeout' : 'unavailable');
-        handlers.onStart();
-        const timeline = PhoneticLipSyncEngine.buildTimeline(text);
-        const words = text.match(/\S+/gu) || [];
-        const estimatedMs = Math.max(4000, Math.min(12000, words.length * 360));
-        const startMs = performance.now();
-
-        this.visemeInterval = window.setInterval(() => {
-          if (!isCurrentPlayback()) return;
-          const elapsedMs = performance.now() - startMs;
-          if (elapsedMs >= estimatedMs) {
-            finishPlayback();
-            return;
-          }
-          const progress = Math.min(0.999, elapsedMs / estimatedMs);
-          const syllableCadence = 160;
-          const phase = (elapsedMs / syllableCadence) % 1;
-          const openCurve = Math.sin(phase * Math.PI);
-          const pseudoRms = Math.max(0.04, openCurve * 0.24);
-          const frame = PhoneticLipSyncEngine.sample(timeline, progress, pseudoRms);
-          handlers.onViseme(frame.mouthOpen, frame);
-        }, 30);
+        handlers.onViseme(0);
+        handlers.onEnd();
       } finally {
-        window.clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
       }
     })();
   }
 
   /**
-   * Immediately stops any active companion speech and ensures mouth returns to resting pose
+   * Immediately stops any active companion speech and resets mouth to closed pose
    */
   public stopSpeaking(): void {
     this.playbackId += 1;
@@ -498,11 +589,25 @@ class CompanionVoiceService {
       this.visemeRafId = null;
     }
     if (this.visemeInterval !== null) {
-      window.clearInterval(this.visemeInterval);
+      clearInterval(this.visemeInterval);
       this.visemeInterval = null;
     }
-    const handlers = this.currentPlaybackHandlers;
-    this.currentPlaybackHandlers = null;
+    const audio = this.activeAudioElement;
+    this.activeAudioElement = null;
+    if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
+      try { audio.pause(); } catch { /* ignore */ }
+      try { audio.src = ''; } catch { /* ignore */ }
+    }
+    if (this.activeAudioUrl) {
+      try {
+        URL.revokeObjectURL(this.activeAudioUrl);
+      } catch {
+        // ignore
+      }
+      this.activeAudioUrl = null;
+    }
     this.activeAbortController?.abort();
     this.activeAbortController = null;
     const source = this.activeSource;
@@ -511,6 +616,8 @@ class CompanionVoiceService {
       source.onended = null;
       try { source.stop(); } catch { /* already stopped */ }
     }
+    const handlers = this.currentPlaybackHandlers;
+    this.currentPlaybackHandlers = null;
     if (handlers) {
       handlers.onViseme(0, { mouthOpen: 0, aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
       handlers.onEnd();

@@ -14,7 +14,9 @@
     "test:animation": "tsx src/lib/animationOrchestrator.test.ts",
     "test:behavior": "tsx src/lib/behavior/humanBehavior.test.ts",
     "test:performance": "tsx src/lib/behavior/characterPerformance.test.ts",
-    "test:furniture": "tsx src/lib/environment/furnitureLayout.test.ts"
+    "test:furniture": "tsx src/lib/environment/furnitureLayout.test.ts",
+    "test:voice": "tsx src/lib/companionVoice.test.ts",
+    "test:audit": "tsx src/lib/aetherDefectAudit.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -24,6 +26,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.19.0",
+    "kokoro-js": "^1.2.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "qrcode": "^1.5.4",

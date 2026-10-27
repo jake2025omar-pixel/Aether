@@ -250,20 +250,23 @@ export default function App() {
           setCurrentSpeechText(null);
         },
         onError: (reason) => {
-          if (reason === 'rate-limit' || reason === 'unavailable') {
-            // Avoid showing distracting error toast when upstream voice quota is on cooldown;
-            // companion gracefully continues with visual speech and lip-sync performance.
-            console.info('[Aether Voice] Cloud voice quota resting; presenting via visual phonetic articulation.');
-            return;
-          }
           const isArabic = /[\u0600-\u06FF]/.test(cleanText);
           const messages: Record<string, string> = {
+            'quota-exhausted': isArabic
+              ? 'تم استنفاد حصة الصوت في Google AI Studio مؤقتاً. النص متاح، وسيعود الصوت عند تجديد الحصة.'
+              : 'Google AI Studio voice quota temporarily exhausted. Text is available; voice will resume when quota resets.',
+            'rate-limit': isArabic
+              ? 'تم استنفاد حصة الصوت في Google AI Studio مؤقتاً. النص متاح، وسيعود الصوت عند تجديد الحصة.'
+              : 'Google AI Studio voice quota temporarily exhausted. Text is available; voice will resume when quota resets.',
+            'playback-failed': isArabic ? 'تعذر تشغيل الصوت في المتصفح. انقر على الشاشة لتفعيل الصوت.' : 'Audio playback blocked by browser. Click screen to enable sound.',
             'not-configured': isArabic ? 'خدمة الصوت غير مهيأة بعد.' : 'Voice service not configured.',
             timeout: isArabic ? 'انتهت مهلة توليد الصوت.' : 'Voice generation timed out.',
-            'consent-required': isArabic ? 'موافقة البالغين مطلوبة.' : 'Adult consent required.',
+            'consent-required': isArabic ? 'موافقة البالغين مطلوبة لسماع الصوت.' : 'Adult consent required.',
+            'corrupted-audio': isArabic ? 'بيانات الصوت غير صالحة.' : 'Invalid audio data received.',
+            unavailable: isArabic ? 'خدمة الصوت غير متوفرة حالياً.' : 'Voice service unavailable.',
           };
           setVoiceError(messages[reason] || (isArabic ? 'خدمة الصوت غير متوفرة حالياً.' : 'Voice service unavailable.'));
-          window.setTimeout(() => setVoiceError(null), 5000);
+          window.setTimeout(() => setVoiceError(null), 6000);
         },
       }, { emotion, adultContentConsent: adultConsentGranted });
     } catch (err: unknown) {
@@ -300,6 +303,9 @@ export default function App() {
    * Voice Input Trigger (Microphone Recording)
    */
   const handleToggleVoice = useCallback(() => {
+    // Unlock audio context/element on user gesture
+    companionVoice.unlockAudio();
+
     // If companion is speaking, stop speaking immediately
     if (companionState === 'SPEAKING') {
       companionVoice.stopSpeaking();
@@ -400,7 +406,6 @@ export default function App() {
             companionEmotion={companionEmotion}
             visemeMouthOpen={visemeMouthOpen}
             visemeFrame={visemeFrame}
-            onStartInteraction={handleToggleVoice}
             companionModelUrl={primaryCharacterUrl}
             roomModelUrl={primaryEnvironmentUrl}
             currentSpeechText={currentSpeechText}

@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-export type CompanionTtsVoice = 'Achernar' | 'Kore';
+export type CompanionTtsVoice = 'Achernar' | 'Kore' | 'Salma';
 export type TtsFailureReason = 'not-configured' | 'timeout' | 'network' | 'invalid-audio' | 'unavailable';
 
 const CACHE_DIR = path.resolve(process.cwd(), '.cache/tts');
@@ -32,7 +32,7 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 300;
 const UPSTREAM_TIMEOUT_MS = 45_000;
 
-const SUPPORTED_VOICES = new Set<CompanionTtsVoice>(['Achernar', 'Kore']);
+const SUPPORTED_VOICES = new Set<CompanionTtsVoice>(['Achernar', 'Kore', 'Salma']);
 const SUPPORTED_EMOTIONS = new Set([
   'NEUTRAL', 'HAPPY', 'SAD', 'ANGRY', 'SURPRISED', 'CONFUSED', 'THINKING',
   'CURIOUS', 'EMPATHETIC', 'AFFECTIONATE', 'GENTLY_ANNOYED',
@@ -239,7 +239,7 @@ export async function handleGeminiTtsRequest(
               responseModalities: ['AUDIO'],
               speechConfig: {
                 voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName: voice },
+                  prebuiltVoiceConfig: { voiceName: voice === 'Salma' ? 'Kore' : voice },
                 },
               },
               abortSignal: controller.signal,

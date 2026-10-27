@@ -5,23 +5,23 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { AETHER_COMPANION_SYSTEM_PROMPT } from './server/companionSystemPrompt';
-import { handleGeminiTtsRequest } from './server/geminiTts';
+import { handleKokoroTtsRequest } from './server/kokoroTts';
 
 dotenv.config();
 
-const PRIMARY_GEMINI_MODEL = 'gemini-3.5-flash';
+const PRIMARY_GEMINI_MODEL = 'gemini-2.5-flash';
 const CANDIDATE_MODELS = [
-  'gemini-3.5-flash',
   'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
   'gemini-3.8-flash',
   'gemini-flash-latest',
-  'gemini-2.5-flash-lite',
 ];
 
 // Track models that have hit temporary upstream quota or demand limits (e.g. 503 / 429)
 const modelCooldowns = new Map<string, number>([
-  ['gemini-2.5-flash-lite', Date.now() + 11 * 3600 * 1000],
+  ['gemini-3.5-flash', Date.now() + 16 * 3600 * 1000],
 ]);
 
 function isModelCoolingDown(model: string): boolean {
@@ -139,7 +139,7 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// Gemini TTS Endpoint
+// Kokoro-82M Neural TTS Endpoint (Truly Free & Unlimited, Voice: af_kore)
 app.post('/api/tts', async (req, res) => {
   const forwardedRequest = new Request('http://localhost/api/tts', {
     method: 'POST',
@@ -150,10 +150,39 @@ app.post('/api/tts', async (req, res) => {
     body: JSON.stringify(req.body ?? {}),
   });
 
-  const speechResponse = await handleGeminiTtsRequest(forwardedRequest, process.env.GEMINI_API_KEY);
+  const speechResponse = await handleKokoroTtsRequest(forwardedRequest);
   speechResponse.headers.forEach((value, key) => res.setHeader(key, value));
   const audioOrError = await speechResponse.arrayBuffer();
   res.status(speechResponse.status).send(Buffer.from(audioOrError));
+});
+
+// Firebase Authentication Reverse Proxy for same-origin auth handling
+app.use('/__/auth', async (req, res) => {
+  const authDomain = process.env.VITE_FIREBASE_AUTH_DOMAIN || 'aether-efab5.firebaseapp.com';
+  const targetUrl = `https://${authDomain}/__/auth${req.url}`;
+  try {
+    const upstreamRes = await fetch(targetUrl, {
+      method: req.method,
+      headers: {
+        'Accept': req.headers.accept || '*/*',
+        'User-Agent': req.headers['user-agent'] || 'AetherAI-Auth-Proxy',
+      },
+    });
+
+    upstreamRes.headers.forEach((value, key) => {
+      const lower = key.toLowerCase();
+      if (lower !== 'transfer-encoding' && lower !== 'content-encoding') {
+        res.setHeader(key, value);
+      }
+    });
+
+    res.status(upstreamRes.status);
+    const bodyBuffer = await upstreamRes.arrayBuffer();
+    res.send(Buffer.from(bodyBuffer));
+  } catch (proxyErr) {
+    console.warn('[AetherAI Auth Proxy] Failed to proxy auth request:', proxyErr);
+    res.status(502).send('Auth proxy failed');
+  }
 });
 
 const getLocalCompanionFallback = (userInput: string): string => {
@@ -284,7 +313,7 @@ app.post('/api/chat', async (req, res) => {
           config: {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
-            maxOutputTokens: 500,
+            maxOutputTokens: 2048,
             abortSignal: providerAbortController.signal,
           },
         });
@@ -336,7 +365,7 @@ app.post('/api/chat', async (req, res) => {
           config: {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
-            maxOutputTokens: 500,
+            maxOutputTokens: 2048,
             abortSignal: attemptController.signal,
           },
         });

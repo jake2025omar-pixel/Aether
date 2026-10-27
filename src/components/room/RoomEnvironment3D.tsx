@@ -874,7 +874,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           if (interactionClickRef.current?.(event.clientX, event.clientY)) return;
           onCompanionClick?.();
         }}
-        className="fixed inset-0 w-full h-full cursor-pointer"
+        className="fixed inset-0 w-full h-full cursor-grab active:cursor-grabbing"
       />
 
       {/* Subtle Companion Status Pill */}
