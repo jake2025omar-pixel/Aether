@@ -156,7 +156,7 @@ export async function handleKokoroTtsRequest(
   try {
     const tts = await getKokoroTTS();
     const rawAudio = await tts.generate(text, {
-      voice,
+      voice: voice as any,
       speed: 1.0,
     });
 
