@@ -31,15 +31,16 @@ export interface ParsedWav {
 
 export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
   if (arrayBuffer.byteLength < 44) return null;
+
   const view = new DataView(arrayBuffer);
-  // Verify 'RIFF' and 'WAVE' chunk identifiers
   const isRiff = view.getUint32(0, false) === 0x52494646;
   const isWave = view.getUint32(8, false) === 0x57415645;
   if (!isRiff || !isWave) return null;
 
+  let audioFormat = 0;
   let channels = 1;
-  let sampleRate = 24000;
-  let bitsPerSample = 16;
+  let sampleRate = 0;
+  let bitsPerSample = 0;
   let dataOffset = -1;
   let dataLength = 0;
 
@@ -52,37 +53,92 @@ export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
       view.getUint8(offset + 3)
     );
     const chunkSize = view.getUint32(offset + 4, true);
+
     if (chunkId === 'fmt ') {
-      channels = view.getUint16(offset + 10, true);
-      sampleRate = view.getUint32(offset + 12, true);
-      bitsPerSample = view.getUint16(offset + 22, true);
+      if (offset + 16 <= arrayBuffer.byteLength) {
+        audioFormat = view.getUint16(offset + 8, true);
+        channels = view.getUint16(offset + 10, true);
+        sampleRate = view.getUint32(offset + 12, true);
+        bitsPerSample = view.getUint16(offset + 22, true);
+      }
     } else if (chunkId === 'data') {
       dataOffset = offset + 8;
       dataLength = Math.min(chunkSize, arrayBuffer.byteLength - dataOffset);
       break;
     }
-    offset += 8 + chunkSize;
+
+    offset += 8 + chunkSize + (chunkSize % 2);
   }
 
-  if (dataOffset === -1 || dataLength <= 0 || bitsPerSample !== 16) {
+  if (audioFormat !== 1 && audioFormat !== 3) {
     return null;
   }
 
-  const sampleCount = Math.floor(dataLength / (2 * channels));
-  const pcm = new Float32Array(sampleCount);
-  const step = channels;
-  for (let i = 0; i < sampleCount; i++) {
-    const bytePos = dataOffset + i * 2 * step;
-    if (bytePos + 2 <= arrayBuffer.byteLength) {
-      pcm[i] = view.getInt16(bytePos, true) / 32768.0;
+  if (sampleRate <= 0 || bitsPerSample <= 0) {
+    return null;
+  }
+
+  if (dataOffset === -1 || dataLength <= 0) {
+    return null;
+  }
+
+  const bytesPerSample = Math.max(1, Math.ceil(bitsPerSample / 8));
+  const blockAlign = Math.max(1, channels * bytesPerSample);
+  const frameCount = Math.max(0, Math.floor(dataLength / blockAlign));
+  const pcm = new Float32Array(frameCount);
+
+  for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+    let frameSum = 0;
+    for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
+      const sampleOffset = dataOffset + (frameIndex * blockAlign) + (channelIndex * bytesPerSample);
+      let sampleValue = 0;
+
+      if (audioFormat === 1) {
+        switch (bytesPerSample) {
+          case 1: {
+            sampleValue = view.getUint8(sampleOffset) - 128;
+            sampleValue /= 128;
+            break;
+          }
+          case 2: {
+            sampleValue = view.getInt16(sampleOffset, true);
+            sampleValue /= 32768;
+            break;
+          }
+          case 3: {
+            const b0 = view.getUint8(sampleOffset);
+            const b1 = view.getUint8(sampleOffset + 1);
+            const b2 = view.getUint8(sampleOffset + 2);
+            const raw = (b0 | (b1 << 8) | (b2 << 16));
+            const signed = raw & 0x800000 ? raw | ~0xFFFFFF : raw;
+            sampleValue = signed / 8388608;
+            break;
+          }
+          case 4: {
+            sampleValue = view.getInt32(sampleOffset, true) / 2147483648;
+            break;
+          }
+          default: {
+            sampleValue = 0;
+          }
+        }
+      } else if (audioFormat === 3) {
+        if (bytesPerSample === 4) {
+          sampleValue = view.getFloat32(sampleOffset, true);
+        }
+      }
+
+      frameSum += sampleValue;
     }
+
+    pcm[frameIndex] = channels > 0 ? frameSum / channels : 0;
   }
 
   return {
     sampleRate,
     channels,
     pcm,
-    duration: sampleRate > 0 ? sampleCount / sampleRate : 0,
+    duration: sampleRate > 0 ? frameCount / sampleRate : 0,
   };
 }
 
@@ -335,8 +391,6 @@ class CompanionVoiceService {
       this.isListening = false;
     }
   }
-
-
 
   private quotaCooldownUntil = 0;
 
