@@ -40,6 +40,7 @@ export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
   let audioFormat = 0;
   let channels = 1;
   let sampleRate = 0;
+  let blockAlign = 0;
   let bitsPerSample = 0;
   let dataOffset = -1;
   let dataLength = 0;
@@ -56,14 +57,17 @@ export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
 
     if (chunkId === 'fmt ') {
       if (offset + 16 <= arrayBuffer.byteLength) {
-        audioFormat = view.getUint16(offset + 8, true);
-        channels = view.getUint16(offset + 10, true);
-        sampleRate = view.getUint32(offset + 12, true);
-        bitsPerSample = view.getUint16(offset + 22, true);
+        audioFormat = view.getUint16(offset + 0, true);
+        channels = view.getUint16(offset + 2, true);
+        sampleRate = view.getUint32(offset + 4, true);
+        blockAlign = view.getUint16(offset + 12, true);
+        bitsPerSample = view.getUint16(offset + 14, true);
       }
     } else if (chunkId === 'data') {
-      dataOffset = offset + 8;
-      dataLength = Math.min(chunkSize, arrayBuffer.byteLength - dataOffset);
+      const dataStart = offset + 8;
+      if (dataStart > arrayBuffer.byteLength) break;
+      dataOffset = dataStart;
+      dataLength = Math.min(chunkSize, arrayBuffer.byteLength - dataStart);
       break;
     }
 
@@ -74,7 +78,7 @@ export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
     return null;
   }
 
-  if (sampleRate <= 0 || bitsPerSample <= 0) {
+  if (sampleRate <= 0 || channels <= 0 || bitsPerSample <= 0 || blockAlign <= 0) {
     return null;
   }
 
@@ -83,16 +87,38 @@ export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
   }
 
   const bytesPerSample = Math.max(1, Math.ceil(bitsPerSample / 8));
-  const blockAlign = Math.max(1, channels * bytesPerSample);
-  const frameCount = Math.max(0, Math.floor(dataLength / blockAlign));
-  const pcm = new Float32Array(frameCount);
+  const expectedFrameBytes = channels * bytesPerSample;
+  if (blockAlign !== expectedFrameBytes) {
+    if (blockAlign > 0 && blockAlign < expectedFrameBytes) {
+      return null;
+    }
+  }
 
-  for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+  const framesPerSample = Math.floor(dataLength / blockAlign);
+  if (framesPerSample <= 0) {
+    return null;
+  }
+
+  const pcm = new Float32Array(framesPerSample);
+  let sampleIndex = 0;
+
+  for (let frameIndex = 0; frameIndex < framesPerSample; frameIndex += 1) {
+    const frameOffset = dataOffset + frameIndex * blockAlign;
+    const safeFrameEnd = frameOffset + blockAlign;
+    if (safeFrameEnd > arrayBuffer.byteLength) {
+      break;
+    }
+
     let frameSum = 0;
     for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
-      const sampleOffset = dataOffset + (frameIndex * blockAlign) + (channelIndex * bytesPerSample);
-      let sampleValue = 0;
+      const sampleOffset = frameOffset + channelIndex * bytesPerSample;
+      const sampleEnd = sampleOffset + bytesPerSample;
+      if (sampleEnd > arrayBuffer.byteLength) {
+        frameSum = 0;
+        break;
+      }
 
+      let sampleValue = 0;
       if (audioFormat === 1) {
         switch (bytesPerSample) {
           case 1: {
@@ -120,6 +146,7 @@ export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
           }
           default: {
             sampleValue = 0;
+            break;
           }
         }
       } else if (audioFormat === 3) {
@@ -131,14 +158,20 @@ export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
       frameSum += sampleValue;
     }
 
-    pcm[frameIndex] = channels > 0 ? frameSum / channels : 0;
+    if (channels > 0) {
+      pcm[sampleIndex++] = frameSum / channels;
+    }
+  }
+
+  if (sampleIndex === 0) {
+    return null;
   }
 
   return {
     sampleRate,
     channels,
-    pcm,
-    duration: sampleRate > 0 ? frameCount / sampleRate : 0,
+    pcm: pcm.subarray(0, sampleIndex),
+    duration: sampleRate > 0 ? sampleIndex / sampleRate : 0,
   };
 }
 
@@ -582,7 +615,7 @@ class CompanionVoiceService {
         const pcm = parsedWav.pcm;
         const sampleRate = parsedWav.sampleRate;
         const audioDuration = Math.max(0.1, parsedWav.duration);
-        const windowSamples = Math.floor(sampleRate * 0.03); // ~30ms analysis window
+        const windowSamples = Math.floor(sampleRate * 0.03);
 
         const updateVisemes = () => {
           if (!isCurrentPlayback() || audio.paused || audio.ended) return;
