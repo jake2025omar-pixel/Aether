@@ -205,6 +205,10 @@ export async function loadWeb3DAsset(
             if (!response.ok && response.status !== 0) {
               throw new Error(`Asset request failed with HTTP ${response.status}.`);
             }
+            const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+            if (contentType.includes('text/html')) {
+              throw new Error('The server returned an HTML page instead of a 3D asset. Check that the asset file exists at its configured URL.');
+            }
             return response.arrayBuffer();
           })
           .then((data) => {
