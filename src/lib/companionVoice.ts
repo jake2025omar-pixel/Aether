@@ -56,12 +56,12 @@ export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
     const chunkSize = view.getUint32(offset + 4, true);
 
     if (chunkId === 'fmt ') {
-      if (offset + 16 <= arrayBuffer.byteLength) {
-        audioFormat = view.getUint16(offset + 0, true);
-        channels = view.getUint16(offset + 2, true);
-        sampleRate = view.getUint32(offset + 4, true);
-        blockAlign = view.getUint16(offset + 12, true);
-        bitsPerSample = view.getUint16(offset + 14, true);
+      if (offset + 8 + 16 <= arrayBuffer.byteLength) {
+        audioFormat = view.getUint16(offset + 8, true);
+        channels = view.getUint16(offset + 10, true);
+        sampleRate = view.getUint32(offset + 12, true);
+        blockAlign = view.getUint16(offset + 20, true);
+        bitsPerSample = view.getUint16(offset + 22, true);
       }
     } else if (chunkId === 'data') {
       const dataStart = offset + 8;
