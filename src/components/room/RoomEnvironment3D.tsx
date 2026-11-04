@@ -504,6 +504,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           return;
         }
         if (!res.success || !res.vrm) {
+          console.warn('[Aether] Ramona VRM could not be loaded; using the fallback rig.', res.error || 'VRM data was not present in the loaded asset.');
           mountFallbackRig();
           return;
         }
@@ -522,7 +523,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         rig.setViseme(visemeRef.current, visemeFrameRef.current);
         rig.setState(stateRef.current);
         rig.setMotionEnabled(motionEnabledRef.current);
-      }).catch(() => {
+      }).catch((error: unknown) => {
+        console.warn('[Aether] Ramona VRM loading failed; using the fallback rig.', error instanceof Error ? error.message : 'Unknown loading error.');
         mountFallbackRig();
       });
     } else {
