@@ -73,6 +73,39 @@ function createMockWavBuffer(sampleRate = 24000, durationSec = 0.5, amplitude = 
   const invalidHeader = validBuffer.slice(0);
   new DataView(invalidHeader).setUint32(0, 0x12345678, false); // corrupt RIFF
   assert.equal(parseWavPcm(invalidHeader), null);
+
+  console.log('[Test 2b] parser validates RIFF bounds, frame alignment, and optional chunks');
+  const truncatedData = validBuffer.slice(0);
+  new DataView(truncatedData).setUint32(40, 0x7fffffff, true);
+  assert.equal(parseWavPcm(truncatedData), null, 'A data chunk that exceeds RIFF bounds must be rejected.');
+
+  const badBlockAlign = validBuffer.slice(0);
+  new DataView(badBlockAlign).setUint16(32, 1, true);
+  assert.equal(parseWavPcm(badBlockAlign), null, 'Inconsistent block alignment must be rejected.');
+
+  const originalBytes = new Uint8Array(validBuffer);
+  const junkChunkWav = new ArrayBuffer(originalBytes.byteLength + 10);
+  const junkView = new DataView(junkChunkWav);
+  junkView.setUint32(0, 0x52494646, false);
+  junkView.setUint32(4, new DataView(validBuffer).getUint32(4, true) + 10, true);
+  junkView.setUint32(8, 0x57415645, false);
+  junkView.setUint32(12, 0x4a554e4b, false); // JUNK
+  junkView.setUint32(16, 2, true);
+  junkView.setUint8(20, 0x5a);
+  junkView.setUint8(21, 0x5a);
+  new Uint8Array(junkChunkWav).set(originalBytes.subarray(12), 22);
+  const junkParsed = parseWavPcm(junkChunkWav);
+  assert.ok(junkParsed !== null, 'A valid unknown RIFF chunk should be skipped.');
+  assert.equal(junkParsed.pcm.length, parsed.pcm.length);
+
+  const dataFirstWav = new ArrayBuffer(validBuffer.byteLength);
+  const dataFirstBytes = new Uint8Array(dataFirstWav);
+  dataFirstBytes.set(originalBytes.subarray(0, 12), 0);
+  dataFirstBytes.set(originalBytes.subarray(36), 12);
+  dataFirstBytes.set(originalBytes.subarray(12, 36), originalBytes.byteLength - 24);
+  const dataFirstParsed = parseWavPcm(dataFirstWav);
+  assert.ok(dataFirstParsed !== null, 'The parser should locate fmt even when data precedes it.');
+  assert.equal(dataFirstParsed.pcm.length, parsed.pcm.length);
 }
 
 // -------------------------------------------------------------

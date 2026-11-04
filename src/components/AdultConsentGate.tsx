@@ -52,7 +52,7 @@ export function AdultConsentGate({ onAccept }: AdultConsentGateProps) {
           </label>
         </div>
         <p className="mt-4 text-xs leading-6 text-white/50">
-          تأكيد الموافقة يظل سارياً لجلسة التصفح الحالية فقط ولا يتم تخزين أي بيانات شخصية أو هويات.
+          يظل الإقرار في ذاكرة هذه الصفحة فقط، ولا تُخزَّن عبره بيانات شخصية أو هوية.
         </p>
         <button
           type="button"

@@ -1,6 +1,10 @@
 import { PhoneticLipSyncEngine, VisemeFrame } from './phonemeLipSync';
+import { parseWavPcm } from './audio/wav';
+import type { ParsedWav } from './audio/wav';
 
 export type { VisemeFrame };
+export { parseWavPcm };
+export type { ParsedWav };
 
 export interface SpeechRecognitionHandlers {
   onStart?: () => void;
@@ -20,159 +24,6 @@ export interface VoicePlaybackHandlers {
 export interface CompanionSpeechOptions {
   emotion?: string;
   adultContentConsent?: boolean;
-}
-
-export interface ParsedWav {
-  sampleRate: number;
-  channels: number;
-  pcm: Float32Array;
-  duration: number;
-}
-
-export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
-  if (arrayBuffer.byteLength < 44) return null;
-
-  const view = new DataView(arrayBuffer);
-  const isRiff = view.getUint32(0, false) === 0x52494646;
-  const isWave = view.getUint32(8, false) === 0x57415645;
-  if (!isRiff || !isWave) return null;
-
-  let audioFormat = 0;
-  let channels = 1;
-  let sampleRate = 0;
-  let blockAlign = 0;
-  let bitsPerSample = 0;
-  let dataOffset = -1;
-  let dataLength = 0;
-
-  let offset = 12;
-  while (offset + 8 <= arrayBuffer.byteLength) {
-    const chunkId = String.fromCharCode(
-      view.getUint8(offset),
-      view.getUint8(offset + 1),
-      view.getUint8(offset + 2),
-      view.getUint8(offset + 3)
-    );
-    const chunkSize = view.getUint32(offset + 4, true);
-
-    if (chunkId === 'fmt ') {
-      if (offset + 16 <= arrayBuffer.byteLength) {
-        audioFormat = view.getUint16(offset + 8, true);
-        channels = view.getUint16(offset + 10, true);
-        sampleRate = view.getUint32(offset + 12, true);
-        blockAlign = view.getUint16(offset + 20, true);
-        bitsPerSample = view.getUint16(offset + 22, true);
-      }
-    } else if (chunkId === 'data') {
-      const dataStart = offset + 8;
-      if (dataStart > arrayBuffer.byteLength) break;
-      dataOffset = dataStart;
-      dataLength = Math.min(chunkSize, arrayBuffer.byteLength - dataStart);
-      break;
-    }
-
-    offset += 8 + chunkSize + (chunkSize % 2);
-  }
-
-  if (audioFormat !== 1 && audioFormat !== 3) {
-    return null;
-  }
-
-  if (sampleRate <= 0 || channels <= 0 || bitsPerSample <= 0 || blockAlign <= 0) {
-    return null;
-  }
-
-  if (dataOffset === -1 || dataLength <= 0) {
-    return null;
-  }
-
-  const bytesPerSample = Math.max(1, Math.ceil(bitsPerSample / 8));
-  const expectedFrameBytes = channels * bytesPerSample;
-  if (blockAlign !== expectedFrameBytes) {
-    if (blockAlign > 0 && blockAlign < expectedFrameBytes) {
-      return null;
-    }
-  }
-
-  const framesPerSample = Math.floor(dataLength / blockAlign);
-  if (framesPerSample <= 0) {
-    return null;
-  }
-
-  const pcm = new Float32Array(framesPerSample);
-  let sampleIndex = 0;
-
-  for (let frameIndex = 0; frameIndex < framesPerSample; frameIndex += 1) {
-    const frameOffset = dataOffset + frameIndex * blockAlign;
-    const safeFrameEnd = frameOffset + blockAlign;
-    if (safeFrameEnd > arrayBuffer.byteLength) {
-      break;
-    }
-
-    let frameSum = 0;
-    for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
-      const sampleOffset = frameOffset + channelIndex * bytesPerSample;
-      const sampleEnd = sampleOffset + bytesPerSample;
-      if (sampleEnd > arrayBuffer.byteLength) {
-        frameSum = 0;
-        break;
-      }
-
-      let sampleValue = 0;
-      if (audioFormat === 1) {
-        switch (bytesPerSample) {
-          case 1: {
-            sampleValue = view.getUint8(sampleOffset) - 128;
-            sampleValue /= 128;
-            break;
-          }
-          case 2: {
-            sampleValue = view.getInt16(sampleOffset, true);
-            sampleValue /= 32768;
-            break;
-          }
-          case 3: {
-            const b0 = view.getUint8(sampleOffset);
-            const b1 = view.getUint8(sampleOffset + 1);
-            const b2 = view.getUint8(sampleOffset + 2);
-            const raw = (b0 | (b1 << 8) | (b2 << 16));
-            const signed = raw & 0x800000 ? raw | ~0xFFFFFF : raw;
-            sampleValue = signed / 8388608;
-            break;
-          }
-          case 4: {
-            sampleValue = view.getInt32(sampleOffset, true) / 2147483648;
-            break;
-          }
-          default: {
-            sampleValue = 0;
-            break;
-          }
-        }
-      } else if (audioFormat === 3) {
-        if (bytesPerSample === 4) {
-          sampleValue = view.getFloat32(sampleOffset, true);
-        }
-      }
-
-      frameSum += sampleValue;
-    }
-
-    if (channels > 0) {
-      pcm[sampleIndex++] = frameSum / channels;
-    }
-  }
-
-  if (sampleIndex === 0) {
-    return null;
-  }
-
-  return {
-    sampleRate,
-    channels,
-    pcm: pcm.subarray(0, sampleIndex),
-    duration: sampleRate > 0 ? sampleIndex / sampleRate : 0,
-  };
 }
 
 class CompanionVoiceService {
