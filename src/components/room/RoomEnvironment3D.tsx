@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { CompanionRig } from './CompanionRig';
 import { applyNeonWorld3SpatialLayout } from './neonWorld3Layout';
 import { createDigitalClockDisplay } from './digitalClockDisplay';
+import { ensureModernRoomFurniture } from './modernRoomFurniture';
+import { attachNeonWorld3TimeOfDay } from './timeOfDay';
 import { CompanionState, CompanionEmotion, COMPANION_DISPLAY_NAME } from '../../lib/companionPersonality';
 import { dispose3DResource, loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
 import { FurnitureLayoutEngine } from '../../lib/environment/FurnitureLayoutEngine';
@@ -207,7 +209,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     // 2. Camera setup - centered directly on companion at eye/chest level
     const portraitViewport = height > width * 1.08;
-    const initialCameraDistance = portraitViewport ? 2.28 : 2.7;
+    const initialCameraDistance = portraitViewport ? 3.15 : 3.45;
     const initialFocusY = portraitViewport ? 1.38 : 1.25;
 
     const camera = new THREE.PerspectiveCamera(portraitViewport ? 78 : 74, width / height, 0.1, 100);
@@ -249,6 +251,11 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     const ambientLight = new THREE.AmbientLight(0x1b2a3d, 0.72);
     scene.add(ambientLight);
 
+    // Keep the room comfortably readable at night; only the exterior sky should become dark.
+    const interiorBounceLight = new THREE.HemisphereLight(0xffe2c4, 0x3a4654, 0.72);
+    interiorBounceLight.name = 'Aether_Interior_Bounce_Light';
+    scene.add(interiorBounceLight);
+
     const keyLight = new THREE.DirectionalLight(0xffead8, 2.15);
     keyLight.position.set(1.8, 3.8, 3.2);
     keyLight.castShadow = true;
@@ -287,9 +294,6 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     floor.receiveShadow = true;
     roomGroup.add(floor);
 
-    floor.receiveShadow = true;
-    roomGroup.add(floor);
-
     // Clean, unobstructed visual space (particles removed per user specification)
     scene.add(roomGroup);
 
@@ -299,6 +303,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     const companionLoadController = new AbortController();
     const furnitureColliders: THREE.Box3[] = [];
     let wallClockInterval: number | null = null;
+    let timeOfDayUpdateFrame: ((deltaSeconds: number) => void) | null = null;
     let bedInteractionMeshes: THREE.Object3D[] = [];
     let bedApproachPoint: THREE.Vector3 | null = null;
     let bedCenterPoint: THREE.Vector3 | null = null;
@@ -337,26 +342,41 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         res.scene.scale.setScalar(roomScale);
         res.scene.position.y += -originalBounds.min.y * roomScale;
 
+        ensureModernRoomFurniture(res.scene);
         applyNeonWorld3SpatialLayout(res.scene);
         res.scene.updateMatrixWorld(true);
 
+        const timeOfDay = attachNeonWorld3TimeOfDay(res.scene, scene, {
+          ambient: ambientLight,
+          key: keyLight,
+          fill: fillLight,
+          rim: rimLight,
+        });
+        timeOfDayUpdateFrame = timeOfDay.update;
+
         // Render the original wall-clock face with a crisp, live seven-segment display.
         const alarmCase = res.scene.getObjectByName('Alarm');
+        let clockDisplay: ReturnType<typeof createDigitalClockDisplay> | null = null;
         if (alarmCase) {
           const alarmBounds = new THREE.Box3().setFromObject(alarmCase);
           const alarmSize = alarmBounds.getSize(new THREE.Vector3());
           const alarmCenter = alarmBounds.getCenter(new THREE.Vector3());
           if (alarmSize.x > 0 && alarmSize.y > 0) {
-            const display = createDigitalClockDisplay(alarmSize.x / roomScale, alarmSize.y / roomScale);
-            display.group.position.copy(res.scene.worldToLocal(new THREE.Vector3(
+            clockDisplay = createDigitalClockDisplay(alarmSize.x / roomScale, alarmSize.y / roomScale);
+            clockDisplay.group.position.copy(res.scene.worldToLocal(new THREE.Vector3(
               alarmCenter.x, alarmCenter.y, alarmBounds.max.z + 0.003,
             )));
-            display.group.quaternion.copy(res.scene.getWorldQuaternion(new THREE.Quaternion()).invert());
-            res.scene.add(display.group);
-            display.update();
-            wallClockInterval = window.setInterval(display.update, 60_000);
+            clockDisplay.group.quaternion.copy(res.scene.getWorldQuaternion(new THREE.Quaternion()).invert());
+            res.scene.add(clockDisplay.group);
+            clockDisplay.update();
           }
         }
+        const refreshLocalClockAndDaylight = () => {
+          clockDisplay?.update();
+          timeOfDay.refresh(new Date());
+        };
+        refreshLocalClockAndDaylight();
+        wallClockInterval = window.setInterval(refreshLocalClockAndDaylight, 15_000);
 
         // FurnitureLayoutEngine measures the original assets in place and derives colliders
         const layoutResult = FurnitureLayoutEngine.extractAndOrganize(res.scene, {
@@ -532,8 +552,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     }
 
     // 8. Interactive 360° companion camera with ultra-smooth cinematic physics
-    const MIN_DISTANCE = 1.1;
-    const MAX_DISTANCE = 5.2;
+    const MIN_DISTANCE = 2.6;
+    const MAX_DISTANCE = 3.65;
     let currentCamDist = initialCameraDistance;
     let targetCamDist = initialCameraDistance;
     let currentYaw = 0.0;
@@ -599,7 +619,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         const dy = (t.clientY - lastTouchY) * ROTATION_SENSITIVITY_TOUCH;
         if (Math.abs(dx) + Math.abs(dy) > 0.012) hasDraggedRef.current = true;
         targetYaw -= dx;
-        targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.42, 0.45);
+        targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.12, 0.45);
 
         // Filtered velocity for fluid release inertia
         const instYawVel = -dx / dt;
@@ -650,7 +670,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       const dy = (e.clientY - lastPointerY) * ROTATION_SENSITIVITY_MOUSE;
       if (Math.abs(dx) + Math.abs(dy) > 0.012) hasDraggedRef.current = true;
       targetYaw -= dx;
-      targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.42, 0.45);
+      targetPitch = THREE.MathUtils.clamp(targetPitch + dy, -0.12, 0.45);
 
       const instYawVel = -dx / dt;
       const instPitchVel = dy / dt;
@@ -694,7 +714,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           yawVelocity = 0;
         }
         if (Math.abs(pitchVelocity) > 0.0001) {
-          targetPitch = THREE.MathUtils.clamp(targetPitch + pitchVelocity * delta, -0.42, 0.45);
+          targetPitch = THREE.MathUtils.clamp(targetPitch + pitchVelocity * delta, -0.12, 0.45);
           pitchVelocity *= Math.pow(0.91, delta * 60);
         } else {
           pitchVelocity = 0;
@@ -721,6 +741,12 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       camera.position.x = currentRoomFocus.x + Math.sin(currentYaw) * cosPitch * currentCamDist;
       camera.position.y = currentRoomFocus.y + sinPitch * currentCamDist;
       camera.position.z = currentRoomFocus.z + Math.cos(currentYaw) * cosPitch * currentCamDist;
+      if (roomMovementBounds && !roomMovementBounds.isEmpty()) {
+        const inset = 0.34;
+        camera.position.x = THREE.MathUtils.clamp(camera.position.x, roomMovementBounds.min.x + inset, roomMovementBounds.max.x - inset);
+        camera.position.z = THREE.MathUtils.clamp(camera.position.z, roomMovementBounds.min.z + inset, roomMovementBounds.max.z - inset);
+        camera.position.y = THREE.MathUtils.clamp(camera.position.y, roomMovementBounds.min.y + 0.72, roomMovementBounds.max.y - 0.38);
+      }
       camera.lookAt(currentRoomFocus);
       targetLookPosRef.current.copy(camera.position);
 
@@ -732,6 +758,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         targetRoomFocus.y = initialFocusY;
       }
 
+      timeOfDayUpdateFrame?.(delta);
       wasMotionEnabled = motionEnabled;
 
       renderer.render(scene, camera);
@@ -797,6 +824,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       bedMarker = null;
 
       if (wallClockInterval !== null) window.clearInterval(wallClockInterval);
+      timeOfDayUpdateFrame = null;
       roomLoadController.abort();
       companionLoadController.abort();
 

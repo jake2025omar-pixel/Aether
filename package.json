@@ -15,6 +15,7 @@
     "test:behavior": "tsx src/lib/behavior/humanBehavior.test.ts",
     "test:performance": "tsx src/lib/behavior/characterPerformance.test.ts",
     "test:furniture": "tsx src/lib/environment/furnitureLayout.test.ts",
+    "test:room": "tsx src/components/room/roomExperience.test.ts",
     "test:voice": "tsx src/lib/companionVoice.test.ts",
     "test:tts-fallback": "tsx server/ttsFallback.test.ts",
     "test:audit": "tsx src/lib/aetherDefectAudit.test.ts"
