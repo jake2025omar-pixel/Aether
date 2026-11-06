@@ -179,7 +179,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({
-            message: query.slice(0, 2000),
+            message: query.slice(0, 20000),
             history: historyPayload,
             stream: false,
             adultContentConsent: adultConsentGranted,

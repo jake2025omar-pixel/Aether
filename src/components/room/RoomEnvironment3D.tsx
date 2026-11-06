@@ -209,8 +209,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     // 2. Camera setup - centered directly on companion at eye/chest level
     const portraitViewport = height > width * 1.08;
-    const initialCameraDistance = portraitViewport ? 3.15 : 3.45;
-    const initialFocusY = portraitViewport ? 1.38 : 1.25;
+    const initialCameraDistance = portraitViewport ? 2.65 : 2.85;
+    const initialFocusY = portraitViewport ? 1.42 : 1.35;
 
     const camera = new THREE.PerspectiveCamera(portraitViewport ? 78 : 74, width / height, 0.1, 100);
     camera.position.set(0, initialFocusY, initialCameraDistance);
@@ -225,7 +225,15 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       alpha: false,
     });
     rendererRef.current = renderer;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
+    const deviceInfo = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
+    const lowPowerDevice = Boolean(deviceInfo.connection?.saveData)
+      || (deviceInfo.deviceMemory !== undefined && deviceInfo.deviceMemory <= 4)
+      || (navigator.hardwareConcurrency !== undefined && navigator.hardwareConcurrency <= 4);
+    const highPowerDevice = !lowPowerDevice
+      && (deviceInfo.deviceMemory === undefined || deviceInfo.deviceMemory >= 8)
+      && (navigator.hardwareConcurrency === undefined || navigator.hardwareConcurrency >= 8);
+    const pixelRatioCap = lowPowerDevice ? 1.5 : highPowerDevice ? 3 : 2.25;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelRatioCap));
     renderer.setSize(width, height);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -259,7 +267,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     const keyLight = new THREE.DirectionalLight(0xffead8, 2.15);
     keyLight.position.set(1.8, 3.8, 3.2);
     keyLight.castShadow = true;
-    keyLight.shadow.mapSize.set(1024, 1024);
+    const shadowResolution = lowPowerDevice ? 512 : highPowerDevice ? 2048 : 1024;
+    keyLight.shadow.mapSize.set(shadowResolution, shadowResolution);
     keyLight.shadow.camera.near = 0.5;
     keyLight.shadow.camera.far = 12;
     keyLight.shadow.camera.left = -5;
@@ -559,8 +568,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     }
 
     // 8. Interactive 360° companion camera with ultra-smooth cinematic physics
-    const MIN_DISTANCE = 2.6;
-    const MAX_DISTANCE = 3.65;
+    const MIN_DISTANCE = portraitViewport ? 1.65 : 1.55;
+    const MAX_DISTANCE = highPowerDevice ? 4.1 : 3.65;
     let currentCamDist = initialCameraDistance;
     let targetCamDist = initialCameraDistance;
     let currentYaw = 0.0;

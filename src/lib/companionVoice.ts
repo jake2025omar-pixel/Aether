@@ -40,6 +40,8 @@ class CompanionVoiceService {
   private audioContext: AudioContext | null = null;
   private playbackId = 0;
   private muted = false;
+  private recognitionSession = 0;
+  private manuallyStoppedRecognition = false;
 
   constructor() {
     this.initSpeechRecognition();
@@ -85,7 +87,7 @@ class CompanionVoiceService {
   }
 
   public isAudioPlaybackSupported(): boolean {
-    return typeof window !== 'undefined' && typeof window.AudioContext !== 'undefined';
+    return typeof window !== 'undefined' && Boolean(window.AudioContext || (window as any).webkitAudioContext);
   }
 
   private getAudioContext(): AudioContext | null {
@@ -176,7 +178,9 @@ class CompanionVoiceService {
     try {
       const recognition = new SpeechRecognitionClass();
       this.recognition = recognition;
-      recognition.continuous = false;
+      const session = ++this.recognitionSession;
+      this.manuallyStoppedRecognition = false;
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
@@ -186,6 +190,7 @@ class CompanionVoiceService {
         : 'ar-SA';
 
       let receivedFinalTranscript = false;
+      let accumulatedFinalText = '';
       let lastSpokenText = '';
 
       recognition.onstart = () => {
@@ -198,7 +203,8 @@ class CompanionVoiceService {
         let finalText = '';
 
         if (event.results) {
-          for (let i = 0; i < event.results.length; i++) {
+          const firstResult = Number.isInteger(event.resultIndex) ? event.resultIndex : 0;
+          for (let i = firstResult; i < event.results.length; i++) {
             const res = event.results[i];
             if (res && res[0]?.transcript) {
               if (res.isFinal) {
@@ -214,14 +220,17 @@ class CompanionVoiceService {
           handlers.onInterim?.(interimText.trim());
         }
 
-        const candidate = (finalText || interimText).trim();
+        if (finalText.trim()) {
+          accumulatedFinalText = `${accumulatedFinalText} ${finalText}`.trim();
+        }
+
+        const candidate = `${accumulatedFinalText} ${interimText}`.trim();
         if (candidate) {
           lastSpokenText = candidate;
         }
 
         if (finalText.trim()) {
           receivedFinalTranscript = true;
-          handlers.onResult(finalText.trim());
         }
       };
 
@@ -236,9 +245,14 @@ class CompanionVoiceService {
 
       recognition.onend = () => {
         this.isListening = false;
-        if (!receivedFinalTranscript && lastSpokenText.trim()) {
+        if (session !== this.recognitionSession || this.manuallyStoppedRecognition) {
+          handlers.onEnd();
+          return;
+        }
+        const completedText = (accumulatedFinalText || lastSpokenText).trim();
+        if (completedText) {
           receivedFinalTranscript = true;
-          handlers.onResult(lastSpokenText.trim());
+          handlers.onResult(completedText);
         }
         handlers.onEnd();
       };
@@ -266,6 +280,8 @@ class CompanionVoiceService {
    * Stops listening
    */
   public stopListening(): void {
+    this.manuallyStoppedRecognition = true;
+    this.recognitionSession += 1;
     if (this.recognition) {
       try {
         this.recognition.stop();

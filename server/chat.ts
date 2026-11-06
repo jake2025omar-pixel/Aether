@@ -12,7 +12,8 @@ interface FunctionContext {
 type FunctionHandler = (context: FunctionContext) => Response | Promise<Response>;
 
 const GEMINI_MODEL = 'gemini-3.8-flash';
-const MAX_BODY_BYTES = 64 * 1024;
+const MAX_BODY_BYTES = 128 * 1024;
+const MAX_MESSAGE_CHARS = 20_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 35;
 
@@ -80,12 +81,12 @@ export const onRequestPost: FunctionHandler = async ({ request, env }) => {
     return jsonResponse({ error: 'Adult access consent is required.' }, 403);
   }
 
-  const message = asText(payload.message, 2_001).trim();
+  const message = asText(payload.message, MAX_MESSAGE_CHARS + 1).trim();
   if (!message) {
     return jsonResponse({ error: 'Message is required and must be a non-empty string.' }, 400);
   }
-  if (message.length > 2_000) {
-    return jsonResponse({ error: 'Message exceeds the 2,000-character limit.' }, 400);
+  if (message.length > MAX_MESSAGE_CHARS) {
+    return jsonResponse({ error: 'Message exceeds the 20,000-character limit.' }, 400);
   }
 
   const historyInput = Array.isArray(payload.history) ? payload.history : [];
