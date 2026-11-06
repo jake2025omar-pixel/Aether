@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 const WALNUT = new THREE.MeshStandardMaterial({ color: 0x624536, roughness: 0.38, metalness: 0.12 });
 const WALNUT_DARK = new THREE.MeshStandardMaterial({ color: 0x392a25, roughness: 0.42, metalness: 0.08 });
@@ -43,10 +44,12 @@ function addBox(
   material: THREE.Material,
   position: [number, number, number],
 ): THREE.Mesh {
+  const smallestEdge = Math.min(...size);
+  const radius = Math.min(0.055, smallestEdge * 0.24);
   return addMesh(
     parent,
     name,
-    new THREE.BoxGeometry(...size),
+    new RoundedBoxGeometry(size[0], size[1], size[2], 3, radius),
     material,
     new THREE.Vector3(...position),
   );

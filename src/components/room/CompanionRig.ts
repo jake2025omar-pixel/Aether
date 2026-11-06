@@ -476,6 +476,10 @@ export class CompanionRig {
     this.performanceDirector.locomotion.setColliders(colliders);
   }
 
+  public setRoomBounds(bounds: THREE.Box3 | null, characterRadius = 0.28): void {
+    this.performanceDirector.locomotion.setRoomBounds(bounds, characterRadius);
+  }
+
   /**
    * Main Performance Frame Update Loop
    */
@@ -500,6 +504,13 @@ export class CompanionRig {
       this.displayedViseme,
       this.currentVisemeFrame
     );
+
+    // Apply locomotion to the visible rig. The controller owns navigation,
+    // while this root owns the rendered world transform.
+    this.root.position.x = frame.locomotion.worldPosition.x;
+    this.root.position.y = 0;
+    this.root.position.z = frame.locomotion.worldPosition.z;
+    this.root.rotation.y = frame.locomotion.bodyYaw;
 
     // 4. VRM Character Kinematics & Full-Body Performance
     if (this.isVrm && this.vrmInstance) {
@@ -533,10 +544,6 @@ export class CompanionRig {
       } else {
         this.vrmInstance.expressionManager?.update();
       }
-
-      // Root World Placement - Anchored squarely at (0, 0, 0) on open floor
-      this.root.position.set(0, 0, 0);
-      this.root.rotation.y = 0;
 
       // Direct Morph Targets on Face Meshes (applied across all face primitives/submeshes)
       if (this.vrmFaceMeshes.length > 0) {

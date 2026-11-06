@@ -52,7 +52,7 @@ function createRadialGlowTexture(): THREE.CanvasTexture {
  * Configures all VRM textures for ultra-crisp closeup rendering:
  * activates trilinear mipmapping, max hardware anisotropy, and linear filtering.
  */
-function enhanceVRMTextures(root: THREE.Object3D, maxAnisotropy: number): void {
+function enhanceSceneTextures(root: THREE.Object3D, maxAnisotropy: number): void {
   root.traverse((obj) => {
     if ((obj as THREE.Mesh).isMesh) {
       const mesh = obj as THREE.Mesh;
@@ -344,6 +344,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
         ensureModernRoomFurniture(res.scene);
         applyNeonWorld3SpatialLayout(res.scene);
+        enhanceSceneTextures(res.scene, maxAnisotropy);
         res.scene.updateMatrixWorld(true);
 
         const timeOfDay = attachNeonWorld3TimeOfDay(res.scene, scene, {
@@ -417,6 +418,9 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
         if (bedRoot) {
           bedCollisionBox = new THREE.Box3().setFromObject(bedRoot);
+          if (!movementObstacleBoxes.some((bounds) => bounds.containsBox(bedCollisionBox!))) {
+            movementObstacleBoxes.push(bedCollisionBox.clone());
+          }
           bedCenterPoint = bedCollisionBox.getCenter(new THREE.Vector3());
           const bedSize = bedCollisionBox.getSize(new THREE.Vector3());
           const towardRoomCenter = new THREE.Vector3(-bedCenterPoint.x, 0, -bedCenterPoint.z);
@@ -481,6 +485,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         // Feed collision barriers to companion rig if already mounted
         if (companionRigRef.current) {
           companionRigRef.current.setFurnitureColliders(furnitureColliders);
+          companionRigRef.current.setRoomBounds(roomMovementBounds);
         }
 
         // Adjust studio ambiance for authentic high-end penthouse interior
@@ -510,6 +515,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       if (furnitureColliders.length > 0) {
         rig.setFurnitureColliders(furnitureColliders);
       }
+      rig.setRoomBounds(roomMovementBounds);
       scene.add(rig.root);
       rig.setEmotion(emotionRef.current);
       rig.setViseme(visemeRef.current, visemeFrameRef.current);
@@ -530,7 +536,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         }
 
         // Apply anisotropic filtering and trilinear mipmapping across all textures
-        enhanceVRMTextures(res.vrm.scene, maxAnisotropy);
+        enhanceSceneTextures(res.vrm.scene, maxAnisotropy);
 
         const rig = new CompanionRig(res.vrm);
         companionRigRef.current = rig;
@@ -538,6 +544,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         if (furnitureColliders.length > 0) {
           rig.setFurnitureColliders(furnitureColliders);
         }
+        rig.setRoomBounds(roomMovementBounds);
         scene.add(rig.root);
         rig.setEmotion(emotionRef.current);
         rig.setViseme(visemeRef.current, visemeFrameRef.current);
