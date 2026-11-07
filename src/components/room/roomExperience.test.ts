@@ -30,8 +30,28 @@ for (const [hour, expected] of cases) {
 for (let hour = 0; hour < 24; hour += 1) {
   const profile = getTimeOfDayProfile(localTime(hour));
   assert.equal(profile.sunVisible, profile.phase === 'sunrise' || profile.phase === 'sunset', `sun must be visible only at sunrise/sunset (hour ${hour})`);
+  for (const key of [profile.ambient, profile.key, profile.fill]) {
+    const saturation = new THREE.Color(key).getHSL({ h: 0, s: 0, l: 0 }).s;
+    assert.ok(saturation < 0.12, `indoor light should remain soft neutral white during ${profile.phase}`);
+  }
 }
 console.log('✓ Local-time phases and sunrise/sunset-only sun visibility pass.');
+const exteriorRoom = new THREE.Group();
+const exteriorScene = new THREE.Scene();
+const exteriorLights = {
+  ambient: new THREE.AmbientLight(),
+  key: new THREE.DirectionalLight(),
+  fill: new THREE.DirectionalLight(),
+  rim: new THREE.DirectionalLight(),
+};
+const exteriorController = attachNeonWorld3TimeOfDay(exteriorRoom, exteriorScene, exteriorLights, localTime(22));
+const exteriorNodeNames: string[] = [];
+exteriorRoom.traverse((node) => exteriorNodeNames.push(node.name));
+assert.ok(exteriorNodeNames.includes('NeonWorld3_GradientSky'));
+assert.ok(exteriorNodeNames.includes('NeonWorld3_NightStars'));
+assert.equal(exteriorNodeNames.some((name) => name.startsWith('CityBuilding_') || name.startsWith('CityWindow_')), false, 'exterior must not create fake box-building silhouettes or window squares');
+exteriorController.update(0.05);
+console.log('✓ Exterior avoids synthetic box-building silhouettes and retains local-time sky effects.');
 
 const room = new THREE.Group();
 addBox(room, 'Base1', [7.5, 4.25, 9.25], [0, 2.125, 0]);
@@ -64,3 +84,4 @@ for (const id of ['bed_primary', 'lounge_sofa', 'reading_chair', 'sliding_wardro
 }
 console.log(`✓ Generated/reused furniture passes room-bound, floor-contact, clearance, and collision checks (${measured.items.length} measured objects).`);
 console.log('=== ALL ROOM EXPERIENCE TESTS PASSED ===');
+import { attachNeonWorld3TimeOfDay } from './timeOfDay';

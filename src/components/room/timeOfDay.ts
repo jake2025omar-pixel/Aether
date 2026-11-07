@@ -15,20 +15,21 @@ export interface TimeOfDayProfile {
   fillIntensity: number;
   sunVisible: boolean;
   starsVisible: boolean;
-  cityLightsVisible: boolean;
 }
 
+const SOFT_INTERIOR_LIGHT = { ambient: '#dddddd', key: '#f2f2f2', fill: '#d7d7d7' } as const;
+
 const PROFILES: Record<TimeOfDayPhase, TimeOfDayProfile> = {
-  night: { phase: 'night', label: 'ليل', skyTop: '#081326', horizon: '#172b43', ambient: '#182538', key: '#7388b8', fill: '#426d8a', ambientIntensity: 0.46, keyIntensity: 0.42, fillIntensity: 0.22, sunVisible: false, starsVisible: true, cityLightsVisible: true },
-  dawn: { phase: 'dawn', label: 'بداية الفجر', skyTop: '#16233f', horizon: '#514e71', ambient: '#303653', key: '#998eb4', fill: '#57758a', ambientIntensity: 0.52, keyIntensity: 0.56, fillIntensity: 0.30, sunVisible: false, starsVisible: true, cityLightsVisible: true },
-  fajr: { phase: 'fajr', label: 'الفجر', skyTop: '#30466a', horizon: '#927995', ambient: '#4a5269', key: '#c3a2a0', fill: '#7697ae', ambientIntensity: 0.64, keyIntensity: 0.76, fillIntensity: 0.42, sunVisible: false, starsVisible: false, cityLightsVisible: true },
-  sunrise: { phase: 'sunrise', label: 'الشروق', skyTop: '#7192bd', horizon: '#f0a479', ambient: '#8a8191', key: '#ffc18c', fill: '#9bbad2', ambientIntensity: 0.82, keyIntensity: 1.20, fillIntensity: 0.64, sunVisible: true, starsVisible: false, cityLightsVisible: false },
-  morning: { phase: 'morning', label: 'الصباح', skyTop: '#79b4df', horizon: '#e8d9c4', ambient: '#abbaca', key: '#ffe2bd', fill: '#93bdd2', ambientIntensity: 0.92, keyIntensity: 1.42, fillIntensity: 0.72, sunVisible: false, starsVisible: false, cityLightsVisible: false },
-  noon: { phase: 'noon', label: 'الظهر', skyTop: '#69aee0', horizon: '#d9e9f0', ambient: '#c4d5df', key: '#fff0d9', fill: '#9fc8df', ambientIntensity: 1.02, keyIntensity: 1.60, fillIntensity: 0.80, sunVisible: false, starsVisible: false, cityLightsVisible: false },
-  afternoon: { phase: 'afternoon', label: 'العصر', skyTop: '#638fb9', horizon: '#e3bc91', ambient: '#a1a9b7', key: '#ffd09c', fill: '#82a8bd', ambientIntensity: 0.86, keyIntensity: 1.30, fillIntensity: 0.62, sunVisible: false, starsVisible: false, cityLightsVisible: false },
-  sunset: { phase: 'sunset', label: 'الغروب', skyTop: '#514b77', horizon: '#f28d70', ambient: '#6c596d', key: '#ffad81', fill: '#827794', ambientIntensity: 0.74, keyIntensity: 1.10, fillIntensity: 0.48, sunVisible: true, starsVisible: false, cityLightsVisible: false },
-  maghrib: { phase: 'maghrib', label: 'المغرب', skyTop: '#292e55', horizon: '#986c79', ambient: '#42445d', key: '#c99597', fill: '#697c9b', ambientIntensity: 0.58, keyIntensity: 0.70, fillIntensity: 0.38, sunVisible: false, starsVisible: false, cityLightsVisible: true },
-  evening: { phase: 'evening', label: 'العشاء', skyTop: '#121f3c', horizon: '#39425e', ambient: '#252f46', key: '#8194bd', fill: '#456a82', ambientIntensity: 0.48, keyIntensity: 0.50, fillIntensity: 0.26, sunVisible: false, starsVisible: true, cityLightsVisible: true },
+  night: { phase: 'night', label: 'ليل', skyTop: '#081326', horizon: '#172b43', ...SOFT_INTERIOR_LIGHT, ambientIntensity: 0.64, keyIntensity: 0.54, fillIntensity: 0.32, sunVisible: false, starsVisible: true },
+  dawn: { phase: 'dawn', label: 'بداية الفجر', skyTop: '#16233f', horizon: '#514e71', ...SOFT_INTERIOR_LIGHT, ambientIntensity: 0.67, keyIntensity: 0.60, fillIntensity: 0.35, sunVisible: false, starsVisible: true },
+  fajr: { phase: 'fajr', label: 'الفجر', skyTop: '#30466a', horizon: '#927995', ...SOFT_INTERIOR_LIGHT, ambientIntensity: 0.70, keyIntensity: 0.68, fillIntensity: 0.40, sunVisible: false, starsVisible: false },
+  sunrise: { phase: 'sunrise', label: 'الشروق', skyTop: '#7192bd', horizon: '#f0a479', ...SOFT_INTERIOR_LIGHT, ambientIntensity: 0.72, keyIntensity: 0.76, fillIntensity: 0.46, sunVisible: true, starsVisible: false },
+  morning: { phase: 'morning', label: 'الصباح', skyTop: '#79b4df', horizon: '#e8d9c4', ...SOFT_INTERIOR_LIGHT, ambientIntensity: 0.75, keyIntensity: 0.82, fillIntensity: 0.50, sunVisible: false, starsVisible: false },
+  noon: { phase: 'noon', label: 'الظهر', skyTop: '#69aee0', horizon: '#d9e9f0', ...SOFT_INTERIOR_LIGHT, ambientIntensity: 0.78, keyIntensity: 0.86, fillIntensity: 0.52, sunVisible: false, starsVisible: false },
+  afternoon: { phase: 'afternoon', label: 'العصر', skyTop: '#638fb9', horizon: '#e3bc91', ...SOFT_INTERIOR_LIGHT, ambientIntensity: 0.75, keyIntensity: 0.80, fillIntensity: 0.48, sunVisible: false, starsVisible: false },
+  sunset: { phase: 'sunset', label: 'الغروب', skyTop: '#514b77', horizon: '#f28d70', ...SOFT_INTERIOR_LIGHT, ambientIntensity: 0.71, keyIntensity: 0.72, fillIntensity: 0.44, sunVisible: true, starsVisible: false },
+  maghrib: { phase: 'maghrib', label: 'المغرب', skyTop: '#292e55', horizon: '#986c79', ...SOFT_INTERIOR_LIGHT, ambientIntensity: 0.67, keyIntensity: 0.62, fillIntensity: 0.38, sunVisible: false, starsVisible: false },
+  evening: { phase: 'evening', label: 'العشاء', skyTop: '#121f3c', horizon: '#39425e', ...SOFT_INTERIOR_LIGHT, ambientIntensity: 0.64, keyIntensity: 0.56, fillIntensity: 0.33, sunVisible: false, starsVisible: true },
 };
 
 /** Uses the device's local clock/time zone; it does not request geolocation or transmit location. */
@@ -88,42 +89,7 @@ function makeSkyMaterial(profile: TimeOfDayProfile): THREE.ShaderMaterial {
   });
 }
 
-function addExteriorCity(group: THREE.Group, centerZ: number, lights: THREE.Mesh[]): void {
-  const skyline = new THREE.Group();
-  skyline.name = 'NeonWorld3_DistantCity';
-  const buildingMaterial = new THREE.MeshBasicMaterial({ color: 0x17273a });
-  const windowMaterial = new THREE.MeshBasicMaterial({ color: 0xffc982, toneMapped: false, transparent: true, opacity: 0.88 });
-  const widths = [0.55, 0.72, 0.42, 0.9, 0.60, 0.82, 0.48, 0.7, 0.54, 0.65];
-  const heights = [1.1, 1.7, 0.9, 2.0, 1.28, 1.6, 0.82, 1.43, 1.0, 1.78];
-  let z = centerZ - 5.05;
-  for (let i = 0; i < widths.length; i += 1) {
-    const width = widths[i];
-    const height = heights[i];
-    const depth = 0.42;
-    const building = new THREE.Mesh(new THREE.BoxGeometry(depth, height, width), buildingMaterial);
-    building.name = `CityBuilding_${i}`;
-    building.position.set(-4.28, height / 2 - 0.18, z + width / 2);
-    building.castShadow = false;
-    building.receiveShadow = false;
-    skyline.add(building);
-
-    for (let row = 0; row < Math.max(2, Math.floor(height / 0.32)); row += 1) {
-      for (const col of [-1, 1]) {
-        if ((i + row + (col === 1 ? 1 : 0)) % 3 === 0) continue;
-        const window = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.055, 0.04), windowMaterial.clone());
-        window.name = `CityWindow_${i}_${row}_${col}`;
-        window.position.set(-4.055, 0.22 + row * 0.27, z + width / 2 + col * Math.min(width * 0.22, 0.13));
-        window.userData.cityWindow = true;
-        lights.push(window);
-        skyline.add(window);
-      }
-    }
-    z += width + 0.12;
-  }
-  group.add(skyline);
-}
-
-/** Attach an exterior sky, skyline, phase lights, and a sunrise/sunset-only sun disc. */
+/** Attach an exterior sky gradient, stars, and a sunrise/sunset-only sun disc. */
 export function attachNeonWorld3TimeOfDay(
   room: THREE.Object3D,
   scene: THREE.Scene,
@@ -170,8 +136,6 @@ export function attachNeonWorld3TimeOfDay(
   stars.name = 'NeonWorld3_NightStars';
   exterior.add(stars);
 
-  const litWindows: THREE.Mesh[] = [];
-  addExteriorCity(exterior, -1.38, litWindows);
   room.add(exterior);
   room.updateMatrixWorld(true);
 
@@ -198,9 +162,6 @@ export function attachNeonWorld3TimeOfDay(
   const applyVisibility = (profile: TimeOfDayProfile) => {
     sun.visible = profile.sunVisible;
     stars.visible = profile.starsVisible;
-    for (const window of litWindows) {
-      window.visible = profile.cityLightsVisible;
-    }
   };
   applyVisibility(initial);
 

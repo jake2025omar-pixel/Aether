@@ -209,8 +209,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     // 2. Camera setup - centered directly on companion at eye/chest level
     const portraitViewport = height > width * 1.08;
-    const initialCameraDistance = portraitViewport ? 3.15 : 3.45;
-    const initialFocusY = portraitViewport ? 1.38 : 1.25;
+    const coarseInput = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    const lowPowerDevice = width < 768 || coarseInput || (navigator.hardwareConcurrency > 0 && navigator.hardwareConcurrency <= 4);
+    const initialCameraDistance = portraitViewport ? 2.95 : 3.15;
+    const initialFocusY = portraitViewport ? 1.43 : 1.34;
 
     const camera = new THREE.PerspectiveCamera(portraitViewport ? 78 : 74, width / height, 0.1, 100);
     camera.position.set(0, initialFocusY, initialCameraDistance);
@@ -225,7 +227,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       alpha: false,
     });
     rendererRef.current = renderer;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPowerDevice ? 1.65 : 2.5));
     renderer.setSize(width, height);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -247,19 +249,19 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     container.appendChild(renderer.domElement);
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
 
-    // 4. Lighting Rig (Soft Amethyst Studio & Warm Key)
-    const ambientLight = new THREE.AmbientLight(0x1b2a3d, 0.72);
+    // 4. Lighting Rig (soft neutral white)
+    const ambientLight = new THREE.AmbientLight(0xdddddd, 0.68);
     scene.add(ambientLight);
 
     // Keep the room comfortably readable at night; only the exterior sky should become dark.
-    const interiorBounceLight = new THREE.HemisphereLight(0xffe2c4, 0x3a4654, 0.72);
+    const interiorBounceLight = new THREE.HemisphereLight(0xf2f2f2, 0x696969, 0.58);
     interiorBounceLight.name = 'Aether_Interior_Bounce_Light';
     scene.add(interiorBounceLight);
 
-    const keyLight = new THREE.DirectionalLight(0xffead8, 2.15);
+    const keyLight = new THREE.DirectionalLight(0xf2f2f2, 1.05);
     keyLight.position.set(1.8, 3.8, 3.2);
     keyLight.castShadow = true;
-    keyLight.shadow.mapSize.set(1024, 1024);
+    keyLight.shadow.mapSize.set(lowPowerDevice ? 512 : 1024, lowPowerDevice ? 512 : 1024);
     keyLight.shadow.camera.near = 0.5;
     keyLight.shadow.camera.far = 12;
     keyLight.shadow.camera.left = -5;
@@ -268,11 +270,11 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     keyLight.shadow.camera.bottom = -2;
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0x8fc8e8, 0.58);
+    const fillLight = new THREE.DirectionalLight(0xd7d7d7, 0.38);
     fillLight.position.set(-3.2, 2.8, 2.4);
     scene.add(fillLight);
 
-    const rimLight = new THREE.DirectionalLight(0x6ea8c7, 0.9);
+    const rimLight = new THREE.DirectionalLight(0xe5e5e5, 0.28);
     rimLight.position.set(0, 3.2, -2.8);
     scene.add(rimLight);
 
@@ -483,17 +485,21 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           companionRigRef.current.setFurnitureColliders(furnitureColliders);
         }
 
-        // Adjust studio ambiance for authentic high-end penthouse interior
-        ambientLight.color.setHex(0x766e63);
-        ambientLight.intensity = 0.9;
-        keyLight.intensity = 1.35;
-        fillLight.intensity = 0.42;
-        rimLight.intensity = 0.52;
-        renderer.toneMappingExposure = 1.02;
+        // Keep the character's authored materials close to their original color;
+        // outdoor time-of-day color remains in the window/sky rather than tinting the room.
+        ambientLight.color.setHex(0xdddddd);
+        ambientLight.intensity = 0.68;
+        keyLight.color.setHex(0xf2f2f2);
+        keyLight.intensity = 0.82;
+        fillLight.color.setHex(0xd7d7d7);
+        fillLight.intensity = 0.34;
+        rimLight.color.setHex(0xe5e5e5);
+        rimLight.intensity = 0.18;
+        renderer.toneMappingExposure = 1.0;
 
-        const cyanBounce = new THREE.PointLight(0x22d3ee, 0.48, 5.5, 2);
+        const cyanBounce = new THREE.PointLight(0xe5e5e5, 0.12, 5.5, 2);
         cyanBounce.position.set(-2.6, 1.8, -1.4);
-        const violetBounce = new THREE.PointLight(0xa855f7, 0.24, 5.5, 2);
+        const violetBounce = new THREE.PointLight(0xe5e5e5, 0.07, 5.5, 2);
         violetBounce.position.set(2.4, 1.7, -1.2);
         scene.add(cyanBounce, violetBounce);
       }).catch(() => {
@@ -552,7 +558,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     }
 
     // 8. Interactive 360° companion camera with ultra-smooth cinematic physics
-    const MIN_DISTANCE = 2.6;
+    const MIN_DISTANCE = 1.35;
     const MAX_DISTANCE = 3.65;
     let currentCamDist = initialCameraDistance;
     let targetCamDist = initialCameraDistance;
@@ -755,7 +761,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         companionRigRef.current.update(delta, elapsed, targetLookPosRef.current);
         targetRoomFocus.x = companionRigRef.current.root.position.x;
         targetRoomFocus.z = companionRigRef.current.root.position.z;
-        targetRoomFocus.y = initialFocusY;
+        const faceZoom = 1 - THREE.MathUtils.smoothstep(currentCamDist, MIN_DISTANCE + 0.12, 2.55);
+        targetRoomFocus.y = THREE.MathUtils.lerp(initialFocusY, 1.58, faceZoom);
       }
 
       timeOfDayUpdateFrame?.(delta);

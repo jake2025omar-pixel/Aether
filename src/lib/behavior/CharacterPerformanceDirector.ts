@@ -70,17 +70,17 @@ export class CharacterPerformanceDirector {
     switch (emotion) {
       case 'HAPPY':
         this.facial.triggerExpressionStyle('LAUGHTER_BURST', 2.8);
-        this.actionDirector.triggerAction('LAUGH_REACTION', true);
+        this.actionDirector.triggerAction('LAUGH_REACTION', false);
         break;
 
       case 'AFFECTIONATE':
         this.facial.triggerExpressionStyle('AFFECTIONATE_TENDER', 3.5);
-        this.actionDirector.triggerAction('AFFECTIONATE_REACH', true);
+        this.actionDirector.triggerAction('AFFECTIONATE_REACH', false);
         break;
 
       case 'ROMANTIC':
         this.facial.triggerExpressionStyle('AFFECTIONATE_TENDER', 3.8);
-        this.actionDirector.triggerAction('ROMANTIC_GESTURE', true);
+        this.actionDirector.triggerAction('ROMANTIC_GESTURE', false);
         break;
 
       case 'SHY':
@@ -90,49 +90,49 @@ export class CharacterPerformanceDirector {
       case 'SURPRISED':
         this.breathing.triggerGasp();
         this.facial.triggerExpressionStyle('SURPRISE_EYE_WIDEN', 2.5);
-        this.actionDirector.triggerAction('SURPRISED_RECOIL', true);
+        this.actionDirector.triggerAction('SURPRISED_RECOIL', false);
         break;
 
       case 'THINKING':
         this.facial.triggerExpressionStyle('THOUGHTFUL_PURSE', 3.2);
-        this.actionDirector.triggerAction('THINKING_CONTEMPLATION', true);
+        this.actionDirector.triggerAction('THINKING_CONTEMPLATION', false);
         break;
 
       case 'CONFUSED':
         this.facial.triggerExpressionStyle('MISCHIEVOUS_SMIRK', 2.6);
-        this.actionDirector.triggerAction('HEAD_SCRATCH', true);
+        this.actionDirector.triggerAction('HEAD_SCRATCH', false);
         break;
 
       case 'CURIOUS':
         this.facial.triggerExpressionStyle('SURPRISE_EYE_WIDEN', 2.4);
-        this.actionDirector.triggerAction('CURIOUS_LEAN', true);
+        this.actionDirector.triggerAction('CURIOUS_LEAN', false);
         break;
 
       case 'EMPATHETIC':
         this.facial.triggerExpressionStyle('AFFECTIONATE_TENDER', 3.2);
-        this.actionDirector.triggerAction('EMPATHETIC_COMFORT', true);
+        this.actionDirector.triggerAction('EMPATHETIC_COMFORT', false);
         break;
 
       case 'SAD':
         this.breathing.triggerSigh();
         this.facial.triggerExpressionStyle('SLEEPY_DROOP', 3.0);
-        this.actionDirector.triggerAction('SAD_PENSIVE', true);
+        this.actionDirector.triggerAction('SAD_PENSIVE', false);
         break;
 
       case 'GENTLY_ANNOYED':
         this.facial.triggerExpressionStyle('POUT_ANNORD', 2.8);
-        this.actionDirector.triggerAction('EXPRESSIVE_SHRUG', true);
+        this.actionDirector.triggerAction('EXPRESSIVE_SHRUG', false);
         break;
 
       case 'ANGRY':
         this.facial.triggerExpressionStyle('POUT_ANNORD', 3.0);
-        this.actionDirector.triggerAction('ANGRY_STANCE', true);
+        this.actionDirector.triggerAction('ANGRY_STANCE', false);
         break;
 
       case 'NEUTRAL':
       default:
         this.facial.triggerExpressionStyle('NATURAL', 2.0);
-        this.actionDirector.triggerAction('CALM_SETTLE', true);
+        this.actionDirector.triggerAction('CALM_SETTLE', false);
         break;
     }
   }
@@ -150,7 +150,7 @@ export class CharacterPerformanceDirector {
       this.breathing.triggerSigh();
     } else if (state === 'THINKING') {
       this.facial.triggerExpressionStyle('THOUGHTFUL_PURSE', 3.0);
-      this.actionDirector.triggerAction('THINKING_CONTEMPLATION', true);
+      this.actionDirector.triggerAction('THINKING_CONTEMPLATION', false);
     }
   }
 
@@ -164,15 +164,15 @@ export class CharacterPerformanceDirector {
     const isArabic = /[\u0600-\u06FF]/.test(text);
 
     if (lower.includes('laugh') || lower.includes('haha') || text.includes('هههه') || text.includes('تضحك')) {
-      this.actionDirector.triggerAction('LAUGH_REACTION', true);
+      this.actionDirector.triggerAction('LAUGH_REACTION', false);
     } else if (lower.includes('hello') || lower.includes('hi ') || text.includes('مرحبا') || text.includes('أهلاً')) {
-      this.actionDirector.triggerAction('FRIENDLY_WAVE', true);
+      this.actionDirector.triggerAction('FRIENDLY_WAVE', false);
     } else if (
       lower.includes('love') || lower.includes('darling') || lower.includes('romantic') ||
       text.includes('حبيبي') || text.includes('حبيبتي') || text.includes('قلبي') ||
       text.includes('روحي') || text.includes('أحبك') || text.includes('رومانسي')
     ) {
-      this.actionDirector.triggerAction('ROMANTIC_GESTURE', true);
+      this.actionDirector.triggerAction('ROMANTIC_GESTURE', false);
     }
   }
 
@@ -304,12 +304,16 @@ export class CharacterPerformanceDirector {
     );
 
     // 12. Hand & Finger Articulation Layering
-    // Keep both hands strictly anchored in stable, natural neutral RELAXED pose per contract
-    const leftHandPose: HandPosePreset = 'RELAXED';
-    const rightHandPose: HandPosePreset = 'RELAXED';
+    // Speech itself never forces a repeated hand gesture; context actions own that layer.
+    let leftHandPose: HandPosePreset = 'RELAXED';
+    let rightHandPose: HandPosePreset = 'RELAXED';
+    if (actionSample.activeAction) {
+      leftHandPose = actionSample.offsets.leftHandPose;
+      rightHandPose = actionSample.offsets.rightHandPose;
+    }
 
-    this.hands.setLeftPose(leftHandPose);
-    this.hands.setRightPose(rightHandPose);
+    this.hands.setLeftPose(leftHandPose, 5.5);
+    this.hands.setRightPose(rightHandPose, 5.5);
     const handSample = this.hands.update(frameDelta, elapsedTime);
 
     // 13. Dynamic Look-At Synthesis

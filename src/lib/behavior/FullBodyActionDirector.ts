@@ -221,7 +221,9 @@ export class FullBodyActionDirector {
         this.actionTimer = 0;
       }
 
-      const offsets = this.computeActionOffsets(this.currentAction || 'FRIENDLY_WAVE', progress, time);
+      const action = this.currentAction || 'FRIENDLY_WAVE';
+      const offsets = this.computeActionOffsets(action, progress, time);
+      if (this.currentAction) this.applyConversationalGesture(action, offsets, progress);
 
       return {
         activeAction: this.currentAction,
@@ -239,6 +241,79 @@ export class FullBodyActionDirector {
         isActionActive: false,
         offsets: { ...DEFAULT_OFFSETS },
       };
+    }
+  }
+
+  private applyConversationalGesture(action: FullBodyActionType, offsets: ActionJointOffsets, progress: number): void {
+    const amount = bellCurve(progress);
+    switch (action) {
+      case 'FRIENDLY_WAVE':
+        offsets.rightUpperArm.z -= 0.28 * amount;
+        offsets.rightLowerArm.x += 0.14 * amount;
+        offsets.rightHandPose = 'GENTLE_WAVE';
+        break;
+      case 'EXPRESSIVE_SHRUG':
+      case 'SURPRISED_RECOIL':
+        offsets.leftUpperArm.z += 0.16 * amount;
+        offsets.rightUpperArm.z -= 0.16 * amount;
+        offsets.leftHandPose = 'SHRUG_PALMS';
+        offsets.rightHandPose = 'SHRUG_PALMS';
+        break;
+      case 'LAUGH_REACTION':
+        offsets.leftUpperArm.z += 0.07 * amount;
+        offsets.rightUpperArm.z -= 0.07 * amount;
+        offsets.rightHandPose = 'OPEN_PALM';
+        break;
+      case 'THINKING_CONTEMPLATION':
+        offsets.rightUpperArm.z -= 0.10 * amount;
+        offsets.rightLowerArm.x += 0.14 * amount;
+        offsets.rightHandPose = 'CHIN_TOUCH';
+        break;
+      case 'AFFECTIONATE_REACH':
+        offsets.leftUpperArm.z += 0.08 * amount;
+        offsets.rightUpperArm.x -= 0.08 * amount;
+        offsets.rightUpperArm.z -= 0.13 * amount;
+        offsets.rightLowerArm.x += 0.12 * amount;
+        offsets.rightHandPose = 'OPEN_PALM';
+        break;
+      case 'ROMANTIC_GESTURE':
+        offsets.leftUpperArm.z += 0.10 * amount;
+        offsets.rightUpperArm.z -= 0.10 * amount;
+        offsets.rightLowerArm.x += 0.08 * amount;
+        offsets.rightHandPose = 'CHEST_HEART';
+        break;
+      case 'CONFIDENT_HIP_REST':
+        offsets.rightUpperArm.z -= 0.06 * amount;
+        offsets.rightHandPose = 'HIP_REST';
+        break;
+      case 'EXPLANATORY_GESTURE':
+        offsets.rightUpperArm.z -= 0.17 * amount;
+        offsets.rightLowerArm.x += 0.12 * amount;
+        offsets.rightHandPose = 'PALMS_UP_QUESTION';
+        break;
+      case 'CURIOUS_LEAN':
+        offsets.rightUpperArm.z -= 0.09 * amount;
+        offsets.rightHandPose = 'OPEN_PALM';
+        break;
+      case 'EMPATHETIC_COMFORT':
+        offsets.leftUpperArm.z += 0.10 * amount;
+        offsets.leftLowerArm.x += 0.08 * amount;
+        offsets.leftHandPose = 'CHEST_HEART';
+        break;
+      case 'SAD_PENSIVE':
+        offsets.leftHandPose = 'CHEST_HEART';
+        break;
+      case 'ANGRY_STANCE':
+        offsets.rightHandPose = 'LOOSE_CURL';
+        break;
+      case 'HEAD_SCRATCH':
+        offsets.rightUpperArm.z -= 0.18 * amount;
+        offsets.rightLowerArm.x += 0.16 * amount;
+        offsets.rightHandPose = 'FIDGET_TAP';
+        break;
+      case 'CALM_SETTLE':
+      default:
+        break;
     }
   }
 

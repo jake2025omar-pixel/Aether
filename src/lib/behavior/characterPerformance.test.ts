@@ -226,10 +226,30 @@ console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
   assert.equal(unified.emotion, 'AFFECTIONATE');
   assert.ok(unified.respiration.lungVolume > 0);
   assert.ok(unified.eye.attentionFocus > 0);
-  assert.ok(unified.hands.rightPose === 'RELAXED', 'Hand pose must remain stable natural neutral RELAXED pose');
+  assert.equal(unified.action.activeAction, 'ROMANTIC_GESTURE', 'the affectionate speech context should drive its matching full-body gesture');
+  assert.ok(Math.abs(unified.action.offsets.rightUpperArm.z) > 0.01, 'the romantic gesture must animate an arm as well as the head and torso');
+  assert.equal(unified.hands.rightPose, 'CHEST_HEART', 'the affectionate gesture should use a soft hand-to-heart pose');
   assert.ok(unified.lookAtTarget instanceof THREE.Vector3);
 
-  console.log('✓ Test 6 Passed: Master Character Performance Director coordinates all systems seamlessly');
+  const repeatedEmotion = new CharacterPerformanceDirector();
+  repeatedEmotion.setEmotion('ROMANTIC');
+  const firstRomanticAction = repeatedEmotion.actionDirector.getActiveAction();
+  repeatedEmotion.setEmotion('ROMANTIC');
+  assert.equal(firstRomanticAction, 'ROMANTIC_GESTURE');
+  assert.equal(repeatedEmotion.actionDirector.getActiveAction(), firstRomanticAction, 'repeated emotion events must not restart the same gesture inside its cooldown');
+
+  const speaker = new CharacterPerformanceDirector();
+  speaker.setState('SPEAKING');
+  const speakingFrame = speaker.update(
+    0.05,
+    1.2,
+    new THREE.Vector3(0, 1.45, 2.7),
+    new THREE.Vector3(0, 0, 0),
+    0.4
+  );
+  assert.equal(speakingFrame.hands.rightPose, 'RELAXED', 'ordinary speech must not force a fixed rhythmic hand gesture');
+
+  console.log('✓ Test 6 Passed: facial, body, arm, and hand layers coordinate without flattening gestures');
 }
 
 console.log('=== ALL CHARACTER PERFORMANCE ACCEPTANCE TESTS COMPLETED SUCCESSFULLY! ===');
