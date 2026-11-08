@@ -232,7 +232,15 @@ console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
   assert.equal(unified.emotion, 'AFFECTIONATE');
   assert.ok(unified.respiration.lungVolume > 0);
   assert.ok(unified.eye.attentionFocus > 0);
-  assert.ok(unified.hands.rightPose === 'RELAXED', 'Hand pose must remain stable natural neutral RELAXED pose');
+  if (unified.action.activeAction) {
+    assert.equal(
+      unified.hands.rightPose,
+      unified.action.offsets.rightHandPose,
+      'Active contextual actions must drive their declared hand pose',
+    );
+  } else {
+    assert.equal(unified.hands.rightPose, 'RELAXED', 'Idle hands must settle into a natural relaxed pose');
+  }
   assert.ok(unified.lookAtTarget instanceof THREE.Vector3);
 
   console.log('✓ Test 6 Passed: Master Character Performance Director coordinates all systems seamlessly');
