@@ -650,45 +650,72 @@ export class CompanionRig {
         this.vrmNeckBone.rotation.z = THREE.MathUtils.damp(this.vrmNeckBone.rotation.z, targetNeckZ, 3.8, frameDelta);
       }
 
-      // Arms, wrists, hands, and fingers are intentionally authoritative at
-      // the authored neutral pose. This removes every speech/action/locomotion
-      // hand animation path while preserving head, face, torso, breathing,
-      // and lower-body animation.
-      if (this.vrmRightUpperArm) {
-        this.vrmRightUpperArm.rotation.copy(this.rightArmRest);
-      }
-      if (this.vrmRightLowerArm) {
-        this.vrmRightLowerArm.rotation.copy(this.rightLowerArmRest);
-      }
-      if (this.vrmRightHand) {
-        this.vrmRightHand.rotation.copy(this.rightHandRest);
-      }
+      // Blend bounded action/speech gestures over the authored rest pose.
+      // Every target starts from the stored rest rotation, so animation never
+      // accumulates or changes the VRM asset itself.
+      const actionArm = frame.action.offsets;
+      const armActionWeight = actionWeight * motion;
+      const isConversing = this.currentState === 'SPEAKING' || this.displayedViseme > 0.05;
+      const speechBeat = Math.sin(elapsedTime * 2.05);
+      const idleBreath = Math.sin(elapsedTime * 0.62);
+      const leftLift = (isConversing ? Math.max(0, speechBeat) * 0.045 : idleBreath * 0.012) * motion;
+      const rightLift = (isConversing ? Math.max(0, Math.sin(elapsedTime * 2.05 + 1.6)) * 0.065 : Math.sin(elapsedTime * 0.62 + 1.4) * 0.014) * motion;
 
-      // Left arm
       if (this.vrmLeftUpperArm) {
-        this.vrmLeftUpperArm.rotation.copy(this.leftArmRest);
+        const target = this.vrmLeftUpperArm.rotation;
+        target.x = THREE.MathUtils.damp(target.x, this.leftArmRest.x + THREE.MathUtils.clamp(actionArm.leftUpperArm.x * armActionWeight, -0.28, 0.28) + idleBreath * 0.006 * motion, 5.0, frameDelta);
+        target.y = THREE.MathUtils.damp(target.y, this.leftArmRest.y + THREE.MathUtils.clamp(actionArm.leftUpperArm.y * armActionWeight, -0.28, 0.28), 5.0, frameDelta);
+        target.z = THREE.MathUtils.damp(target.z, this.leftArmRest.z + THREE.MathUtils.clamp(actionArm.leftUpperArm.z * armActionWeight, -0.32, 0.32) + leftLift, 5.0, frameDelta);
+      }
+      if (this.vrmRightUpperArm) {
+        const target = this.vrmRightUpperArm.rotation;
+        target.x = THREE.MathUtils.damp(target.x, this.rightArmRest.x + THREE.MathUtils.clamp(actionArm.rightUpperArm.x * armActionWeight, -0.28, 0.28) + speechBeat * 0.012 * motion, 5.0, frameDelta);
+        target.y = THREE.MathUtils.damp(target.y, this.rightArmRest.y + THREE.MathUtils.clamp(actionArm.rightUpperArm.y * armActionWeight, -0.28, 0.28), 5.0, frameDelta);
+        target.z = THREE.MathUtils.damp(target.z, this.rightArmRest.z + THREE.MathUtils.clamp(actionArm.rightUpperArm.z * armActionWeight, -0.32, 0.32) - rightLift, 5.0, frameDelta);
       }
       if (this.vrmLeftLowerArm) {
-        this.vrmLeftLowerArm.rotation.copy(this.leftLowerArmRest);
+        const target = this.vrmLeftLowerArm.rotation;
+        target.x = THREE.MathUtils.damp(target.x, this.leftLowerArmRest.x + THREE.MathUtils.clamp(actionArm.leftLowerArm.x * armActionWeight, -0.35, 0.35) + (isConversing ? Math.sin(elapsedTime * 2.05 + 0.8) * 0.025 * motion : 0), 5.5, frameDelta);
+        target.y = THREE.MathUtils.damp(target.y, this.leftLowerArmRest.y + THREE.MathUtils.clamp(actionArm.leftLowerArm.y * armActionWeight, -0.3, 0.3), 5.5, frameDelta);
+        target.z = THREE.MathUtils.damp(target.z, this.leftLowerArmRest.z + THREE.MathUtils.clamp(actionArm.leftLowerArm.z * armActionWeight, -0.3, 0.3), 5.5, frameDelta);
+      }
+      if (this.vrmRightLowerArm) {
+        const target = this.vrmRightLowerArm.rotation;
+        target.x = THREE.MathUtils.damp(target.x, this.rightLowerArmRest.x + THREE.MathUtils.clamp(actionArm.rightLowerArm.x * armActionWeight, -0.35, 0.35) + (isConversing ? Math.sin(elapsedTime * 2.05) * 0.035 * motion : 0), 5.5, frameDelta);
+        target.y = THREE.MathUtils.damp(target.y, this.rightLowerArmRest.y + THREE.MathUtils.clamp(actionArm.rightLowerArm.y * armActionWeight, -0.3, 0.3), 5.5, frameDelta);
+        target.z = THREE.MathUtils.damp(target.z, this.rightLowerArmRest.z + THREE.MathUtils.clamp(actionArm.rightLowerArm.z * armActionWeight, -0.3, 0.3), 5.5, frameDelta);
       }
       if (this.vrmLeftHand) {
-        // Zero animated hand movement per Task 1: preserve neutral authored rest pose
-        this.vrmLeftHand.rotation.copy(this.leftHandRest);
+        const target = this.vrmLeftHand.rotation;
+        target.x = THREE.MathUtils.damp(target.x, this.leftHandRest.x + THREE.MathUtils.clamp(actionArm.leftHand.x * armActionWeight, -0.25, 0.25), 6.0, frameDelta);
+        target.y = THREE.MathUtils.damp(target.y, this.leftHandRest.y + THREE.MathUtils.clamp(actionArm.leftHand.y * armActionWeight, -0.25, 0.25), 6.0, frameDelta);
+        target.z = THREE.MathUtils.damp(target.z, this.leftHandRest.z + THREE.MathUtils.clamp(actionArm.leftHand.z * armActionWeight, -0.25, 0.25), 6.0, frameDelta);
+      }
+      if (this.vrmRightHand) {
+        const target = this.vrmRightHand.rotation;
+        target.x = THREE.MathUtils.damp(target.x, this.rightHandRest.x + THREE.MathUtils.clamp(actionArm.rightHand.x * armActionWeight, -0.25, 0.25), 6.0, frameDelta);
+        target.y = THREE.MathUtils.damp(target.y, this.rightHandRest.y + THREE.MathUtils.clamp(actionArm.rightHand.y * armActionWeight, -0.25, 0.25), 6.0, frameDelta);
+        target.z = THREE.MathUtils.damp(target.z, this.rightHandRest.z + THREE.MathUtils.clamp(actionArm.rightHand.z * armActionWeight, -0.25, 0.25), 6.0, frameDelta);
       }
 
-      // 30 Finger Bones: Kept visually attached and anchored at the model's neutral authored rest pose
-      // with zero procedural finger animation, gestures, or articulation routines
+      // Finger bones smoothly follow the action-specific pose samples.
       for (const joint of FINGER_BONE_NAMES) {
         const lBone = this.vrmLeftFingers[joint];
         if (lBone) {
           const rest = this.vrmLeftFingerRest[joint] || new THREE.Euler();
-          lBone.rotation.copy(rest);
+          const sample = frame.hands.left[joint];
+          lBone.rotation.x = THREE.MathUtils.damp(lBone.rotation.x, rest.x + (sample.x - rest.x) * motion, 8.0, frameDelta);
+          lBone.rotation.y = THREE.MathUtils.damp(lBone.rotation.y, rest.y + (sample.y - rest.y) * motion, 8.0, frameDelta);
+          lBone.rotation.z = THREE.MathUtils.damp(lBone.rotation.z, rest.z + (sample.z - rest.z) * motion, 8.0, frameDelta);
         }
 
         const rBone = this.vrmRightFingers[joint];
         if (rBone) {
           const rest = this.vrmRightFingerRest[joint] || new THREE.Euler();
-          rBone.rotation.copy(rest);
+          const sample = frame.hands.right[joint];
+          rBone.rotation.x = THREE.MathUtils.damp(rBone.rotation.x, rest.x + (sample.x - rest.x) * motion, 8.0, frameDelta);
+          rBone.rotation.y = THREE.MathUtils.damp(rBone.rotation.y, rest.y + (sample.y - rest.y) * motion, 8.0, frameDelta);
+          rBone.rotation.z = THREE.MathUtils.damp(rBone.rotation.z, rest.z + (sample.z - rest.z) * motion, 8.0, frameDelta);
         }
       }
 

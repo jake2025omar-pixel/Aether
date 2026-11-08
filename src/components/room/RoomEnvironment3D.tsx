@@ -771,7 +771,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         companionRigRef.current.update(delta, elapsed, targetLookPosRef.current);
         targetRoomFocus.x = companionRigRef.current.root.position.x;
         targetRoomFocus.z = companionRigRef.current.root.position.z;
-        targetRoomFocus.y = initialFocusY;
+        // As the user zooms in, ease the focus from the chest toward the face.
+        // The camera distance bounds and room clamps remain unchanged.
+        const faceZoom = 1 - THREE.MathUtils.smoothstep(currentCamDist, MIN_DISTANCE + 0.12, 2.55);
+        targetRoomFocus.y = THREE.MathUtils.lerp(initialFocusY, 1.58, faceZoom);
       }
 
       timeOfDayUpdateFrame?.(delta);
