@@ -18,6 +18,7 @@
     "test:room": "tsx src/components/room/roomExperience.test.ts",
     "test:voice": "tsx src/lib/companionVoice.test.ts",
     "test:tts-fallback": "tsx server/ttsFallback.test.ts",
+    "test:chat": "tsx server/chat.test.ts",
     "test:audit": "tsx src/lib/aetherDefectAudit.test.ts"
   },
   "dependencies": {
