@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { AETHER_COMPANION_SYSTEM_PROMPT } from './server/companionSystemPrompt';
-import { handleKokoroTtsRequest } from './server/kokoroTts';
+import { handleTtsWithFallback } from './server/ttsFallback';
 
 dotenv.config();
 
@@ -139,18 +139,13 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// Kokoro-82M Neural TTS Endpoint (Truly Free & Unlimited, Voice: af_kore)
+// Server-side TTS: Kokoro primary; Gemini/Achernar is used only if Kokoro returns a server error.
 app.post('/api/tts', async (req, res) => {
-  const forwardedRequest = new Request('http://localhost/api/tts', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Client-IP': req.ip || req.socket.remoteAddress || 'unknown',
-    },
-    body: JSON.stringify(req.body ?? {}),
-  });
-
-  const speechResponse = await handleKokoroTtsRequest(forwardedRequest);
+  const speechResponse = await handleTtsWithFallback(
+    req.body,
+    req.ip || req.socket.remoteAddress || 'unknown',
+    apiKey || undefined,
+  );
   speechResponse.headers.forEach((value, key) => res.setHeader(key, value));
   const audioOrError = await speechResponse.arrayBuffer();
   res.status(speechResponse.status).send(Buffer.from(audioOrError));

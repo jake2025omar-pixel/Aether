@@ -41,8 +41,8 @@ export interface NavigationWaypoint {
   dwellTimeSeconds: number;
 }
 
-// Walkable bounds strictly clamped to the open center carpet (zero furniture collision)
-const ROOM_BOUNDS = {
+// Conservative fallback used only before the authored room has finished loading.
+const DEFAULT_ROOM_BOUNDS = {
   minX: -0.4,
   maxX: 0.4,
   minZ: -0.3,
@@ -81,6 +81,7 @@ export class LocomotionController {
 
   // Active furniture collision barriers
   private colliders: THREE.Box3[] = [];
+  private roomBounds = { ...DEFAULT_ROOM_BOUNDS };
 
   // Navigation schedule - Disabled by default to stay squarely centered without room clutter collision
   private autonomousNavigationEnabled = false;
@@ -109,7 +110,24 @@ export class LocomotionController {
   }
 
   public setColliders(colliders: THREE.Box3[]): void {
-    this.colliders = colliders;
+    this.colliders = colliders.map((collider) => collider.clone());
+  }
+
+  public setRoomBounds(bounds: THREE.Box3 | null, characterRadius = 0.28): void {
+    if (!bounds || bounds.isEmpty()) {
+      this.roomBounds = { ...DEFAULT_ROOM_BOUNDS };
+      return;
+    }
+    const margin = Math.max(0.12, characterRadius);
+    this.roomBounds = {
+      minX: bounds.min.x + margin,
+      maxX: bounds.max.x - margin,
+      minZ: bounds.min.z + margin,
+      maxZ: bounds.max.z - margin,
+    };
+    if (this.roomBounds.minX > this.roomBounds.maxX || this.roomBounds.minZ > this.roomBounds.maxZ) {
+      this.roomBounds = { ...DEFAULT_ROOM_BOUNDS };
+    }
   }
 
   public isAutonomousNavigationEnabled(): boolean {
@@ -118,8 +136,8 @@ export class LocomotionController {
 
   public navigateTo(target: THREE.Vector3, targetFaceYaw?: number): void {
     // Clamp to room bounds
-    const clampedX = THREE.MathUtils.clamp(target.x, ROOM_BOUNDS.minX, ROOM_BOUNDS.maxX);
-    const clampedZ = THREE.MathUtils.clamp(target.z, ROOM_BOUNDS.minZ, ROOM_BOUNDS.maxZ);
+    const clampedX = THREE.MathUtils.clamp(target.x, this.roomBounds.minX, this.roomBounds.maxX);
+    const clampedZ = THREE.MathUtils.clamp(target.z, this.roomBounds.minZ, this.roomBounds.maxZ);
     this.targetPosition.set(clampedX, 0, clampedZ);
 
     const deltaX = this.targetPosition.x - this.currentPosition.x;
@@ -276,8 +294,8 @@ export class LocomotionController {
     }
 
     // Clamp position within safe room boundaries
-    this.currentPosition.x = THREE.MathUtils.clamp(this.currentPosition.x, ROOM_BOUNDS.minX, ROOM_BOUNDS.maxX);
-    this.currentPosition.z = THREE.MathUtils.clamp(this.currentPosition.z, ROOM_BOUNDS.minZ, ROOM_BOUNDS.maxZ);
+    this.currentPosition.x = THREE.MathUtils.clamp(this.currentPosition.x, this.roomBounds.minX, this.roomBounds.maxX);
+    this.currentPosition.z = THREE.MathUtils.clamp(this.currentPosition.z, this.roomBounds.minZ, this.roomBounds.maxZ);
 
     // 5. Procedural Leg Kinematics based on Stride Phase & Velocity
     const moveWeight = THREE.MathUtils.clamp(this.velocity / this.maxSpeed, 0, 1);

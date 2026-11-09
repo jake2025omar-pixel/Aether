@@ -4,6 +4,7 @@ export type FurnitureCategory =
   | 'RUG'
   | 'STORAGE'
   | 'SURFACE'
+  | 'SEATING'
   | 'ACCENT'
   | 'LIGHTING'
   | 'ARCHITECTURAL';
@@ -590,13 +591,20 @@ export class FurnitureLayoutEngine {
       { id: 'bed_primary', name: 'Neon World 3 Bed', nodeNames: ['BoxBed_BoxBed_Root'], category: 'STORAGE', floorStanding: true, solid: true, description: 'Original bed prefab, uniformly scaled and positioned by the measured room layout.' },
       { id: 'bedside_table', name: 'Original Bedside Table', nodeNames: ['Nightstand'], category: 'SURFACE', floorStanding: true, solid: true, description: 'Original nightstand aligned to the bed with a clear approach gap.' },
       { id: 'console', name: 'Original Drawer Console', nodeNames: ['Drawer Base', 'DrawerSide1', 'DrawerSide2', 'DrawerDoor1', 'DrawerDoor2', 'DrawerDoor3', 'DrawerDoor4'], category: 'STORAGE', floorStanding: true, solid: true, description: 'Original console assembly retained on its authored wall and measured as one furniture piece.' },
-      { id: 'floor_cushion_west', name: 'Original Floor Cushion', nodeNames: ['SimplePillow1_Root'], category: 'ACCENT', floorStanding: true, description: 'Original soft furnishing resting directly on the continuous wooden floor.' },
-      { id: 'floor_cushion_east', name: 'Original Floor Cushion 2', nodeNames: ['SimplePillow2_Root'], category: 'ACCENT', floorStanding: true, description: 'Original soft furnishing resting directly on the continuous wooden floor.' },
+      { id: 'sofa_cushion_west', name: 'Original Sofa Cushion', nodeNames: ['SimplePillow1_Root'], category: 'ACCENT', description: 'Original source pillow reused as a scaled upholstered sofa accent.' },
+      { id: 'sofa_cushion_east', name: 'Original Sofa Cushion 2', nodeNames: ['SimplePillow2_Root'], category: 'ACCENT', description: 'Original source pillow reused as a companion sofa accent.' },
       { id: 'tv', name: 'Original TV', nodeNames: ['TV_TV_Root'], category: 'ARCHITECTURAL', description: 'Original TV prefab corrected in place and aligned to the console.' },
       { id: 'wall_clock', name: 'Original Alarm Clock', nodeNames: ['Alarm_Alarm_Root'], category: 'ARCHITECTURAL', description: 'Original clock case aligned with the bedroom composition.' },
       { id: 'vessel', name: 'Original Console Vessel', nodeNames: ['Vessel_Vessel_Root'], category: 'ACCENT', description: 'Original vase seated on the console without changing its proportions unnecessarily.' },
       { id: 'window_curtain', name: 'Original Window Curtain', nodeNames: ['Curtain_Curtain_Root'], category: 'ARCHITECTURAL', description: 'Original full-height curtain aligned with the existing window.' },
       { id: 'window_header', name: 'Original Curtain Header', nodeNames: ['SmallWallCurtain_SmallWallCurtain_Root'], category: 'ARCHITECTURAL', description: 'Original small curtain header seated over the existing window.' },
+      { id: 'second_bedside_table', name: 'Modern Companion Bedside Table', nodeNames: ['Aether_Bedside_Table_Root'], category: 'SURFACE', floorStanding: true, solid: true, description: 'A matching compact walnut bedside table placed on the open side of the bed.' },
+      { id: 'lounge_sofa', name: 'Modern Two-Seat Lounge Sofa', nodeNames: ['Aether_Modern_Sofa_Root'], category: 'SEATING', floorStanding: true, solid: true, description: 'A low-profile upholstered sofa facing the console and display.' },
+      { id: 'reading_chair', name: 'Window-Side Reading Chair', nodeNames: ['Aether_Reading_Chair_Root'], category: 'SEATING', floorStanding: true, solid: true, description: 'An accent chair oriented toward the room beside the glazed wall.' },
+      { id: 'sliding_wardrobe', name: 'Modern Sliding Wardrobe', nodeNames: ['Aether_Sliding_Wardrobe_Root'], category: 'STORAGE', floorStanding: true, solid: true, description: 'A full-height wardrobe with a reflective inset on the open side wall.' },
+      { id: 'lounge_table', name: 'Lounge Side Table', nodeNames: ['Aether_Lounge_Table_Root'], category: 'SURFACE', floorStanding: true, solid: true, description: 'A compact side table set beside the sofa with a clear circulation gap.' },
+      { id: 'floor_lamp', name: 'Reading Floor Lamp', nodeNames: ['Aether_Floor_Lamp_Root'], category: 'LIGHTING', floorStanding: true, solid: true, description: 'A slender brass reading lamp positioned beside the window chair.' },
+      { id: 'indoor_plant', name: 'Indoor Accent Plant', nodeNames: ['Aether_Indoor_Plant_Root'], category: 'ACCENT', floorStanding: true, solid: true, description: 'A small floor plant placed beside, but not inside, the wardrobe footprint.' },
     ];
 
     const items: ExtractedFurnitureAsset[] = [];

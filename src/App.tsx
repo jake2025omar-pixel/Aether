@@ -34,14 +34,7 @@ const viewToPath = (view: NavDestination): string => {
 };
 
 export default function App() {
-  const [adultConsentGranted, setAdultConsentGranted] = useState(() => {
-    try {
-      const saved = window.localStorage.getItem('aether.adult-consent');
-      return saved !== null ? saved === 'true' : true;
-    } catch {
-      return true;
-    }
-  });
+  const [adultConsentGranted, setAdultConsentGranted] = useState(false);
   const [voiceMuted, setVoiceMuted] = useState(() => {
     try {
       return window.localStorage.getItem('aether.voice-muted') === 'true';
@@ -112,6 +105,14 @@ export default function App() {
     }
   }, [voiceMuted]);
 
+  React.useEffect(() => {
+    try {
+      window.localStorage.removeItem('aether.adult-consent');
+    } catch {
+      // Consent is kept in memory only for the current page session.
+    }
+  }, []);
+
   // Global Developer Mode shortcut: Shift + D
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -178,7 +179,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({
-            message: query.slice(0, 2000),
+            message: query.slice(0, 20000),
             history: historyPayload,
             stream: false,
             adultContentConsent: adultConsentGranted,
@@ -386,11 +387,6 @@ export default function App() {
       <AdultConsentGate
         onAccept={() => {
           setAdultConsentGranted(true);
-          try {
-            window.localStorage.setItem('aether.adult-consent', 'true');
-          } catch {
-            // ignore
-          }
         }}
       />
     );

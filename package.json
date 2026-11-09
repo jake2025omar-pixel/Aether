@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
-    "start": "node server.ts",
+    "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
@@ -15,7 +15,10 @@
     "test:behavior": "tsx src/lib/behavior/humanBehavior.test.ts",
     "test:performance": "tsx src/lib/behavior/characterPerformance.test.ts",
     "test:furniture": "tsx src/lib/environment/furnitureLayout.test.ts",
+    "test:room": "tsx src/components/room/roomExperience.test.ts",
     "test:voice": "tsx src/lib/companionVoice.test.ts",
+    "test:tts-fallback": "tsx server/ttsFallback.test.ts",
+    "test:chat": "tsx server/chat.test.ts",
     "test:audit": "tsx src/lib/aetherDefectAudit.test.ts"
   },
   "dependencies": {
@@ -33,6 +36,7 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "three": "^0.186.1",
+    "tsx": "^4.21.0",
     "vite": "^8.3.0"
   },
   "devDependencies": {
@@ -45,7 +49,6 @@
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.28.0",
     "tailwindcss": "^4.3.3",
-    "tsx": "^4.21.0",
     "typescript": "^7.0.2"
   },
   "overrides": {

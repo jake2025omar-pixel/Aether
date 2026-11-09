@@ -35,7 +35,7 @@ const items: WardrobeItem[] = [
     status: 'RETARGET_REQUIRED',
     image: '/assets/outfits/milk_re165/Milk%20RE165.png',
     runtime: '/assets/outfits/milk_re165/milk%20RE165.fbx',
-    note: 'مخصص لأفاتار Milk؛ لا يُركب على Dark ICE تلقائيًا.',
+    note: 'مخصص لأفاتار Milk؛ لا يُركب على Ramona تلقائيًا.',
   },
   {
     id: 'outfit_maya_re124_0ecf7a74',

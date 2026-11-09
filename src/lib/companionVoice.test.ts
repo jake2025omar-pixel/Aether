@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { parseWavPcm, companionVoice } from './companionVoice';
 
 // Helper to create a valid 16-bit linear PCM WAV ArrayBuffer for testing
-function createMockWavBuffer(sampleRate = 24000, durationSec = 0.5, amplitude = 0.5): ArrayBuffer {
+function createMockWavBuffer(sampleRate = 24000, durationSec = 0.5, amplitude = 0.5, audioFormat = 1): ArrayBuffer {
   const numChannels = 1;
-  const bitsPerSample = 16;
+  const bitsPerSample = audioFormat === 3 ? 32 : 16;
   const sampleCount = Math.floor(sampleRate * durationSec);
   const dataByteLength = sampleCount * numChannels * (bitsPerSample / 8);
   const buffer = new ArrayBuffer(44 + dataByteLength);
@@ -17,12 +17,12 @@ function createMockWavBuffer(sampleRate = 24000, durationSec = 0.5, amplitude = 
 
   // fmt subchunk
   view.setUint32(12, 0x666d7420, false); // 'fmt '
-  view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
-  view.setUint16(20, 1, true); // AudioFormat (1 = PCM)
+  view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM / IEEE Float)
+  view.setUint16(20, audioFormat, true); // AudioFormat (1 = PCM, 3 = IEEE Float)
   view.setUint16(22, numChannels, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numChannels * 2, true); // ByteRate
-  view.setUint16(32, numChannels * 2, true); // BlockAlign
+  view.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true); // ByteRate
+  view.setUint16(32, numChannels * (bitsPerSample / 8), true); // BlockAlign
   view.setUint16(34, bitsPerSample, true);
 
   // data subchunk
@@ -33,8 +33,13 @@ function createMockWavBuffer(sampleRate = 24000, durationSec = 0.5, amplitude = 
   for (let i = 0; i < sampleCount; i++) {
     const t = i / sampleRate;
     const sample = Math.sin(2 * Math.PI * 440 * t) * amplitude;
-    const intSample = Math.max(-32768, Math.min(32767, Math.floor(sample * 32767)));
-    view.setInt16(44 + i * 2, intSample, true);
+
+    if (audioFormat === 3) {
+      view.setFloat32(44 + i * 4, Math.max(-1, Math.min(1, sample)), true);
+    } else {
+      const intSample = Math.max(-32768, Math.min(32767, Math.floor(sample * 32767)));
+      view.setInt16(44 + i * 2, intSample, true);
+    }
   }
 
   return buffer;
@@ -45,7 +50,7 @@ function createMockWavBuffer(sampleRate = 24000, durationSec = 0.5, amplitude = 
 // -------------------------------------------------------------
 {
   console.log('[Test 1] parseWavPcm correctly parses valid WAV headers and samples');
-  const validBuffer = createMockWavBuffer(24000, 0.25, 0.6);
+  const validBuffer = createMockWavBuffer(24000, 0.25, 0.6, 1);
   const parsed = parseWavPcm(validBuffer);
   assert.ok(parsed !== null, 'Valid buffer should parse successfully');
   assert.equal(parsed.sampleRate, 24000);
@@ -54,12 +59,53 @@ function createMockWavBuffer(sampleRate = 24000, durationSec = 0.5, amplitude = 
   assert.equal(parsed.pcm.length, 6000);
   assert.ok(parsed.pcm[0] >= -1 && parsed.pcm[0] <= 1, 'Normalized sample range check');
 
+  console.log('[Test 1b] parseWavPcm accepts valid IEEE Float WAV audio');
+  const floatWav = createMockWavBuffer(22050, 0.2, 0.35, 3);
+  const floatParsed = parseWavPcm(floatWav);
+  assert.ok(floatParsed !== null, 'IEEE Float WAV should parse successfully');
+  assert.equal(floatParsed.sampleRate, 22050);
+  assert.equal(floatParsed.channels, 1);
+  assert.ok(floatParsed.pcm.length > 0, 'Float-wave samples should be extracted');
+
   console.log('[Test 2] parseWavPcm returns null for corrupt or short headers');
   assert.equal(parseWavPcm(new ArrayBuffer(20)), null);
   assert.equal(parseWavPcm(new Uint8Array([0, 1, 2, 3]).buffer), null);
   const invalidHeader = validBuffer.slice(0);
   new DataView(invalidHeader).setUint32(0, 0x12345678, false); // corrupt RIFF
   assert.equal(parseWavPcm(invalidHeader), null);
+
+  console.log('[Test 2b] parser validates RIFF bounds, frame alignment, and optional chunks');
+  const truncatedData = validBuffer.slice(0);
+  new DataView(truncatedData).setUint32(40, 0x7fffffff, true);
+  assert.equal(parseWavPcm(truncatedData), null, 'A data chunk that exceeds RIFF bounds must be rejected.');
+
+  const badBlockAlign = validBuffer.slice(0);
+  new DataView(badBlockAlign).setUint16(32, 1, true);
+  assert.equal(parseWavPcm(badBlockAlign), null, 'Inconsistent block alignment must be rejected.');
+
+  const originalBytes = new Uint8Array(validBuffer);
+  const junkChunkWav = new ArrayBuffer(originalBytes.byteLength + 10);
+  const junkView = new DataView(junkChunkWav);
+  junkView.setUint32(0, 0x52494646, false);
+  junkView.setUint32(4, new DataView(validBuffer).getUint32(4, true) + 10, true);
+  junkView.setUint32(8, 0x57415645, false);
+  junkView.setUint32(12, 0x4a554e4b, false); // JUNK
+  junkView.setUint32(16, 2, true);
+  junkView.setUint8(20, 0x5a);
+  junkView.setUint8(21, 0x5a);
+  new Uint8Array(junkChunkWav).set(originalBytes.subarray(12), 22);
+  const junkParsed = parseWavPcm(junkChunkWav);
+  assert.ok(junkParsed !== null, 'A valid unknown RIFF chunk should be skipped.');
+  assert.equal(junkParsed.pcm.length, parsed.pcm.length);
+
+  const dataFirstWav = new ArrayBuffer(validBuffer.byteLength);
+  const dataFirstBytes = new Uint8Array(dataFirstWav);
+  dataFirstBytes.set(originalBytes.subarray(0, 12), 0);
+  dataFirstBytes.set(originalBytes.subarray(36), 12);
+  dataFirstBytes.set(originalBytes.subarray(12, 36), originalBytes.byteLength - 24);
+  const dataFirstParsed = parseWavPcm(dataFirstWav);
+  assert.ok(dataFirstParsed !== null, 'The parser should locate fmt even when data precedes it.');
+  assert.equal(dataFirstParsed.pcm.length, parsed.pcm.length);
 }
 
 // -------------------------------------------------------------

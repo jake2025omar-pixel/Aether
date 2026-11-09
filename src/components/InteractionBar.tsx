@@ -204,7 +204,7 @@ export const InteractionBar: React.FC<InteractionBarProps> = ({
             ref={textareaRef}
             rows={1}
             dir="auto"
-            maxLength={2000}
+            maxLength={20000}
             value={inputVal}
             onChange={(event) => setInputVal(event.target.value)}
             onKeyDown={handleKeyDown}

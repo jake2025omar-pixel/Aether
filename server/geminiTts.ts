@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { inspectWav } from '../src/lib/audio/wav';
 
 export type CompanionTtsVoice = 'Achernar' | 'Kore' | 'Salma';
 export type TtsFailureReason = 'not-configured' | 'timeout' | 'network' | 'invalid-audio' | 'unavailable';
@@ -113,10 +114,9 @@ function findAudioData(result: unknown): string {
   return typeof audioPart?.data === 'string' ? audioPart.data : '';
 }
 
-function isWav(bytes: Uint8Array): boolean {
-  return bytes.length >= 44
-    && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
-    && bytes[8] === 0x57 && bytes[9] === 0x41 && bytes[10] === 0x56 && bytes[11] === 0x45;
+function isPlayableWav(bytes: Uint8Array): boolean {
+  const audioBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return inspectWav(audioBuffer) !== null;
 }
 
 /** Server-only Gemini TTS proxy; the provider key is never returned to the caller. */
@@ -174,7 +174,7 @@ export async function handleGeminiTtsRequest(
     try {
       if (fs.existsSync(diskPath)) {
         const fileBuf = fs.readFileSync(diskPath);
-        if (fileBuf.length > 44 && isWav(new Uint8Array(fileBuf))) {
+        if (isPlayableWav(new Uint8Array(fileBuf))) {
           cachedAudio = new Uint8Array(fileBuf);
           ttsAudioCache.set(cacheKey, cachedAudio);
         }
@@ -184,7 +184,7 @@ export async function handleGeminiTtsRequest(
     }
   }
 
-  if (cachedAudio && isWav(cachedAudio)) {
+  if (cachedAudio && isPlayableWav(cachedAudio)) {
     return new Response(new Uint8Array(cachedAudio), {
       status: 200,
       headers: {
@@ -249,7 +249,7 @@ export async function handleGeminiTtsRequest(
           const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
           if (base64Audio) {
             const buf = Buffer.from(base64Audio, 'base64');
-            if (buf.length > 44 && isWav(new Uint8Array(buf))) {
+            if (isPlayableWav(new Uint8Array(buf))) {
               audio = new Uint8Array(buf);
               ttsAudioCache.set(cacheKey, audio);
               try {

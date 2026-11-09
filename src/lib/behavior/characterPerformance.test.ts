@@ -139,6 +139,12 @@ console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
   const loco = new LocomotionController();
   assert.equal(loco.isAutonomousNavigationEnabled(), false, 'Autonomous navigation must be safely disabled by default');
 
+  loco.setRoomBounds(new THREE.Box3(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 0, 1)), 0.2);
+  loco.navigateTo(new THREE.Vector3(4, 0, 4));
+  for (let i = 0; i < 180; i++) loco.update(0.033, false);
+  assert.ok(loco.getPosition().x <= 0.8 && loco.getPosition().z <= 0.8, 'Navigation must respect measured room bounds');
+  loco.stop();
+
   // Navigate to target zone
   loco.navigateTo(new THREE.Vector3(0.55, 0, -0.30), -0.25);
 
@@ -226,7 +232,15 @@ console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
   assert.equal(unified.emotion, 'AFFECTIONATE');
   assert.ok(unified.respiration.lungVolume > 0);
   assert.ok(unified.eye.attentionFocus > 0);
-  assert.ok(unified.hands.rightPose === 'RELAXED', 'Hand pose must remain stable natural neutral RELAXED pose');
+  if (unified.action.activeAction) {
+    assert.equal(
+      unified.hands.rightPose,
+      unified.action.offsets.rightHandPose,
+      'Active contextual actions must drive their declared hand pose',
+    );
+  } else {
+    assert.equal(unified.hands.rightPose, 'RELAXED', 'Idle hands must settle into a natural relaxed pose');
+  }
   assert.ok(unified.lookAtTarget instanceof THREE.Vector3);
 
   console.log('✓ Test 6 Passed: Master Character Performance Director coordinates all systems seamlessly');

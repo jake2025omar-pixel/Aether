@@ -1,10 +1,10 @@
 {
   "asset_id": "char_dark_ice_c3256ebd4d660b1f",
-  "name": "Dark Ice",
+  "name": "Ramona",
   "category": "CHARACTER",
   "category_confidence": "DETECTED",
   "source_format": "VRM_1.0",
-  "source_file": {"original_filename":"Dark_ICE-ダークあいす-1.0.vrm","sha256":"c3256ebd4d660b1f7e028b1223945a8df289cdbc49c313a1a9e7f805f6d71b3e","size_bytes":15467704},
+  "source_file": {"original_filename":"Dark_ICE-ダークあいす-1.0.vrm","sha256":"c3256ebd4d660b1f47246f07e34ae95d110a1903641bb32926b29d851716aff4","size_bytes":15467704},
   "runtime_file": "/assets/characters/dark_ice/dark_ice.vrm",
   "preview_status": "WEB_READY",
   "technical": {

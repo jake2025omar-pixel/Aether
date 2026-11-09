@@ -1,6 +1,10 @@
 import { PhoneticLipSyncEngine, VisemeFrame } from './phonemeLipSync';
+import { parseWavPcm } from './audio/wav';
+import type { ParsedWav } from './audio/wav';
 
 export type { VisemeFrame };
+export { parseWavPcm };
+export type { ParsedWav };
 
 export interface SpeechRecognitionHandlers {
   onStart?: () => void;
@@ -22,159 +26,6 @@ export interface CompanionSpeechOptions {
   adultContentConsent?: boolean;
 }
 
-export interface ParsedWav {
-  sampleRate: number;
-  channels: number;
-  pcm: Float32Array;
-  duration: number;
-}
-
-export function parseWavPcm(arrayBuffer: ArrayBuffer): ParsedWav | null {
-  if (arrayBuffer.byteLength < 44) return null;
-
-  const view = new DataView(arrayBuffer);
-  const isRiff = view.getUint32(0, false) === 0x52494646;
-  const isWave = view.getUint32(8, false) === 0x57415645;
-  if (!isRiff || !isWave) return null;
-
-  let audioFormat = 0;
-  let channels = 1;
-  let sampleRate = 0;
-  let blockAlign = 0;
-  let bitsPerSample = 0;
-  let dataOffset = -1;
-  let dataLength = 0;
-
-  let offset = 12;
-  while (offset + 8 <= arrayBuffer.byteLength) {
-    const chunkId = String.fromCharCode(
-      view.getUint8(offset),
-      view.getUint8(offset + 1),
-      view.getUint8(offset + 2),
-      view.getUint8(offset + 3)
-    );
-    const chunkSize = view.getUint32(offset + 4, true);
-
-    if (chunkId === 'fmt ') {
-      if (offset + 8 + 16 <= arrayBuffer.byteLength) {
-        audioFormat = view.getUint16(offset + 8, true);
-        channels = view.getUint16(offset + 10, true);
-        sampleRate = view.getUint32(offset + 12, true);
-        blockAlign = view.getUint16(offset + 20, true);
-        bitsPerSample = view.getUint16(offset + 22, true);
-      }
-    } else if (chunkId === 'data') {
-      const dataStart = offset + 8;
-      if (dataStart > arrayBuffer.byteLength) break;
-      dataOffset = dataStart;
-      dataLength = Math.min(chunkSize, arrayBuffer.byteLength - dataStart);
-      break;
-    }
-
-    offset += 8 + chunkSize + (chunkSize % 2);
-  }
-
-  if (audioFormat !== 1 && audioFormat !== 3) {
-    return null;
-  }
-
-  if (sampleRate <= 0 || channels <= 0 || bitsPerSample <= 0 || blockAlign <= 0) {
-    return null;
-  }
-
-  if (dataOffset === -1 || dataLength <= 0) {
-    return null;
-  }
-
-  const bytesPerSample = Math.max(1, Math.ceil(bitsPerSample / 8));
-  const expectedFrameBytes = channels * bytesPerSample;
-  if (blockAlign !== expectedFrameBytes) {
-    if (blockAlign > 0 && blockAlign < expectedFrameBytes) {
-      return null;
-    }
-  }
-
-  const framesPerSample = Math.floor(dataLength / blockAlign);
-  if (framesPerSample <= 0) {
-    return null;
-  }
-
-  const pcm = new Float32Array(framesPerSample);
-  let sampleIndex = 0;
-
-  for (let frameIndex = 0; frameIndex < framesPerSample; frameIndex += 1) {
-    const frameOffset = dataOffset + frameIndex * blockAlign;
-    const safeFrameEnd = frameOffset + blockAlign;
-    if (safeFrameEnd > arrayBuffer.byteLength) {
-      break;
-    }
-
-    let frameSum = 0;
-    for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
-      const sampleOffset = frameOffset + channelIndex * bytesPerSample;
-      const sampleEnd = sampleOffset + bytesPerSample;
-      if (sampleEnd > arrayBuffer.byteLength) {
-        frameSum = 0;
-        break;
-      }
-
-      let sampleValue = 0;
-      if (audioFormat === 1) {
-        switch (bytesPerSample) {
-          case 1: {
-            sampleValue = view.getUint8(sampleOffset) - 128;
-            sampleValue /= 128;
-            break;
-          }
-          case 2: {
-            sampleValue = view.getInt16(sampleOffset, true);
-            sampleValue /= 32768;
-            break;
-          }
-          case 3: {
-            const b0 = view.getUint8(sampleOffset);
-            const b1 = view.getUint8(sampleOffset + 1);
-            const b2 = view.getUint8(sampleOffset + 2);
-            const raw = (b0 | (b1 << 8) | (b2 << 16));
-            const signed = raw & 0x800000 ? raw | ~0xFFFFFF : raw;
-            sampleValue = signed / 8388608;
-            break;
-          }
-          case 4: {
-            sampleValue = view.getInt32(sampleOffset, true) / 2147483648;
-            break;
-          }
-          default: {
-            sampleValue = 0;
-            break;
-          }
-        }
-      } else if (audioFormat === 3) {
-        if (bytesPerSample === 4) {
-          sampleValue = view.getFloat32(sampleOffset, true);
-        }
-      }
-
-      frameSum += sampleValue;
-    }
-
-    if (channels > 0) {
-      pcm[sampleIndex++] = frameSum / channels;
-    }
-  }
-
-  if (sampleIndex === 0) {
-    return null;
-  }
-
-  return {
-    sampleRate,
-    channels,
-    pcm: pcm.subarray(0, sampleIndex),
-    duration: sampleRate > 0 ? sampleIndex / sampleRate : 0,
-  };
-}
-
 class CompanionVoiceService {
   private recognition: any = null;
   private isListening = false;
@@ -189,6 +40,8 @@ class CompanionVoiceService {
   private audioContext: AudioContext | null = null;
   private playbackId = 0;
   private muted = false;
+  private recognitionSession = 0;
+  private manuallyStoppedRecognition = false;
 
   constructor() {
     this.initSpeechRecognition();
@@ -234,7 +87,7 @@ class CompanionVoiceService {
   }
 
   public isAudioPlaybackSupported(): boolean {
-    return typeof window !== 'undefined' && typeof window.AudioContext !== 'undefined';
+    return typeof window !== 'undefined' && Boolean(window.AudioContext || (window as any).webkitAudioContext);
   }
 
   private getAudioContext(): AudioContext | null {
@@ -325,7 +178,9 @@ class CompanionVoiceService {
     try {
       const recognition = new SpeechRecognitionClass();
       this.recognition = recognition;
-      recognition.continuous = false;
+      const session = ++this.recognitionSession;
+      this.manuallyStoppedRecognition = false;
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
@@ -335,6 +190,7 @@ class CompanionVoiceService {
         : 'ar-SA';
 
       let receivedFinalTranscript = false;
+      let accumulatedFinalText = '';
       let lastSpokenText = '';
 
       recognition.onstart = () => {
@@ -347,7 +203,8 @@ class CompanionVoiceService {
         let finalText = '';
 
         if (event.results) {
-          for (let i = 0; i < event.results.length; i++) {
+          const firstResult = Number.isInteger(event.resultIndex) ? event.resultIndex : 0;
+          for (let i = firstResult; i < event.results.length; i++) {
             const res = event.results[i];
             if (res && res[0]?.transcript) {
               if (res.isFinal) {
@@ -363,14 +220,17 @@ class CompanionVoiceService {
           handlers.onInterim?.(interimText.trim());
         }
 
-        const candidate = (finalText || interimText).trim();
+        if (finalText.trim()) {
+          accumulatedFinalText = `${accumulatedFinalText} ${finalText}`.trim();
+        }
+
+        const candidate = `${accumulatedFinalText} ${interimText}`.trim();
         if (candidate) {
           lastSpokenText = candidate;
         }
 
         if (finalText.trim()) {
           receivedFinalTranscript = true;
-          handlers.onResult(finalText.trim());
         }
       };
 
@@ -385,9 +245,14 @@ class CompanionVoiceService {
 
       recognition.onend = () => {
         this.isListening = false;
-        if (!receivedFinalTranscript && lastSpokenText.trim()) {
+        if (session !== this.recognitionSession || this.manuallyStoppedRecognition) {
+          handlers.onEnd();
+          return;
+        }
+        const completedText = (accumulatedFinalText || lastSpokenText).trim();
+        if (completedText) {
           receivedFinalTranscript = true;
-          handlers.onResult(lastSpokenText.trim());
+          handlers.onResult(completedText);
         }
         handlers.onEnd();
       };
@@ -415,6 +280,8 @@ class CompanionVoiceService {
    * Stops listening
    */
   public stopListening(): void {
+    this.manuallyStoppedRecognition = true;
+    this.recognitionSession += 1;
     if (this.recognition) {
       try {
         this.recognition.stop();
@@ -433,6 +300,41 @@ class CompanionVoiceService {
 
   public resetQuotaCooldown(): void {
     this.quotaCooldownUntil = 0;
+  }
+
+  private speakWithBrowserFallback(text: string, handlers: VoicePlaybackHandlers): boolean {
+    if (typeof window === 'undefined' || !window.speechSynthesis || typeof window.SpeechSynthesisUtterance === 'undefined') {
+      return false;
+    }
+    try {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = /[\u0600-\u06FF]/.test(text) ? 'ar-SA' : 'en-US';
+      utterance.rate = 0.96;
+      utterance.pitch = 1.02;
+      this.currentPlaybackHandlers = handlers;
+      utterance.onstart = () => {
+        if (this.currentPlaybackHandlers === handlers) handlers.onStart();
+      };
+      utterance.onend = () => {
+        if (this.currentPlaybackHandlers !== handlers) return;
+        this.currentPlaybackHandlers = null;
+        handlers.onViseme(0);
+        handlers.onEnd();
+      };
+      utterance.onerror = () => {
+        if (this.currentPlaybackHandlers !== handlers) return;
+        this.currentPlaybackHandlers = null;
+        handlers.onError?.('playback-failed');
+        handlers.onViseme(0);
+        handlers.onEnd();
+      };
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+      return true;
+    } catch {
+      this.currentPlaybackHandlers = null;
+      return false;
+    }
   }
 
   /**
@@ -514,9 +416,11 @@ class CompanionVoiceService {
               : status === 503
                 ? 'not-configured'
                 : 'unavailable';
-          handlers.onError?.(reason);
-          handlers.onViseme(0);
-          handlers.onEnd();
+          if (!this.speakWithBrowserFallback(cleanText, handlers)) {
+            handlers.onError?.(reason);
+            handlers.onViseme(0);
+            handlers.onEnd();
+          }
           return;
         }
 
@@ -597,9 +501,11 @@ class CompanionVoiceService {
           cleanup();
           if (!isCurrentPlayback()) return;
           console.warn('[AetherAI Voice] Audio playback rejected by browser policy:', playError);
-          handlers.onError?.('playback-failed');
-          handlers.onViseme(0);
-          handlers.onEnd();
+          if (!this.speakWithBrowserFallback(cleanText, handlers)) {
+            handlers.onError?.('playback-failed');
+            handlers.onViseme(0);
+            handlers.onEnd();
+          }
           return;
         }
 
@@ -657,9 +563,11 @@ class CompanionVoiceService {
       } catch (error: unknown) {
         if (!isCurrentPlayback()) return;
         const isAbort = controller.signal.aborted;
-        handlers.onError?.(isAbort && timedOut ? 'timeout' : 'unavailable');
-        handlers.onViseme(0);
-        handlers.onEnd();
+        if (!this.speakWithBrowserFallback(cleanText, handlers)) {
+          handlers.onError?.(isAbort && timedOut ? 'timeout' : 'unavailable');
+          handlers.onViseme(0);
+          handlers.onEnd();
+        }
       } finally {
         clearTimeout(timeoutId);
       }
@@ -697,6 +605,7 @@ class CompanionVoiceService {
     }
     this.activeAbortController?.abort();
     this.activeAbortController = null;
+    try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
     const source = this.activeSource;
     this.activeSource = null;
     if (source) {
