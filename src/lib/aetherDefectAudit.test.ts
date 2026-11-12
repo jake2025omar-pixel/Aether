@@ -5,18 +5,17 @@ import { companionVoice, parseWavPcm } from './companionVoice';
 console.log('=== AETHER STRICT DEFECT AUDIT & REPAIR VERIFICATION SUITE ===\n');
 
 // -----------------------------------------------------------------
-// 1. CATEGORY A: QUOTA EXHAUSTION & SILENT MOUTH DEFECT VERIFICATION
+// 1. CATEGORY A: SINGLE-VOICE FAILURE & SILENT MOUTH DEFECT VERIFICATION
 // -----------------------------------------------------------------
-console.log('--- AUDITING CATEGORY A: Quota Exhaustion & Silent Mouth Defect ---');
+console.log('--- AUDITING CATEGORY A: Kokoro-only failure & Silent Mouth Defect ---');
 {
-  companionVoice.resetQuotaCooldown();
   let fetchAttemptCount = 0;
 
   // Mock global objects for environment
   (globalThis as any).fetch = async (url: string) => {
     fetchAttemptCount++;
     if (url === '/api/tts') {
-      return new Response(JSON.stringify({ error: 'RESOURCE_EXHAUSTED: quota exceeded' }), {
+      return new Response(JSON.stringify({ error: 'Speech service is busy.' }), {
         status: 429,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -49,37 +48,11 @@ console.log('--- AUDITING CATEGORY A: Quota Exhaustion & Silent Mouth Defect ---
   await new Promise((r) => setTimeout(r, 40));
 
   assert.equal(fetchAttemptCount, 1, 'Initial TTS fetch should execute');
-  assert.equal(receivedError, 'quota-exhausted', 'Should accurately report quota-exhausted');
-  assert.equal(onStartFired, false, 'VERIFIED: onStart MUST NOT fire when voice quota is exhausted');
+  assert.equal(receivedError, 'rate-limit', 'The service rate-limit must be surfaced accurately.');
+  assert.equal(onStartFired, false, 'VERIFIED: onStart MUST NOT fire when Kokoro audio is unavailable');
   assert.equal(visemeReportedNonZero, false, 'VERIFIED: Mouth visemes MUST stay 0 (resting pose)');
-  assert.equal(companionVoice.isQuotaCoolingDown(), true, 'VERIFIED: Quota cooldown must engage');
-
-  // Verify that an immediate subsequent message does NOT hit the network again
-  let secondError: string | null = null;
-  companionVoice.speak(
-    'رسالة ثانية أثناء نفاذ الحصة',
-    {
-      onStart: () => {
-        onStartFired = true;
-      },
-      onViseme: (mouth) => {
-        if (mouth > 0) visemeReportedNonZero = true;
-      },
-      onEnd: () => {},
-      onError: (err) => {
-        secondError = err;
-      },
-    },
-    { adultContentConsent: true }
-  );
-
-  await new Promise((r) => setTimeout(r, 40));
-  assert.equal(fetchAttemptCount, 1, 'VERIFIED: Predictable repeated calls do NOT issue unnecessary TTS requests');
-  assert.equal(secondError, 'quota-exhausted');
-  assert.equal(onStartFired, false);
-
-  companionVoice.resetQuotaCooldown();
-  console.log('✓ Category A Verified: Zero silent articulation, quota accurately handled, futile retries prevented.\n');
+  assert.equal(fetchAttemptCount, 1, 'One spoken reply makes only one Kokoro request.');
+  console.log('✓ Category A Verified: Kokoro errors remain explicit and never produce fake mouth movement.\n');
 }
 
 // -----------------------------------------------------------------

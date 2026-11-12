@@ -17,7 +17,8 @@
     "test:furniture": "tsx src/lib/environment/furnitureLayout.test.ts",
     "test:room": "tsx src/components/room/roomExperience.test.ts",
     "test:voice": "tsx src/lib/companionVoice.test.ts",
-    "test:tts-fallback": "tsx server/ttsFallback.test.ts",
+    "test:tts": "tsx server/tts.test.ts",
+    "test:tts-fallback": "npm run test:tts",
     "test:chat": "tsx server/chat.test.ts",
     "test:audit": "tsx src/lib/aetherDefectAudit.test.ts"
   },

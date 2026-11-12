@@ -292,53 +292,8 @@ class CompanionVoiceService {
     }
   }
 
-  private quotaCooldownUntil = 0;
-
-  public isQuotaCoolingDown(): boolean {
-    return Date.now() < this.quotaCooldownUntil;
-  }
-
-  public resetQuotaCooldown(): void {
-    this.quotaCooldownUntil = 0;
-  }
-
-  private speakWithBrowserFallback(text: string, handlers: VoicePlaybackHandlers): boolean {
-    if (typeof window === 'undefined' || !window.speechSynthesis || typeof window.SpeechSynthesisUtterance === 'undefined') {
-      return false;
-    }
-    try {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = /[\u0600-\u06FF]/.test(text) ? 'ar-SA' : 'en-US';
-      utterance.rate = 0.96;
-      utterance.pitch = 1.02;
-      this.currentPlaybackHandlers = handlers;
-      utterance.onstart = () => {
-        if (this.currentPlaybackHandlers === handlers) handlers.onStart();
-      };
-      utterance.onend = () => {
-        if (this.currentPlaybackHandlers !== handlers) return;
-        this.currentPlaybackHandlers = null;
-        handlers.onViseme(0);
-        handlers.onEnd();
-      };
-      utterance.onerror = () => {
-        if (this.currentPlaybackHandlers !== handlers) return;
-        this.currentPlaybackHandlers = null;
-        handlers.onError?.('playback-failed');
-        handlers.onViseme(0);
-        handlers.onEnd();
-      };
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-      return true;
-    } catch {
-      this.currentPlaybackHandlers = null;
-      return false;
-    }
-  }
-
   /**
-   * Requests Gemini TTS and plays physical audio while synchronizing lip visemes.
+   * Requests Kokoro TTS and plays returned audio while synchronizing lip visemes.
    * If audio generation, decoding, or browser playback fails, stops immediately
    * without faking mouth movement or articulate gestures.
    */
@@ -367,13 +322,6 @@ class CompanionVoiceService {
       return;
     }
 
-    if (this.isQuotaCoolingDown()) {
-      handlers.onError?.('quota-exhausted');
-      handlers.onViseme(0);
-      handlers.onEnd();
-      return;
-    }
-
     const playbackId = ++this.playbackId;
     const isCurrentPlayback = () => this.playbackId === playbackId;
     const controller = new AbortController();
@@ -384,7 +332,7 @@ class CompanionVoiceService {
     const timeoutId = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, 45_000);
+    }, 25_000);
 
     void (async () => {
       try {
@@ -405,22 +353,22 @@ class CompanionVoiceService {
 
         if (!response.ok) {
           if (!isCurrentPlayback()) return;
-          const status = response.status;
-          if (status === 429) {
-            this.quotaCooldownUntil = Date.now() + 60_000;
-          }
-          const reason = status === 429
-            ? 'quota-exhausted'
-            : status === 403
+          const errorData = await response.json().catch(() => null) as { code?: string } | null;
+          const reason = errorData?.code === 'unsupported-language'
+            ? 'unsupported-language'
+            : response.status === 429
+              ? 'rate-limit'
+              : response.status === 403
               ? 'consent-required'
-              : status === 503
-                ? 'not-configured'
-                : 'unavailable';
-          if (!this.speakWithBrowserFallback(cleanText, handlers)) {
-            handlers.onError?.(reason);
-            handlers.onViseme(0);
-            handlers.onEnd();
-          }
+              : response.status === 422
+                ? 'unsupported-language'
+                : response.status === 503
+                  ? 'not-configured'
+                  : 'unavailable';
+          if (this.currentPlaybackHandlers === handlers) this.currentPlaybackHandlers = null;
+          handlers.onError?.(reason);
+          handlers.onViseme(0, { mouthOpen: 0, aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+          handlers.onEnd();
           return;
         }
 
@@ -501,11 +449,10 @@ class CompanionVoiceService {
           cleanup();
           if (!isCurrentPlayback()) return;
           console.warn('[AetherAI Voice] Audio playback rejected by browser policy:', playError);
-          if (!this.speakWithBrowserFallback(cleanText, handlers)) {
-            handlers.onError?.('playback-failed');
-            handlers.onViseme(0);
-            handlers.onEnd();
-          }
+          if (this.currentPlaybackHandlers === handlers) this.currentPlaybackHandlers = null;
+          handlers.onError?.('playback-failed');
+          handlers.onViseme(0, { mouthOpen: 0, aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+          handlers.onEnd();
           return;
         }
 
@@ -563,11 +510,10 @@ class CompanionVoiceService {
       } catch (error: unknown) {
         if (!isCurrentPlayback()) return;
         const isAbort = controller.signal.aborted;
-        if (!this.speakWithBrowserFallback(cleanText, handlers)) {
-          handlers.onError?.(isAbort && timedOut ? 'timeout' : 'unavailable');
-          handlers.onViseme(0);
-          handlers.onEnd();
-        }
+        if (this.currentPlaybackHandlers === handlers) this.currentPlaybackHandlers = null;
+        handlers.onError?.(isAbort && timedOut ? 'timeout' : 'unavailable');
+        handlers.onViseme(0, { mouthOpen: 0, aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+        handlers.onEnd();
       } finally {
         clearTimeout(timeoutId);
       }
@@ -605,7 +551,6 @@ class CompanionVoiceService {
     }
     this.activeAbortController?.abort();
     this.activeAbortController = null;
-    try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
     const source = this.activeSource;
     this.activeSource = null;
     if (source) {
