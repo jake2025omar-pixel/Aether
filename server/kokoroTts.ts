@@ -66,11 +66,6 @@ async function getKokoroTTS(): Promise<KokoroTTS> {
   return kokoroInstancePromise;
 }
 
-/** Start loading the local model when the server boots, not on the user's first reply. */
-export async function warmKokoroModel(): Promise<void> {
-  await getKokoroTTS();
-}
-
 const recentRequestsByIp = new Map<string, number[]>();
 const ttsAudioCache = new Map<string, Uint8Array>();
 const inFlightAudio = new Map<string, Promise<Uint8Array>>();
@@ -157,7 +152,15 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const KOKORO_VOICE = 'af_kore';
+const SUPPORTED_KOKORO_VOICES = new Set([
+  'af_kore',
+  'af_heart',
+  'af_bella',
+  'af_nicole',
+  'af_sarah',
+  'af_aoede',
+  'af_sky',
+]);
 
 async function generateAudio(cacheKey: string, text: string, voice: string): Promise<Uint8Array> {
   const existing = inFlightAudio.get(cacheKey);
@@ -191,7 +194,7 @@ async function generateAudio(cacheKey: string, text: string, voice: string): Pro
   }
 }
 
-/** Kokoro-82M local TTS handler; always synthesizes with the single af_kore voice. */
+/** Kokoro-82M local TTS handler. Gemini is invoked by the server-level fallback only on 5xx. */
 export async function handleKokoroTtsRequest(request: Request): Promise<Response> {
   if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed.' }, 405);
 
@@ -223,15 +226,9 @@ export async function handleKokoroTtsRequest(request: Request): Promise<Response
   if (!text) return jsonResponse({ error: 'Speech text is required.' }, 400);
   if (text.length > MAX_TEXT_LENGTH) return jsonResponse({ error: 'Speech text exceeds character limit.' }, 400);
 
-  // The installed Kokoro voice catalog is English-only; do not produce misleading Arabic audio.
-  if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/u.test(text)) {
-    return jsonResponse({
-      error: 'This project has no Arabic Kokoro voice installed.',
-      code: 'unsupported-language',
-    }, 422);
-  }
-
-  const voice = KOKORO_VOICE;
+  let requestedVoice = typeof payload.voice === 'string' ? payload.voice.trim() : '';
+  if (requestedVoice === 'Kore' || requestedVoice === 'kore') requestedVoice = 'af_kore';
+  const voice = SUPPORTED_KOKORO_VOICES.has(requestedVoice) ? requestedVoice : 'af_kore';
   const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Client-IP') || 'unknown';
   if (isRateLimited(clientIp)) {
     return jsonResponse({ error: 'Speech service is busy. Please try again shortly.' }, 429);

@@ -48,7 +48,7 @@ console.log('--- AUDITING CATEGORY A: Kokoro-only failure & Silent Mouth Defect 
   await new Promise((r) => setTimeout(r, 40));
 
   assert.equal(fetchAttemptCount, 1, 'Initial TTS fetch should execute');
-  assert.equal(receivedError, 'rate-limit', 'The service rate-limit must be surfaced accurately.');
+  assert.equal(receivedError, 'quota-exhausted', 'The service quota error must be surfaced accurately.');
   assert.equal(onStartFired, false, 'VERIFIED: onStart MUST NOT fire when Kokoro audio is unavailable');
   assert.equal(visemeReportedNonZero, false, 'VERIFIED: Mouth visemes MUST stay 0 (resting pose)');
   assert.equal(fetchAttemptCount, 1, 'One spoken reply makes only one Kokoro request.');

@@ -5,18 +5,24 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { AETHER_COMPANION_SYSTEM_PROMPT } from './server/companionSystemPrompt';
-import { handleKokoroOnlyTts } from './server/tts';
-import { warmKokoroModel } from './server/kokoroTts';
+import { handleTtsWithFallback } from './server/ttsFallback';
 
 dotenv.config();
 
 const PRIMARY_GEMINI_MODEL = 'gemini-2.5-flash';
-const CANDIDATE_MODELS = [PRIMARY_GEMINI_MODEL];
-const CHAT_GENERATION_TIMEOUT_MS = 18_000;
-const CHAT_MAX_OUTPUT_TOKENS = 512;
+const CANDIDATE_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
+];
 
 // Track models that have hit temporary upstream quota or demand limits (e.g. 503 / 429)
-const modelCooldowns = new Map<string, number>();
+const modelCooldowns = new Map<string, number>([
+  ['gemini-3.5-flash', Date.now() + 16 * 3600 * 1000],
+]);
 
 function isModelCoolingDown(model: string): boolean {
   const until = modelCooldowns.get(model);
@@ -26,6 +32,10 @@ function isModelCoolingDown(model: string): boolean {
     return false;
   }
   return true;
+}
+
+function areAllModelsCoolingDown(): boolean {
+  return CANDIDATE_MODELS.every((m) => isModelCoolingDown(m));
 }
 
 function isQuotaError(errStr: string): boolean {
@@ -129,11 +139,12 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// Server-side TTS has one provider and one fixed voice: local Kokoro af_kore.
+// Server-side TTS: Kokoro primary; Gemini/Achernar is used only if Kokoro returns a server error.
 app.post('/api/tts', async (req, res) => {
-  const speechResponse = await handleKokoroOnlyTts(
+  const speechResponse = await handleTtsWithFallback(
     req.body,
     req.ip || req.socket.remoteAddress || 'unknown',
+    apiKey || undefined,
   );
   speechResponse.headers.forEach((value, key) => res.setHeader(key, value));
   const audioOrError = await speechResponse.arrayBuffer();
@@ -279,6 +290,8 @@ app.post('/api/chat', async (req, res) => {
 
   const clientAi = ai;
 
+  const ignoreCooldown = areAllModelsCoolingDown();
+
   if (stream) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -287,7 +300,7 @@ app.post('/api/chat', async (req, res) => {
     let streamSucceeded = false;
     for (const model of CANDIDATE_MODELS) {
       if (isClientDisconnected) break;
-      if (isModelCoolingDown(model)) continue;
+      if (!ignoreCooldown && isModelCoolingDown(model)) continue;
       try {
         const responseStream = await clientAi.models.generateContentStream({
           model,
@@ -295,7 +308,7 @@ app.post('/api/chat', async (req, res) => {
           config: {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
-            maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
+            maxOutputTokens: 2048,
             abortSignal: providerAbortController.signal,
           },
         });
@@ -332,10 +345,11 @@ app.post('/api/chat', async (req, res) => {
     let lastError: string | null = null;
     for (const model of CANDIDATE_MODELS) {
       if (isClientDisconnected || providerAbortController.signal.aborted) break;
-      if (isModelCoolingDown(model)) continue;
+      if (!ignoreCooldown && isModelCoolingDown(model)) continue;
 
       const attemptController = new AbortController();
-      const attemptTimeout = setTimeout(() => attemptController.abort(), CHAT_GENERATION_TIMEOUT_MS);
+      // Allow 30 seconds per attempt to comfortably handle LLM response generation under load
+      const attemptTimeout = setTimeout(() => attemptController.abort(), 30000);
       const onAbort = () => attemptController.abort();
       providerAbortController.signal.addEventListener('abort', onAbort, { once: true });
 
@@ -346,7 +360,7 @@ app.post('/api/chat', async (req, res) => {
           config: {
             systemInstruction: defaultSystemInstruction,
             temperature: 0.7,
-            maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
+            maxOutputTokens: 2048,
             abortSignal: attemptController.signal,
           },
         });
@@ -429,9 +443,6 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running at http://0.0.0.0:${PORT}`);
-    void warmKokoroModel().catch((error: unknown) => {
-      console.warn('[Kokoro TTS] Background model warm-up failed:', error instanceof Error ? error.name : 'UnknownError');
-    });
   });
 }
 

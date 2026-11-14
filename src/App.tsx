@@ -95,7 +95,6 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [isDevModalOpen, setIsDevModalOpen] = useState(false);
   const recoveryTimerRef = useRef<number | null>(null);
-  const interactionInFlightRef = useRef(false);
 
   React.useEffect(() => {
     companionVoice.setMuted(voiceMuted);
@@ -136,8 +135,7 @@ export default function App() {
    * querying Gemini and speaking the response aloud with Lip Sync.
    */
   const handleCompanionInteraction = useCallback(async (query: string) => {
-    if (!query.trim() || interactionInFlightRef.current || !adultConsentGranted) return;
-    interactionInFlightRef.current = true;
+    if (!query.trim() || loading || !adultConsentGranted) return;
 
     if (recoveryTimerRef.current !== null) {
       window.clearTimeout(recoveryTimerRef.current);
@@ -172,7 +170,7 @@ export default function App() {
       }));
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 22_000);
+      const timeoutId = setTimeout(() => controller.abort(), 55000);
 
       let res: Response;
       try {
@@ -181,7 +179,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({
-            message: query.slice(0, 2000),
+            message: query.slice(0, 20000),
             history: historyPayload,
             stream: false,
             adultContentConsent: adultConsentGranted,
@@ -255,12 +253,12 @@ export default function App() {
         onError: (reason) => {
           const isArabic = /[\u0600-\u06FF]/.test(cleanText);
           const messages: Record<string, string> = {
+            'quota-exhausted': isArabic
+              ? 'تم استنفاد حصة الصوت في Google AI Studio مؤقتاً. النص متاح، وسيعود الصوت عند تجديد الحصة.'
+              : 'Google AI Studio voice quota temporarily exhausted. Text is available; voice will resume when quota resets.',
             'rate-limit': isArabic
-              ? 'خدمة Kokoro مشغولة الآن؛ بقي الرد النصي ظاهرًا ويمكنك المحاولة بعد قليل.'
-              : 'Kokoro is busy; the text reply is still available. Please try again shortly.',
-            'unsupported-language': isArabic
-              ? 'صوت Kokoro المتاح في المشروع لا يدعم العربية حاليًا؛ سيبقى الرد النصي ظاهرًا.'
-              : 'The Kokoro voice installed in this project does not support Arabic; the text reply is still available.',
+              ? 'تم استنفاد حصة الصوت في Google AI Studio مؤقتاً. النص متاح، وسيعود الصوت عند تجديد الحصة.'
+              : 'Google AI Studio voice quota temporarily exhausted. Text is available; voice will resume when quota resets.',
             'playback-failed': isArabic ? 'تعذر تشغيل الصوت في المتصفح. انقر على الشاشة لتفعيل الصوت.' : 'Audio playback blocked by browser. Click screen to enable sound.',
             'not-configured': isArabic ? 'خدمة الصوت غير مهيأة بعد.' : 'Voice service not configured.',
             timeout: isArabic ? 'انتهت مهلة توليد الصوت.' : 'Voice generation timed out.',
@@ -295,9 +293,8 @@ export default function App() {
       }, 3500);
     } finally {
       setLoading(false);
-      interactionInFlightRef.current = false;
     }
-  }, [currentChatId, adultConsentGranted]);
+  }, [loading, currentChatId, adultConsentGranted]);
 
   const handleToggleMute = useCallback(() => {
     setVoiceMuted((muted) => !muted);

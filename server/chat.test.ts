@@ -37,20 +37,20 @@ async function run(): Promise<void> {
     assert.equal(emptyMessage.status, 400);
 
     const tooLongMessage = await onRequestPost({
-      request: request({ message: 'x'.repeat(20_001), adultContentConsent: true }, 'chat-test-long'),
+      request: request({ message: 'x'.repeat(2_001), adultContentConsent: true }, 'chat-test-long'),
       env: { GEMINI_API_KEY: 'test-key' },
     });
     assert.equal(tooLongMessage.status, 400);
 
     const validLongMessage = await onRequestPost({
-      request: request({ message: 'x'.repeat(20_000), adultContentConsent: true }, 'chat-test-valid-long'),
+      request: request({ message: 'x'.repeat(2_000), adultContentConsent: true }, 'chat-test-valid-long'),
       env: { GEMINI_API_KEY: 'test-key' },
     });
     assert.equal(validLongMessage.status, 200);
     assert.equal((await validLongMessage.json()).text, 'اختبار استجابة صحيحة');
 
     const oversizedBody = await onRequestPost({
-      request: request({ message: 'x'.repeat(20_000), history: [{ text: 'y'.repeat(120_000) }], adultContentConsent: true }, 'chat-test-body'),
+      request: request({ message: 'x'.repeat(2_000), history: [{ text: 'y'.repeat(120_000) }], adultContentConsent: true }, 'chat-test-body'),
       env: { GEMINI_API_KEY: 'test-key' },
     });
     assert.equal(oversizedBody.status, 413);

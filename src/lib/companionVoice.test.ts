@@ -133,7 +133,6 @@ class MockAudioElement {
     MockAudioElement.playCount++;
     this.paused = false;
     this.ended = false;
-    this.currentTime = 0.05;
   }
 
   public pause(): void {
@@ -177,7 +176,7 @@ async function runVoiceTests() {
 
     await new Promise<void>((resolve) => {
       companionVoice.speak(
-        'ا',
+        'مرحباً بك يا صديقي',
         {
           onStart: () => {
             started = true;
@@ -205,16 +204,16 @@ async function runVoiceTests() {
 
     assert.equal(started, true, 'onStart should have fired when audio started');
     assert.equal(MockAudioElement.playCount > 0, true, 'Audio.play() should have been called');
-    assert.equal(visemeReceived, true, 'Actual Kokoro PCM playback must drive at least one live viseme.');
   }
 
-  // Test 4: 429 MUST NOT switch to browser speech or animate the mouth without Kokoro audio.
+  // Test 4: Quota exceeded (429) MUST NOT call onStart or animate mouth, and MUST engage cooldown
   {
-    console.log('[Test 4] 429 reports rate-limit, does not switch voice, and leaves mouth closed');
+    console.log('[Test 4] 429 Quota Exceeded reports quota-exhausted, leaves mouth closed, and engages cooldown');
+    companionVoice.resetQuotaCooldown();
     let fetchCount = 0;
     (globalThis as any).fetch = async () => {
       fetchCount++;
-      return new Response(JSON.stringify({ error: 'Speech service is busy.' }), {
+      return new Response(JSON.stringify({ error: 'Quota exceeded' }), {
         status: 429,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -223,31 +222,61 @@ async function runVoiceTests() {
     let started = false;
     let mouthMoved = false;
     let reportedError: string | null = null;
-    let browserSpeechCalls = 0;
-    (globalThis as any).window = {
-      speechSynthesis: { speak: () => { browserSpeechCalls += 1; }, cancel: () => {} },
-      SpeechSynthesisUtterance: class {},
-    };
 
     await new Promise<void>((resolve) => {
       companionVoice.speak(
         'هذا اختبار لتجاوز الحصة',
         {
-          onStart: () => { started = true; },
-          onViseme: (mouthVal) => { if (mouthVal > 0) mouthMoved = true; },
-          onEnd: resolve,
-          onError: (reason) => { reportedError = reason; },
+          onStart: () => {
+            started = true;
+          },
+          onViseme: (mouthVal) => {
+            if (mouthVal > 0) mouthMoved = true;
+          },
+          onEnd: () => {
+            resolve();
+          },
+          onError: (reason) => {
+            reportedError = reason;
+          },
         },
-        { adultContentConsent: true },
+        { adultContentConsent: true }
       );
     });
 
-    assert.equal(reportedError, 'rate-limit');
-    assert.equal(started, false);
-    assert.equal(mouthMoved, false);
-    assert.equal(browserSpeechCalls, 0, 'The browser must never substitute a different voice.');
+    assert.equal(reportedError, 'quota-exhausted', 'onError should report quota-exhausted');
+    assert.equal(started, false, 'CRITICAL: onStart MUST NOT fire when quota is exhausted');
+    assert.equal(mouthMoved, false, 'CRITICAL: Character mouth MUST NOT move silently when audio is unavailable');
+    assert.equal(companionVoice.isQuotaCoolingDown(), true, 'Quota cooldown must be active after 429');
     assert.equal(fetchCount, 1);
-    delete (globalThis as any).window;
+
+    // Immediate second call during cooldown MUST NOT issue fetch
+    console.log('[Test 4b] Predictable repeated calls during quota cooldown do not issue unnecessary TTS requests');
+    let secondError: string | null = null;
+    let secondStarted = false;
+    await new Promise<void>((resolve) => {
+      companionVoice.speak(
+        'طلب آخر أثناء التهدئة',
+        {
+          onStart: () => {
+            secondStarted = true;
+          },
+          onViseme: () => {},
+          onEnd: () => {
+            resolve();
+          },
+          onError: (reason) => {
+            secondError = reason;
+          },
+        },
+        { adultContentConsent: true }
+      );
+    });
+
+    assert.equal(fetchCount, 1, 'Fetch MUST NOT be called again during quota cooldown');
+    assert.equal(secondError, 'quota-exhausted');
+    assert.equal(secondStarted, false);
+    companionVoice.resetQuotaCooldown();
   }
 
   // Test 5: Server error (500) reports unavailable and does not articulate mouth

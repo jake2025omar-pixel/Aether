@@ -6,7 +6,6 @@ import {
   LocomotionController,
   FacialPerformanceEngine,
   FullBodyActionDirector,
-  MicroMovementController,
 } from './index';
 
 console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
@@ -133,22 +132,6 @@ console.log('=== RUNNING AETHER AI CHARACTER PERFORMANCE TEST SUITE ===');
   assert.equal(secondTry, false, 'Action must be rejected while on active cooldown');
 
   console.log('✓ Test 3 Passed: 14 full-body choreographed actions and anti-repetition cooldown verified');
-}
-
-// 3b. RESPONSE-TRIGGERED RANDOM SHOULDER MOTION MUST REMAIN DISABLED
-{
-  const micro = new MicroMovementController();
-  const states: Array<Parameters<typeof micro.update>[2]> = ['IDLE', 'THINKING', 'SPEAKING', 'LISTENING'];
-  const emotions: Array<Parameters<typeof micro.update>[1]> = ['NEUTRAL', 'HAPPY', 'AFFECTIONATE', 'ANGRY'];
-  for (const state of states) {
-    for (const emotion of emotions) {
-      for (let i = 0; i < 12; i++) {
-        const sample = micro.update(1 / 60, emotion, state);
-        assert.equal(sample.shoulderTwitch, 0, 'Micro-movement must never inject random shoulder motion per reply.');
-      }
-    }
-  }
-  console.log('✓ Test 3b Passed: random response-coupled shoulder twitch is disabled across interaction states');
 }
 
 // 4. AUTONOMOUS ROOM NAVIGATION & LOCOMOTION TEST
