@@ -1,5 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { WardrobeView } from './components/WardrobeView';
+import React, { Suspense, lazy, useState, useCallback, useRef } from 'react';
 import aetherCatalog from './data/aetherCatalog.json';
 
 type ChatMessage = {
@@ -8,13 +7,9 @@ type ChatMessage = {
   text: string;
   emotion?: CompanionEmotion;
 };
-import { CompanionEnvironment } from './components/CompanionEnvironment';
 import { InteractionBar } from './components/InteractionBar';
-import { AboutView } from './components/AboutView';
-import { SupportView } from './components/SupportView';
 import { Navigation, NavDestination } from './components/ui/Navigation';
 import { AuthControl } from './components/AuthControl';
-import { DeveloperInspectionModal } from './components/dev/DeveloperInspectionModal';
 import { AdultConsentGate } from './components/AdultConsentGate';
 import { Terminal } from 'lucide-react';
 import {
@@ -25,6 +20,20 @@ import {
 } from './lib/companionPersonality';
 import { companionVoice } from './lib/companionVoice';
 import { VisemeFrame } from './lib/phonemeLipSync';
+
+// Keep the initial consent shell small. Heavy 3D and secondary views load only
+// when the corresponding view is actually needed.
+const CompanionEnvironment = lazy(() => import('./components/CompanionEnvironment').then(({ CompanionEnvironment: component }) => ({ default: component })));
+const WardrobeView = lazy(() => import('./components/WardrobeView').then(({ WardrobeView: component }) => ({ default: component })));
+const AboutView = lazy(() => import('./components/AboutView').then(({ AboutView: component }) => ({ default: component })));
+const SupportView = lazy(() => import('./components/SupportView').then(({ SupportView: component }) => ({ default: component })));
+const DeveloperInspectionModal = lazy(() => import('./components/dev/DeveloperInspectionModal').then(({ DeveloperInspectionModal: component }) => ({ default: component })));
+
+const ChunkLoadingFallback = () => (
+  <div className="absolute inset-0 flex items-center justify-center bg-[#06030B]/80 text-xs text-white/60 font-mono">
+    جاري تحميل مساحة Aether…
+  </div>
+);
 
 const pathToView = (path: string): NavDestination => {
   const clean = path.replace(/\/$/, '') || '/';
@@ -426,15 +435,17 @@ export default function App() {
       {/* 0. Full-Screen 3D Room & Companion Fixed Canvas Backdrop */}
       {activeView === 'home' && (
         <div className="fixed inset-0 z-0 pointer-events-auto">
-          <CompanionEnvironment
-            companionState={companionState}
-            companionEmotion={companionEmotion}
-            visemeMouthOpen={visemeMouthOpen}
-            visemeFrame={visemeFrame}
-            companionModelUrl={primaryCharacterUrl}
-            roomModelUrl={primaryEnvironmentUrl}
-            currentSpeechText={currentSpeechText}
-          />
+          <Suspense fallback={<ChunkLoadingFallback />}>
+            <CompanionEnvironment
+              companionState={companionState}
+              companionEmotion={companionEmotion}
+              visemeMouthOpen={visemeMouthOpen}
+              visemeFrame={visemeFrame}
+              companionModelUrl={primaryCharacterUrl}
+              roomModelUrl={primaryEnvironmentUrl}
+              currentSpeechText={currentSpeechText}
+            />
+          </Suspense>
         </div>
       )}
 
@@ -502,18 +513,24 @@ export default function App() {
 
         {/* Wardrobe is intentionally separate from the room; chat remains voice-first and has no duplicate page. */}
         {activeView === 'wardrobe' && (
-          <WardrobeView onBack={() => navigateTo('home')} />
+          <Suspense fallback={<ChunkLoadingFallback />}>
+            <WardrobeView onBack={() => navigateTo('home')} />
+          </Suspense>
         )}
 
         {activeView === 'about' && (
           <div className="flex-1 overflow-y-auto">
-            <AboutView onBack={() => navigateTo('home')} />
+            <Suspense fallback={<ChunkLoadingFallback />}>
+              <AboutView onBack={() => navigateTo('home')} />
+            </Suspense>
           </div>
         )}
 
         {activeView === 'support' && (
           <div className="flex-1 overflow-y-auto">
-            <SupportView onBack={() => navigateTo('home')} />
+            <Suspense fallback={<ChunkLoadingFallback />}>
+              <SupportView onBack={() => navigateTo('home')} />
+            </Suspense>
           </div>
         )}
       </main>
@@ -531,10 +548,12 @@ export default function App() {
       </div>
 
       {/* 4. ISOLATED DEVELOPER MODE INSPECTION MODAL (Hidden from end users) */}
-      <DeveloperInspectionModal
-        isOpen={isDevModalOpen}
-        onClose={() => setIsDevModalOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <DeveloperInspectionModal
+          isOpen={isDevModalOpen}
+          onClose={() => setIsDevModalOpen(false)}
+        />
+      </Suspense>
     </div>
   );
 }

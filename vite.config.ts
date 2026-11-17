@@ -9,6 +9,25 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    build: {
+      // Keep the initial shell small while preserving the full 3D runtime in
+      // a cacheable chunk that is loaded only after the consent gate.
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('three') || id.includes('@pixiv/three-vrm')) return 'three-runtime';
+            if (id.includes('firebase')) return 'firebase-runtime';
+            if (id.includes('lucide-react')) return 'icons';
+            if (id.includes('motion')) return 'motion-runtime';
+            if (id.includes('/react/') || id.includes('/react-dom/')) return 'react-runtime';
+            return 'vendor';
+          },
+        },
+      },
+      // The remaining 3D runtime is intentionally isolated in its own chunk.
+      chunkSizeWarningLimit: 1200,
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

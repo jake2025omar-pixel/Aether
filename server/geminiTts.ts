@@ -22,10 +22,12 @@ function getCacheFilePath(key: string): string {
 }
 
 const CANDIDATE_TTS_MODELS = [
+  // Stable model confirmed available for this project key; try it before
+  // newer candidates that can consume the shared fallback timeout.
+  'gemini-2.5-flash-preview-tts',
   'gemini-3.1-flash-tts-preview',
   'gemini-3.8-flash-lite-tts',
   'gemini-3.8-flash-tts',
-  'gemini-2.5-flash-preview-tts',
 ];
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_TEXT_LENGTH = 4_000;
