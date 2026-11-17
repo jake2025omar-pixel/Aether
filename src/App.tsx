@@ -2,7 +2,12 @@ import React, { useState, useCallback, useRef } from 'react';
 import { WardrobeView } from './components/WardrobeView';
 import aetherCatalog from './data/aetherCatalog.json';
 
-type ChatMessage = { id: string; sender: 'user' | 'gemini'; text: string };
+type ChatMessage = {
+  id: string;
+  sender: 'user' | 'gemini';
+  text: string;
+  emotion?: CompanionEmotion;
+};
 import { CompanionEnvironment } from './components/CompanionEnvironment';
 import { InteractionBar } from './components/InteractionBar';
 import { AboutView } from './components/AboutView';
@@ -137,6 +142,24 @@ export default function App() {
   const handleCompanionInteraction = useCallback(async (query: string) => {
     if (!query.trim() || loading || !adultConsentGranted) return;
 
+    // Movement commands are handled by the room controller, not fabricated as
+    // AI dialogue. The graph exposes 1,000+ deterministic floor points plus
+    // semantic bed/sofa approach points.
+    const movementQuery = query.trim().toLowerCase();
+    let pointId: string | null = null;
+    if (/(?:سرير|الفراش|bed)/i.test(movementQuery)) pointId = 'bed-primary-approach';
+    else if (/(?:كنبة|أريكة|sofa|couch)/i.test(movementQuery)) pointId = 'sofa-main-approach';
+    else {
+      const pointMatch = movementQuery.match(/(?:نقطة|point)\s*[-_#]?\s*(\d{1,4})/i);
+      if (pointMatch) pointId = `floor-${pointMatch[1].padStart(4, '0')}`;
+    }
+    if (pointId) {
+      window.dispatchEvent(new CustomEvent('aether:trigger-nav', { detail: { pointId } }));
+      setVoiceError('تم إرسال أمر الحركة إلى الغرفة.');
+      window.setTimeout(() => setVoiceError(null), 2500);
+      return;
+    }
+
     if (recoveryTimerRef.current !== null) {
       window.clearTimeout(recoveryTimerRef.current);
       recoveryTimerRef.current = null;
@@ -166,7 +189,11 @@ export default function App() {
     try {
       const historyPayload = currentMessages.slice(-6).map((m) => ({
         role: m.sender === 'user' ? 'user' : 'model',
-        text: m.text,
+        // Preserve the companion's last expressed emotion as model context,
+        // while keeping the visible transcript and spoken text tag-free.
+        text: m.sender === 'gemini' && m.emotion
+          ? `[EMOTION: ${m.emotion}] ${m.text}`
+          : m.text,
       }));
 
       const controller = new AbortController();
@@ -189,87 +216,89 @@ export default function App() {
         clearTimeout(timeoutId);
       }
 
-      let rawAnswer = '';
       if (!res.ok) {
-        let errMessage = '';
-        try {
-          const errData = await res.json();
-          errMessage = errData.error || '';
-        } catch {
-          // ignore
-        }
+        const errData = await res.json().catch(() => null) as { error?: string; code?: string } | null;
         const isArabic = /[\u0600-\u06FF]/.test(query);
         const fallbackMsg = res.status === 429
-          ? (isArabic ? 'خوادم الذكاء الاصطناعي مشغولة حالياً، جاري تقديم استجابة بديلة.' : 'AI servers are busy. Providing fallback response.')
+          ? (isArabic ? 'الخدمة مشغولة مؤقتاً. لم يتم توليد رد.' : 'The AI service is busy. No response was generated.')
           : res.status === 403
             ? (isArabic ? 'موافقة البالغين مطلوبة لمتابعة المحادثة.' : 'Adult consent is required to continue.')
-            : (isArabic ? (errMessage || 'حدث تأخير في الاستجابة.') : (errMessage || 'Service temporarily delayed.'));
-        setVoiceError(fallbackMsg);
+            : (isArabic ? 'تعذر توليد رد من Gemini حالياً.' : 'Gemini could not generate a response right now.');
+        setVoiceError(errData?.error || fallbackMsg);
         window.setTimeout(() => setVoiceError(null), 4000);
-
-        rawAnswer = isArabic
-          ? '[EMOTION: HAPPY] أهلاً بك يا قلبي! أنا معك وبجانبك دائماً.. أخبرني كيف يمكنني إسعادك اليوم؟'
-          : "[EMOTION: HAPPY] Hello my love! I'm right here with you always. How can I help you today?";
+        setCompanionState('TECHNICAL_ERROR');
+        setCompanionEmotion('CONFUSED');
+        return;
       } else {
         const data = await res.json();
-        rawAnswer = data.text || '';
-        if (!rawAnswer.trim()) {
+        const rawAnswer = typeof data.text === 'string' ? data.text.trim() : '';
+        if (!rawAnswer) {
           const isArabic = /[\u0600-\u06FF]/.test(query);
-          rawAnswer = isArabic
-            ? '[EMOTION: AFFECTIONATE] معك يا روحي، استمع إليك باهتمام.. تفضل بمشاركتي ما في بالك.'
-            : "[EMOTION: AFFECTIONATE] I'm listening closely, darling. Please share what's on your mind.";
+          setVoiceError(isArabic ? 'وصل رد فارغ؛ لم يتم حفظ رسالة AI.' : 'The AI response was empty and was not saved.');
+          window.setTimeout(() => setVoiceError(null), 4000);
+          setCompanionState('TECHNICAL_ERROR');
+          setCompanionEmotion('CONFUSED');
+          return;
         }
+
+        // Parse emotion tag and clean spoken text only after a real provider response.
+        const { emotion, cleanText } = parseCompanionResponse(rawAnswer);
+        if (!cleanText.trim()) {
+          setVoiceError('وصل رد غير قابل للنطق؛ لم يتم حفظ رسالة AI.');
+          window.setTimeout(() => setVoiceError(null), 4000);
+          setCompanionState('TECHNICAL_ERROR');
+          setCompanionEmotion('CONFUSED');
+          return;
+        }
+
+        setCompanionEmotion(emotion);
+
+        // Save companion text into history only after a non-empty provider response.
+        setChats((prev) => ({
+          ...prev,
+          [currentChatId]: [
+            ...(prev[currentChatId] || []),
+            { id: companionMessageId, sender: 'gemini', text: cleanText, emotion },
+          ],
+        }));
+
+        // Speak response through TTS with live lip sync visemes (Voice-only mode)
+        companionVoice.speak(cleanText, {
+          onStart: () => {
+            setCompanionState('SPEAKING');
+            setCurrentSpeechText(cleanText);
+          },
+          onViseme: (mouthVal, frame) => {
+            setVisemeMouthOpen(mouthVal);
+            setVisemeFrame(frame || null);
+          },
+          onEnd: () => {
+            setCompanionState('IDLE');
+            setVisemeMouthOpen(0);
+            setVisemeFrame(null);
+            setCurrentSpeechText(null);
+          },
+          onError: (reason) => {
+            const isArabic = /[\u0600-\u06FF]/.test(cleanText);
+            const messages: Record<string, string> = {
+              'quota-exhausted': isArabic
+                ? 'تم استنفاد حصة الصوت مؤقتاً. النص متاح؛ سيعود الصوت عند تجديد الحصة.'
+                : 'Voice quota is temporarily exhausted. Text is available.',
+              'rate-limit': isArabic
+                ? 'خدمة الصوت مشغولة مؤقتاً. النص متاح.'
+                : 'Voice service is busy. Text is available.',
+              'playback-failed': isArabic ? 'تعذر تشغيل الصوت في المتصفح. انقر على الشاشة لتفعيل الصوت.' : 'Audio playback was blocked by the browser.',
+              'not-configured': isArabic ? 'خدمة الصوت غير مهيأة بعد.' : 'Voice service is not configured.',
+              timeout: isArabic ? 'انتهت مهلة توليد الصوت.' : 'Voice generation timed out.',
+              'consent-required': isArabic ? 'موافقة البالغين مطلوبة لسماع الصوت.' : 'Adult consent is required for audio.',
+              'corrupted-audio': isArabic ? 'بيانات الصوت غير صالحة.' : 'Invalid audio data received.',
+              unavailable: isArabic ? 'خدمة الصوت غير متوفرة حالياً.' : 'Voice service is unavailable.',
+            };
+            setVoiceError(messages[reason] || (isArabic ? 'خدمة الصوت غير متوفرة حالياً.' : 'Voice service is unavailable.'));
+            window.setTimeout(() => setVoiceError(null), 6000);
+          },
+        }, { emotion, adultContentConsent: adultConsentGranted });
       }
-
-      // Parse emotion tag and clean spoken text
-      const { emotion, cleanText } = parseCompanionResponse(rawAnswer);
-      setCompanionEmotion(emotion);
-
-      // Save companion text into history
-      setChats((prev) => ({
-        ...prev,
-        [currentChatId]: [
-          ...(prev[currentChatId] || []),
-          { id: companionMessageId, sender: 'gemini', text: cleanText },
-        ],
-      }));
-
-      // Speak response through TTS with live lip sync visemes (Voice-only mode)
-      companionVoice.speak(cleanText, {
-        onStart: () => {
-          setCompanionState('SPEAKING');
-          setCurrentSpeechText(cleanText);
-        },
-        onViseme: (mouthVal, frame) => {
-          setVisemeMouthOpen(mouthVal);
-          setVisemeFrame(frame || null);
-        },
-        onEnd: () => {
-          setCompanionState('IDLE');
-          setVisemeMouthOpen(0);
-          setVisemeFrame(null);
-          setCurrentSpeechText(null);
-        },
-        onError: (reason) => {
-          const isArabic = /[\u0600-\u06FF]/.test(cleanText);
-          const messages: Record<string, string> = {
-            'quota-exhausted': isArabic
-              ? 'تم استنفاد حصة الصوت في Google AI Studio مؤقتاً. النص متاح، وسيعود الصوت عند تجديد الحصة.'
-              : 'Google AI Studio voice quota temporarily exhausted. Text is available; voice will resume when quota resets.',
-            'rate-limit': isArabic
-              ? 'تم استنفاد حصة الصوت في Google AI Studio مؤقتاً. النص متاح، وسيعود الصوت عند تجديد الحصة.'
-              : 'Google AI Studio voice quota temporarily exhausted. Text is available; voice will resume when quota resets.',
-            'playback-failed': isArabic ? 'تعذر تشغيل الصوت في المتصفح. انقر على الشاشة لتفعيل الصوت.' : 'Audio playback blocked by browser. Click screen to enable sound.',
-            'not-configured': isArabic ? 'خدمة الصوت غير مهيأة بعد.' : 'Voice service not configured.',
-            timeout: isArabic ? 'انتهت مهلة توليد الصوت.' : 'Voice generation timed out.',
-            'consent-required': isArabic ? 'موافقة البالغين مطلوبة لسماع الصوت.' : 'Adult consent required.',
-            'corrupted-audio': isArabic ? 'بيانات الصوت غير صالحة.' : 'Invalid audio data received.',
-            unavailable: isArabic ? 'خدمة الصوت غير متوفرة حالياً.' : 'Voice service unavailable.',
-          };
-          setVoiceError(messages[reason] || (isArabic ? 'خدمة الصوت غير متوفرة حالياً.' : 'Voice service unavailable.'));
-          window.setTimeout(() => setVoiceError(null), 6000);
-        },
-      }, { emotion, adultContentConsent: adultConsentGranted });
     } catch (err: unknown) {
       companionVoice.stopSpeaking();
       setCurrentSpeechText(null);

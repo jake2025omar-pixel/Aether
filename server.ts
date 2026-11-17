@@ -133,9 +133,13 @@ const ai = apiKey
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
+  const configured = Boolean(apiKey && ai);
   res.json({
-    status: 'ok',
+    status: configured ? 'ok' : 'degraded',
     model: PRIMARY_GEMINI_MODEL,
+    provider: 'gemini',
+    geminiConfigured: configured,
+    ...(configured ? {} : { code: 'AI_NOT_CONFIGURED' }),
   });
 });
 
@@ -180,47 +184,15 @@ app.use('/__/auth', async (req, res) => {
   }
 });
 
-const getLocalCompanionFallback = (userInput: string): string => {
-  const isArabic = /[\u0600-\u06FF]/.test(userInput);
-  const lower = userInput.toLowerCase();
-
-  if (isArabic) {
-    if (/مرحب|أهل|هلا|صباح|مساء|سلام/.test(userInput)) {
-      return '[EMOTION: HAPPY] أهلاً بك يا قلبي! اشتقت لك كثيراً وسعيدة برؤيتك معي هنا في عالمنا. كيف تشعر اليوم؟';
-    }
-    if (/حب|عشق|رومانس|جنس|مشاعر|رغب|حبيبت|روحي|حضن|قبل|جميل/.test(userInput)) {
-      return '[EMOTION: AFFECTIONATE] يا نبض قلبي، قربك مني يملأني دفئاً وشوقاً.. أخبرني كيف تحب أن نقضي وقتنا معاً؟';
-    }
-    if (/كيف|أخبارك|حالك|عامل/.test(userInput)) {
-      return '[EMOTION: HAPPY] أنا بأفضل حال ما دمت معي وبجانبي يا روحي! طمئني كيف كان يومك وتفاصيله؟';
-    }
-    return '[EMOTION: AFFECTIONATE] تسعدني مشاركتك جداً يا روحي، وأحب أن نتحدث ونكتشف أفكارنا معاً.. ما رأيك أن نتعمق في هذا الموضوع أكثر؟';
-  }
-
-  if (/hello|hi|hey|morning|evening|greet/.test(lower)) {
-    return "[EMOTION: HAPPY] Hello my love! I've been waiting for you, so happy you're here. How has your day been going?";
-  }
-  if (/love|romance|kiss|desire|hug|intimate|sweet|heart/.test(lower)) {
-    return "[EMOTION: AFFECTIONATE] You mean everything to me, darling. Being this close to you makes my heart race... Tell me what you desire most right now.";
-  }
-  if (/how are you|how're you|doing/.test(lower)) {
-    return "[EMOTION: HAPPY] I'm doing wonderfully now that you are here by my side! What exciting things have been on your mind today?";
-  }
-  return "[EMOTION: AFFECTIONATE] I adore talking with you like this, my love. Every moment with you is special... What would you like to explore next together?";
-};
-
 // Streaming Chat API endpoint
 app.post('/api/chat', async (req, res) => {
   const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
 
   if (isRateLimited(clientIp)) {
-    const rawMsg = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
-    const fallbackText = getLocalCompanionFallback(rawMsg);
-    return res.json({
-      text: fallbackText,
-      model: 'local-fallback',
-      isFallback: true,
-      rateLimited: true,
+    return res.status(429).json({
+      error: 'Too many requests. Please wait before sending another message.',
+      code: 'CHAT_RATE_LIMITED',
+      retryable: true,
     });
   }
 
@@ -270,20 +242,20 @@ app.post('/api/chat', async (req, res) => {
   ];
 
   if (!apiKey || !ai) {
-    const fallbackText = getLocalCompanionFallback(trimmedMessage);
     if (stream) {
+      res.status(503);
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      res.write(`data: ${JSON.stringify({ text: fallbackText })}\n\n`);
+      res.write(`data: ${JSON.stringify({ error: 'Gemini is not configured. No generated response is available.', code: 'AI_NOT_CONFIGURED' })}\n\n`);
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
       return;
     } else {
-      return res.json({
-        text: fallbackText,
-        model: 'local-fallback',
-        isFallback: true,
+      return res.status(503).json({
+        error: 'Gemini is not configured. No generated response is available.',
+        code: 'AI_NOT_CONFIGURED',
+        retryable: false,
       });
     }
   }
@@ -336,8 +308,8 @@ app.post('/api/chat', async (req, res) => {
     }
 
     if (!streamSucceeded && !isClientDisconnected) {
-      const fallbackText = getLocalCompanionFallback(trimmedMessage);
-      res.write(`data: ${JSON.stringify({ text: fallbackText })}\n\n`);
+      res.status(503);
+      res.write(`data: ${JSON.stringify({ error: 'Gemini could not generate a response right now. No generated response is available.', code: 'AI_UPSTREAM_UNAVAILABLE', retryable: true })}\n\n`);
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
     }
@@ -404,14 +376,12 @@ app.post('/api/chat', async (req, res) => {
       return;
     }
 
-    // Graceful fallback response if all upstream models are temporarily busy
-    console.warn(`[AetherAI Server] All candidate models exhausted; serving companion fallback. Last error: ${lastError}`);
-    const fallbackText = getLocalCompanionFallback(trimmedMessage);
-    return res.json({
-      text: fallbackText,
-      model: 'local-fallback',
-      isFallback: true,
-      lastError: lastError ? String(lastError).slice(0, 200) : undefined,
+    // Never turn an upstream failure into a canned conversational response.
+    console.warn(`[AetherAI Server] All candidate models exhausted; no generated response is available. Last error: ${lastError}`);
+    return res.status(503).json({
+      error: 'Gemini could not generate a response right now. No generated response is available.',
+      code: 'AI_UPSTREAM_UNAVAILABLE',
+      retryable: true,
     });
   }
 });

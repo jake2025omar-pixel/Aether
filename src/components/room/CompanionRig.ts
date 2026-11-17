@@ -11,6 +11,8 @@ import {
 } from '../../lib/behavior';
 import { VisemeFrame } from '../../lib/phonemeLipSync';
 
+export type CompanionRestPose = 'STANDING' | 'SITTING' | 'LYING';
+
 const FINGER_BONE_NAMES = [
   'thumbMetacarpal',
   'thumbProximal',
@@ -117,6 +119,9 @@ export class CompanionRig {
   // States
   private currentEmotion: CompanionEmotion = 'NEUTRAL';
   private currentState: CompanionState = 'IDLE';
+  private restPose: CompanionRestPose = 'STANDING';
+  private restPoseSurfaceY = 0;
+  private restPoseYaw: number | null = null;
   private motionEnabled = true;
   private targetViseme: number = 0; // 0 to 1
   private displayedViseme: number = 0;
@@ -433,7 +438,18 @@ export class CompanionRig {
   }
 
   public navigateTo(target: THREE.Vector3, faceYaw?: number): void {
+    this.setRestPose('STANDING');
     this.performanceDirector.navigateTo(target, faceYaw);
+  }
+
+  public setRestPose(pose: CompanionRestPose, surfaceY = 0, faceYaw?: number): void {
+    this.restPose = pose;
+    this.restPoseSurfaceY = Math.max(0, surfaceY);
+    this.restPoseYaw = typeof faceYaw === 'number' ? faceYaw : this.restPoseYaw;
+    if (pose === 'STANDING') {
+      this.restPoseSurfaceY = 0;
+      this.restPoseYaw = null;
+    }
   }
 
   public setAutonomousNavigation(enabled: boolean): void {
@@ -508,9 +524,16 @@ export class CompanionRig {
     // Apply locomotion to the visible rig. The controller owns navigation,
     // while this root owns the rendered world transform.
     this.root.position.x = frame.locomotion.worldPosition.x;
-    this.root.position.y = 0;
+    const targetPoseY = this.restPose === 'LYING' ? this.restPoseSurfaceY : 0;
+    this.root.position.y = THREE.MathUtils.damp(this.root.position.y, targetPoseY, 8, frameDelta);
     this.root.position.z = frame.locomotion.worldPosition.z;
     this.root.rotation.y = frame.locomotion.bodyYaw;
+    if (this.restPoseYaw !== null) {
+      const yawDelta = THREE.MathUtils.euclideanModulo(this.restPoseYaw - this.root.rotation.y + Math.PI, Math.PI * 2) - Math.PI;
+      this.root.rotation.y += THREE.MathUtils.damp(0, yawDelta, 7, frameDelta);
+    }
+    const targetRootTilt = this.restPose === 'LYING' ? -Math.PI / 2 : 0;
+    this.root.rotation.x = THREE.MathUtils.damp(this.root.rotation.x, targetRootTilt, 7, frameDelta);
 
     // 4. VRM Character Kinematics & Full-Body Performance
     if (this.isVrm && this.vrmInstance) {
@@ -655,33 +678,29 @@ export class CompanionRig {
       // accumulates or changes the VRM asset itself.
       const actionArm = frame.action.offsets;
       const armActionWeight = actionWeight * motion;
-      const isConversing = this.currentState === 'SPEAKING' || this.displayedViseme > 0.05;
-      const speechBeat = Math.sin(elapsedTime * 2.05);
       const idleBreath = Math.sin(elapsedTime * 0.62);
-      const leftLift = (isConversing ? Math.max(0, speechBeat) * 0.045 : idleBreath * 0.012) * motion;
-      const rightLift = (isConversing ? Math.max(0, Math.sin(elapsedTime * 2.05 + 1.6)) * 0.065 : Math.sin(elapsedTime * 0.62 + 1.4) * 0.014) * motion;
 
       if (this.vrmLeftUpperArm) {
         const target = this.vrmLeftUpperArm.rotation;
         target.x = THREE.MathUtils.damp(target.x, this.leftArmRest.x + THREE.MathUtils.clamp(actionArm.leftUpperArm.x * armActionWeight, -0.28, 0.28) + idleBreath * 0.006 * motion, 5.0, frameDelta);
         target.y = THREE.MathUtils.damp(target.y, this.leftArmRest.y + THREE.MathUtils.clamp(actionArm.leftUpperArm.y * armActionWeight, -0.28, 0.28), 5.0, frameDelta);
-        target.z = THREE.MathUtils.damp(target.z, this.leftArmRest.z + THREE.MathUtils.clamp(actionArm.leftUpperArm.z * armActionWeight, -0.32, 0.32) + leftLift, 5.0, frameDelta);
+        target.z = THREE.MathUtils.damp(target.z, this.leftArmRest.z + THREE.MathUtils.clamp(actionArm.leftUpperArm.z * armActionWeight, -0.32, 0.32) + idleBreath * 0.012 * motion, 5.0, frameDelta);
       }
       if (this.vrmRightUpperArm) {
         const target = this.vrmRightUpperArm.rotation;
-        target.x = THREE.MathUtils.damp(target.x, this.rightArmRest.x + THREE.MathUtils.clamp(actionArm.rightUpperArm.x * armActionWeight, -0.28, 0.28) + speechBeat * 0.012 * motion, 5.0, frameDelta);
+        target.x = THREE.MathUtils.damp(target.x, this.rightArmRest.x + THREE.MathUtils.clamp(actionArm.rightUpperArm.x * armActionWeight, -0.28, 0.28) + idleBreath * 0.006 * motion, 5.0, frameDelta);
         target.y = THREE.MathUtils.damp(target.y, this.rightArmRest.y + THREE.MathUtils.clamp(actionArm.rightUpperArm.y * armActionWeight, -0.28, 0.28), 5.0, frameDelta);
-        target.z = THREE.MathUtils.damp(target.z, this.rightArmRest.z + THREE.MathUtils.clamp(actionArm.rightUpperArm.z * armActionWeight, -0.32, 0.32) - rightLift, 5.0, frameDelta);
+        target.z = THREE.MathUtils.damp(target.z, this.rightArmRest.z + THREE.MathUtils.clamp(actionArm.rightUpperArm.z * armActionWeight, -0.32, 0.32) - idleBreath * 0.014 * motion, 5.0, frameDelta);
       }
       if (this.vrmLeftLowerArm) {
         const target = this.vrmLeftLowerArm.rotation;
-        target.x = THREE.MathUtils.damp(target.x, this.leftLowerArmRest.x + THREE.MathUtils.clamp(actionArm.leftLowerArm.x * armActionWeight, -0.35, 0.35) + (isConversing ? Math.sin(elapsedTime * 2.05 + 0.8) * 0.025 * motion : 0), 5.5, frameDelta);
+        target.x = THREE.MathUtils.damp(target.x, this.leftLowerArmRest.x + THREE.MathUtils.clamp(actionArm.leftLowerArm.x * armActionWeight, -0.35, 0.35), 5.5, frameDelta);
         target.y = THREE.MathUtils.damp(target.y, this.leftLowerArmRest.y + THREE.MathUtils.clamp(actionArm.leftLowerArm.y * armActionWeight, -0.3, 0.3), 5.5, frameDelta);
         target.z = THREE.MathUtils.damp(target.z, this.leftLowerArmRest.z + THREE.MathUtils.clamp(actionArm.leftLowerArm.z * armActionWeight, -0.3, 0.3), 5.5, frameDelta);
       }
       if (this.vrmRightLowerArm) {
         const target = this.vrmRightLowerArm.rotation;
-        target.x = THREE.MathUtils.damp(target.x, this.rightLowerArmRest.x + THREE.MathUtils.clamp(actionArm.rightLowerArm.x * armActionWeight, -0.35, 0.35) + (isConversing ? Math.sin(elapsedTime * 2.05) * 0.035 * motion : 0), 5.5, frameDelta);
+        target.x = THREE.MathUtils.damp(target.x, this.rightLowerArmRest.x + THREE.MathUtils.clamp(actionArm.rightLowerArm.x * armActionWeight, -0.35, 0.35), 5.5, frameDelta);
         target.y = THREE.MathUtils.damp(target.y, this.rightLowerArmRest.y + THREE.MathUtils.clamp(actionArm.rightLowerArm.y * armActionWeight, -0.3, 0.3), 5.5, frameDelta);
         target.z = THREE.MathUtils.damp(target.z, this.rightLowerArmRest.z + THREE.MathUtils.clamp(actionArm.rightLowerArm.z * armActionWeight, -0.3, 0.3), 5.5, frameDelta);
       }
@@ -726,7 +745,8 @@ export class CompanionRig {
       if (this.vrmLeftUpperLeg) {
         this.vrmLeftUpperLeg.rotation.x = THREE.MathUtils.damp(
           this.vrmLeftUpperLeg.rotation.x,
-          this.leftUpperLegRest.x + lLeg.upperLeg.x * motion,
+          this.leftUpperLegRest.x + lLeg.upperLeg.x * motion
+            + (this.restPose === 'SITTING' ? -0.92 : 0),
           7.0,
           frameDelta
         );
@@ -734,7 +754,8 @@ export class CompanionRig {
       if (this.vrmLeftLowerLeg) {
         this.vrmLeftLowerLeg.rotation.x = THREE.MathUtils.damp(
           this.vrmLeftLowerLeg.rotation.x,
-          this.leftLowerLegRest.x + lLeg.lowerLeg.x * motion,
+          this.leftLowerLegRest.x + lLeg.lowerLeg.x * motion
+            + (this.restPose === 'SITTING' ? 1.42 : 0),
           7.0,
           frameDelta
         );
@@ -754,7 +775,8 @@ export class CompanionRig {
       if (this.vrmRightUpperLeg) {
         this.vrmRightUpperLeg.rotation.x = THREE.MathUtils.damp(
           this.vrmRightUpperLeg.rotation.x,
-          this.rightUpperLegRest.x + rLeg.upperLeg.x * motion,
+          this.rightUpperLegRest.x + rLeg.upperLeg.x * motion
+            + (this.restPose === 'SITTING' ? -0.92 : 0),
           7.0,
           frameDelta
         );
@@ -762,7 +784,8 @@ export class CompanionRig {
       if (this.vrmRightLowerLeg) {
         this.vrmRightLowerLeg.rotation.x = THREE.MathUtils.damp(
           this.vrmRightLowerLeg.rotation.x,
-          this.rightLowerLegRest.x + rLeg.lowerLeg.x * motion,
+          this.rightLowerLegRest.x + rLeg.lowerLeg.x * motion
+            + (this.restPose === 'SITTING' ? 1.42 : 0),
           7.0,
           frameDelta
         );

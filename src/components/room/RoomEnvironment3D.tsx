@@ -8,6 +8,7 @@ import { attachNeonWorld3TimeOfDay } from './timeOfDay';
 import { CompanionState, CompanionEmotion, COMPANION_DISPLAY_NAME } from '../../lib/companionPersonality';
 import { dispose3DResource, loadWeb3DAsset } from '@/Aether/3D/Preview/AssetPreviewLoader';
 import { FurnitureLayoutEngine } from '../../lib/environment/FurnitureLayoutEngine';
+import { buildRoomNavigationGraph, RoomNavigationGraph, RoomNavigationPoint } from '../../lib/environment/RoomNavigationGraph';
 import { Mic, Volume2, Sparkles, Brain } from 'lucide-react';
 import { VisemeFrame } from '../../lib/phonemeLipSync';
 
@@ -104,6 +105,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
   const motionEnabledRef = useRef(true);
   const targetLookPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 1.25, 2.7));
   const interactionClickRef = useRef<((clientX: number, clientY: number) => boolean) | null>(null);
+  const navigationGraphRef = useRef<RoomNavigationGraph | null>(null);
+  const restPoseRequestRef = useRef<{ pose: 'SITTING' | 'LYING'; position: THREE.Vector3; surfaceY: number; faceYaw: number } | null>(null);
   const hasDraggedRef = useRef(false);
 
   stateRef.current = companionState;
@@ -168,8 +171,28 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     };
     const handleNav = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.position && companionRigRef.current) {
-        companionRigRef.current.navigateTo(detail.position, detail.faceYaw);
+      if (companionRigRef.current) {
+        const graphPoint = typeof detail?.pointId === 'string'
+          ? navigationGraphRef.current?.points.find((point) => point.id === detail.pointId)
+          : null;
+        if (graphPoint) {
+          const finalPosePoint = graphPoint.kind === 'BED_APPROACH'
+            ? navigationGraphRef.current?.interactionPoints.find((point) => point.kind === 'BED_LIE')
+            : graphPoint.kind === 'SOFA_APPROACH'
+              ? navigationGraphRef.current?.interactionPoints.find((point) => point.kind === 'SOFA_SIT')
+              : null;
+          restPoseRequestRef.current = finalPosePoint
+            ? {
+              pose: finalPosePoint.kind === 'BED_LIE' ? 'LYING' : 'SITTING',
+              position: graphPoint.position.clone().setY(0),
+              surfaceY: finalPosePoint.position.y,
+              faceYaw: finalPosePoint.faceDirection ?? graphPoint.faceDirection ?? 0,
+            }
+            : null;
+          companionRigRef.current.navigateTo(graphPoint.position, graphPoint.faceDirection);
+        } else if (detail?.position) {
+          companionRigRef.current.navigateTo(detail.position, detail.faceYaw);
+        }
       }
     };
     const handleToggleRoam = (e: Event) => {
@@ -289,6 +312,7 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
 
     // 5. Boundless, Immersive Room Environment (No box walls, no harsh lines or borders)
     const roomGroup = new THREE.Group();
+    let navigationFloor: THREE.Mesh | null = null;
 
     // Large seamless floor: perfectly matches the fog color (0x06030b), disappearing into the horizon
     const floorGeo = new THREE.PlaneGeometry(120, 120);
@@ -306,6 +330,18 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     // Clean, unobstructed visual space (particles removed per user specification)
     scene.add(roomGroup);
 
+    // Logical floor used only for touch/mouse navigation. It is transparent but
+    // remains raycastable, so clicks on walls, wardrobe, TV, or other meshes are
+    // rejected before a locomotion target is created.
+    navigationFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(120, 120),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, colorWrite: false, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    navigationFloor.name = 'Aether_Logical_Navigation_Floor';
+    navigationFloor.rotation.x = -Math.PI / 2;
+    navigationFloor.position.y = 0.004;
+    scene.add(navigationFloor);
+
     // 6. Architectural Furniture Extraction & Spatial Layout Engine
     let isCancelled = false;
     const roomLoadController = new AbortController();
@@ -320,17 +356,22 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     let roomMovementBounds: THREE.Box3 | null = null;
     let movementObstacleBoxes: THREE.Box3[] = [];
     let bedMarker: THREE.Mesh | null = null;
+    let sofaMarker: THREE.Mesh | null = null;
+    let navigationSurfaceMeshes: THREE.Object3D[] = [];
+    let pendingRestPose: { pose: 'SITTING' | 'LYING'; position: THREE.Vector3; surfaceY: number; faceYaw: number } | null = null;
 
-    const bedRaycaster = new THREE.Raycaster();
-    const bedPointer = new THREE.Vector2();
+    const interactionRaycaster = new THREE.Raycaster();
+    const interactionPointer = new THREE.Vector2();
+    const floorRaycaster = new THREE.Raycaster();
+    const floorPointer = new THREE.Vector2();
 
-    const isPointerOverBed = (clientX: number, clientY: number): boolean => {
-      if (!bedInteractionMeshes.length) return false;
+    const getInteractionHit = (clientX: number, clientY: number): THREE.Intersection | null => {
+      if (!navigationSurfaceMeshes.length) return null;
       const rect = renderer.domElement.getBoundingClientRect();
-      if (!rect.width || !rect.height) return false;
-      bedPointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-      bedRaycaster.setFromCamera(bedPointer, camera);
-      return bedRaycaster.intersectObjects(bedInteractionMeshes, true).length > 0;
+      if (!rect.width || !rect.height) return null;
+      interactionPointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+      interactionRaycaster.setFromCamera(interactionPointer, camera);
+      return interactionRaycaster.intersectObjects(navigationSurfaceMeshes, true)[0] || null;
     };
 
     if (roomModelUrl) {
@@ -418,12 +459,22 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
         res.scene.updateMatrixWorld(true);
         furnitureColliders.push(...layoutResult.colliders);
 
-        // Bed interaction point
+        // Dense navigation graph and semantic interaction surfaces.
         const bedRoot = res.scene.getObjectByName('BoxBed_BoxBed_Root');
+        const sofaRoot = res.scene.getObjectByName('Aether_Modern_Sofa_Root');
         roomMovementBounds = res.scene.getObjectByName('Base1')
           ? new THREE.Box3().setFromObject(res.scene.getObjectByName('Base1')!)
           : new THREE.Box3().setFromObject(res.scene);
         movementObstacleBoxes = furnitureColliders.map((bounds) => bounds.clone());
+
+        const navigationSurfaces: Array<{
+          id: string;
+          kind: 'BED_LIE' | 'SOFA_SIT';
+          root: THREE.Object3D;
+          bounds: THREE.Box3;
+          surfaceY: number;
+          facing: THREE.Vector3;
+        }> = [];
 
         if (bedRoot) {
           bedCollisionBox = new THREE.Box3().setFromObject(bedRoot);
@@ -435,6 +486,12 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           const towardRoomCenter = new THREE.Vector3(-bedCenterPoint.x, 0, -bedCenterPoint.z);
           if (towardRoomCenter.lengthSq() < 0.01) towardRoomCenter.set(0, 0, 1);
           towardRoomCenter.normalize();
+          const bedSurfaceNode = bedRoot.getObjectByName('AetherBed_FittedSheet')
+            || bedRoot.getObjectByName('AetherBed_Mattress');
+          const bedSurfaceBounds = bedSurfaceNode
+            ? new THREE.Box3().setFromObject(bedSurfaceNode)
+            : bedCollisionBox.clone();
+          const bedSurfaceY = bedSurfaceNode ? bedSurfaceBounds.max.y : bedCollisionBox.min.y + 0.74;
           const projectedHalfExtent = Math.abs(towardRoomCenter.x) * bedSize.x * 0.5 + Math.abs(towardRoomCenter.z) * bedSize.z * 0.5;
           bedApproachPoint = bedCenterPoint.clone().addScaledVector(towardRoomCenter, projectedHalfExtent + 0.42);
           bedApproachPoint.y = 0;
@@ -442,16 +499,18 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
             id: 'bed-rest-approach', type: 'approach',
             target: bedApproachPoint.toArray(), face: bedCenterPoint.toArray(),
           };
-          const hitTargetHeight = Math.min(0.22, Math.max(0.12, bedSize.y * 0.25));
+          const hitTargetHeight = 0.08;
           const bedHitTarget = new THREE.Mesh(
-            new THREE.BoxGeometry(bedSize.x * 0.98, hitTargetHeight, bedSize.z * 0.98),
+            new THREE.BoxGeometry(bedSize.x * 0.92, hitTargetHeight, bedSize.z * 0.88),
             new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0, colorWrite: false, depthWrite: false, side: THREE.DoubleSide }),
           );
           bedHitTarget.name = 'InteractionTarget_BedSurface';
-          bedHitTarget.position.set(bedCenterPoint.x, bedCollisionBox.max.y - hitTargetHeight / 2 - 0.005, bedCenterPoint.z);
-          bedHitTarget.userData.interactionPoint = bedRoot.userData.interactionPoint;
+          bedHitTarget.position.set(bedCenterPoint.x, bedSurfaceY, bedCenterPoint.z);
+          bedHitTarget.userData.navigationInteraction = { surfaceId: 'bed-primary', pose: 'LYING', surfaceY: bedSurfaceY, faceYaw: Math.atan2(towardRoomCenter.x, towardRoomCenter.z) };
           scene.add(bedHitTarget);
           bedInteractionMeshes = [bedHitTarget];
+          navigationSurfaceMeshes.push(bedHitTarget);
+          navigationSurfaces.push({ id: 'bed-primary', kind: 'BED_LIE', root: bedRoot, bounds: bedSurfaceBounds, surfaceY: bedSurfaceY, facing: towardRoomCenter });
 
           bedMarker = new THREE.Mesh(
             new THREE.RingGeometry(0.12, 0.16, 28),
@@ -466,28 +525,79 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
           scene.add(bedMarker);
         }
 
+        if (sofaRoot) {
+          const seatNode = sofaRoot.getObjectByName('Sofa_Seat');
+          const sofaBounds = new THREE.Box3().setFromObject(seatNode || sofaRoot);
+          const sofaSurfaceY = seatNode ? sofaBounds.max.y : sofaBounds.min.y + 0.55;
+          const sofaFacing = new THREE.Vector3(0, 0, 1).applyQuaternion(sofaRoot.getWorldQuaternion(new THREE.Quaternion())).setY(0).normalize();
+          const sofaHitTarget = new THREE.Mesh(
+            new THREE.BoxGeometry(Math.max(0.6, sofaBounds.getSize(new THREE.Vector3()).x * 0.84), 0.08, Math.max(0.45, sofaBounds.getSize(new THREE.Vector3()).z * 0.82)),
+            new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0, colorWrite: false, depthWrite: false, side: THREE.DoubleSide }),
+          );
+          sofaHitTarget.name = 'InteractionTarget_SofaSeat';
+          sofaHitTarget.position.set(sofaBounds.getCenter(new THREE.Vector3()).x, sofaSurfaceY, sofaBounds.getCenter(new THREE.Vector3()).z);
+          sofaHitTarget.userData.navigationInteraction = { surfaceId: 'sofa-main', pose: 'SITTING', surfaceY: sofaSurfaceY, faceYaw: Math.atan2(sofaFacing.x, sofaFacing.z) };
+          scene.add(sofaHitTarget);
+          navigationSurfaceMeshes.push(sofaHitTarget);
+          navigationSurfaces.push({ id: 'sofa-main', kind: 'SOFA_SIT', root: sofaRoot, bounds: sofaBounds, surfaceY: sofaSurfaceY, facing: sofaFacing });
+          sofaMarker = new THREE.Mesh(
+            new THREE.RingGeometry(0.12, 0.16, 28),
+            new THREE.MeshBasicMaterial({ color: 0xa855f7, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide }),
+          );
+          sofaMarker.name = 'InteractionPoint_SofaSeat';
+          sofaMarker.rotation.x = -Math.PI / 2;
+          sofaMarker.position.set(sofaBounds.getCenter(new THREE.Vector3()).x, 0.008, sofaBounds.getCenter(new THREE.Vector3()).z);
+          sofaMarker.visible = false;
+          scene.add(sofaMarker);
+        }
+
+        navigationGraphRef.current = buildRoomNavigationGraph(
+          roomMovementBounds,
+          movementObstacleBoxes.map((box) => box.clone().expandByVector(new THREE.Vector3(0.02, 0, 0.02))),
+          navigationSurfaces.map((surface) => ({ id: surface.id, kind: surface.kind, bounds: surface.bounds, surfaceY: surface.surfaceY, facing: surface.facing })),
+          { spacing: 0.18, radius: 0.28, minimumFloorPoints: 1000 },
+        );
+
         interactionClickRef.current = (clientX, clientY) => {
-          if (!bedApproachPoint || !bedCenterPoint || !bedCollisionBox || !roomMovementBounds) return false;
-          if (!isPointerOverBed(clientX, clientY)) return false;
           const rig = companionRigRef.current;
-          if (!rig) return true;
-          const from = rig.root.position.clone();
-          from.y = 0;
-          const to = bedApproachPoint!.clone();
-          const insideRoom = to.x >= roomMovementBounds!.min.x + 0.25 && to.x <= roomMovementBounds!.max.x - 0.25 &&
-            to.z >= roomMovementBounds!.min.z + 0.25 && to.z <= roomMovementBounds!.max.z - 0.25;
-          const obstacles = movementObstacleBoxes.map((bounds) => bounds.clone().expandByVector(new THREE.Vector3(0.28, 0.18, 0.28)));
-          let pathBlocked = false;
-          for (let step = 1; step < 24; step += 1) {
-            const point = from.clone().lerp(to, step / 24);
-            if (obstacles.some((obstacle) => obstacle.containsPoint(point))) { pathBlocked = true; break; }
-          }
-          if (!insideRoom || pathBlocked) {
+          if (!rig || !roomMovementBounds || !navigationFloor) return false;
+          const interactionHit = getInteractionHit(clientX, clientY);
+          if (interactionHit) {
+            const interaction = interactionHit.object.userData.navigationInteraction as { pose: 'SITTING' | 'LYING'; surfaceY: number; faceYaw: number } | undefined;
+            const interactionPoint = navigationGraphRef.current?.interactionPoints.find((point) => point.kind === (interaction?.pose === 'LYING' ? 'BED_APPROACH' : 'SOFA_APPROACH'));
+            if (!interaction || !interactionPoint) return true;
+            const from = rig.root.position.clone().setY(0);
+            const to = interactionPoint.position.clone().setY(0);
+            const obstacles = movementObstacleBoxes.map((bounds) => bounds.clone().expandByVector(new THREE.Vector3(0.28, 0.18, 0.28)));
+            const pathBlocked = Array.from({ length: 32 }, (_, step) => from.clone().lerp(to, (step + 1) / 32)).some((point) => obstacles.some((obstacle) => obstacle.containsPoint(point)));
+            if (pathBlocked) return true;
+            pendingRestPose = { pose: interaction.pose, position: to, surfaceY: interaction.surfaceY, faceYaw: interaction.faceYaw };
+            rig.navigateTo(to, interaction.faceYaw);
+            if (interaction.pose === 'LYING' && bedMarker) bedMarker.visible = true;
+            if (interaction.pose === 'SITTING' && sofaMarker) sofaMarker.visible = true;
             return true;
           }
-          const faceYaw = Math.atan2(bedCenterPoint!.x - to.x, bedCenterPoint!.z - to.z);
-          rig.navigateTo(to, faceYaw);
-          if (bedMarker) bedMarker.visible = true;
+
+          const rect = renderer.domElement.getBoundingClientRect();
+          floorPointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+          floorRaycaster.setFromCamera(floorPointer, camera);
+          const floorHit = floorRaycaster.intersectObject(navigationFloor, false)[0];
+          if (!floorHit) return true;
+          const roomHit = floorRaycaster.intersectObject(res.scene!, true)[0];
+          const hitName = roomHit?.object.name.toLowerCase() || '';
+          const isFloorSurface = hitName.includes('floor') || hitName.includes('carpet') || hitName.includes('rug') || hitName.includes('ground');
+          if (roomHit && roomHit.distance < floorHit.distance - 0.02 && !isFloorSurface) return true;
+
+          const clicked = floorHit.point.clone().setY(0);
+          const nearest = navigationGraphRef.current?.walkableFloorPoints.reduce<RoomNavigationPoint | null>((best, point) => {
+            if (!best) return point;
+            return point.position.distanceToSquared(clicked) < best.position.distanceToSquared(clicked) ? point : best;
+          }, null);
+          if (!nearest) return true;
+          pendingRestPose = null;
+          if (bedMarker) bedMarker.visible = false;
+          if (sofaMarker) sofaMarker.visible = false;
+          rig.navigateTo(nearest.position);
           return true;
         };
 
@@ -769,6 +879,29 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       // Update Companion Rig (Idle Breathing, Blinking, Visemes, Look-At, Locomotion)
       if (companionRigRef.current) {
         companionRigRef.current.update(delta, elapsed, targetLookPosRef.current);
+        if (pendingRestPose) {
+          const distance = companionRigRef.current.root.position.distanceTo(new THREE.Vector3(
+            pendingRestPose.position.x,
+            companionRigRef.current.root.position.y,
+            pendingRestPose.position.z,
+          ));
+          if (distance < 0.16) {
+            companionRigRef.current.setRestPose(pendingRestPose.pose, pendingRestPose.surfaceY, pendingRestPose.faceYaw);
+            pendingRestPose = null;
+          }
+        }
+        if (!pendingRestPose && restPoseRequestRef.current) {
+          const request = restPoseRequestRef.current;
+          const distance = companionRigRef.current.root.position.distanceTo(new THREE.Vector3(
+            request.position.x,
+            companionRigRef.current.root.position.y,
+            request.position.z,
+          ));
+          if (distance < 0.22) {
+            companionRigRef.current.setRestPose(request.pose, request.surfaceY, request.faceYaw);
+            restPoseRequestRef.current = null;
+          }
+        }
         targetRoomFocus.x = companionRigRef.current.root.position.x;
         targetRoomFocus.z = companionRigRef.current.root.position.z;
         // As the user zooms in, ease the focus from the chest toward the face.
@@ -834,6 +967,8 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
     return () => {
       isCancelled = true;
       interactionClickRef.current = null;
+      navigationGraphRef.current = null;
+      restPoseRequestRef.current = null;
       bedInteractionMeshes = [];
       bedApproachPoint = null;
       bedCenterPoint = null;
@@ -841,6 +976,10 @@ export const RoomEnvironment3D: React.FC<RoomEnvironment3DProps> = ({
       roomMovementBounds = null;
       movementObstacleBoxes = [];
       bedMarker = null;
+      sofaMarker = null;
+      navigationFloor = null;
+      navigationSurfaceMeshes = [];
+      pendingRestPose = null;
 
       if (wallClockInterval !== null) window.clearInterval(wallClockInterval);
       timeOfDayUpdateFrame = null;

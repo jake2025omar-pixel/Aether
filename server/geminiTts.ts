@@ -36,7 +36,7 @@ const UPSTREAM_TIMEOUT_MS = 45_000;
 const SUPPORTED_VOICES = new Set<CompanionTtsVoice>(['Achernar', 'Kore', 'Salma']);
 const SUPPORTED_EMOTIONS = new Set([
   'NEUTRAL', 'HAPPY', 'SAD', 'ANGRY', 'SURPRISED', 'CONFUSED', 'THINKING',
-  'CURIOUS', 'EMPATHETIC', 'AFFECTIONATE', 'GENTLY_ANNOYED',
+  'CURIOUS', 'EMPATHETIC', 'AFFECTIONATE', 'ROMANTIC', 'SHY', 'GENTLY_ANNOYED',
 ]);
 
 const recentRequestsByIp = new Map<string, number[]>();
@@ -53,6 +53,8 @@ const speechStyleByEmotion: Record<string, string> = {
   CURIOUS: 'Softly curious and engaged, with light conversational intonation.',
   EMPATHETIC: 'Soft, tender, patient, and reassuring; sincere without sounding dramatic.',
   AFFECTIONATE: 'Soft, warm, affectionate, and calm; intimate in a fictional roleplay sense but never exaggerated.',
+  ROMANTIC: 'Soft, warm, and gently romantic; affectionate and intimate without exaggerated theatrical delivery.',
+  SHY: 'Soft, slightly hesitant, and warmly bashful; natural and understated rather than acted.',
   GENTLY_ANNOYED: 'Softly pouty and playfully frustrated, still kind and affectionate, never harsh.',
 };
 
